@@ -24,7 +24,7 @@
  */
 import type { Captured } from './types';
 import { ElementPicker } from './capture/picker';
-import { buildElementMetadata, cloneElement, serializeRaw } from './capture/dom';
+import { buildElementMetadata, cloneElement } from './capture/dom';
 import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
@@ -32,6 +32,8 @@ import { reconcile } from './reconcile/bake';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
+import { emitHtml, composeDocument } from './convert/html';
+import { cleanCss } from './convert/clean';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -130,7 +132,13 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	resolveFonts(captured);
 	resolveAnimations(captured);
 
-	shipResult({ mode, html: serializeRaw(captured.clone), warnings: captured.warnings });
+	// pipeline phase 4 — convert. emit the chosen format (html today; tailwind,
+	// bem, jsx, vue land in commits 12-15) and run P5 dead-code elimination over
+	// the emitted stylesheet. format selection from prefs arrives in commit 35.
+	const { html, css } = emitHtml(captured);
+	const cleanedCss = cleanCss(css, captured);
+	const output = composeDocument(html, cleanedCss);
+	shipResult({ mode, format: 'html', html, css: cleanedCss, output, warnings: captured.warnings });
 	console.info('snipcode: snip complete');
 }
 
