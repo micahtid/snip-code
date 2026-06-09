@@ -10,9 +10,11 @@
  * this is the single typed gateway to that store so the policy is enforced in one
  * place. byok keys are stored under per-provider keys and are never logged.
  */
-import type { Provider, UserPreferences } from '../content/types';
+import type { Provider, SnippetRecord, UserPreferences } from '../content/types';
 
 const PREFS_KEY = 'preferences';
+const SNIPPETS_KEY = 'snippets';
+const SNIPPET_CAP = 50; // last 50, fifo (decision 12).
 const byokKey = (provider: Provider): string => `byok.${provider}`;
 
 /** the default preferences, applied when nothing is stored yet (decisions 9-11). */
@@ -46,4 +48,26 @@ export async function getKey(provider: Provider): Promise<string> {
 /** store a provider's byok key under chrome.storage.local (never sync). */
 export async function setKey(provider: Provider, key: string): Promise<void> {
 	await chrome.storage.local.set({ [byokKey(provider)]: key });
+}
+
+/** read the saved snippets (oldest first). */
+export async function listSnippets(): Promise<SnippetRecord[]> {
+	const stored = await chrome.storage.local.get(SNIPPETS_KEY);
+	return (stored[SNIPPETS_KEY] as SnippetRecord[] | undefined) ?? [];
+}
+
+/**
+ * append a snippet, evicting the oldest beyond the 50-cap (fifo, decision 12).
+ *
+ * @param record — the snippet to store
+ */
+export async function storeSnippet(record: SnippetRecord): Promise<void> {
+	const current = await listSnippets();
+	const next = [...current, record].slice(-SNIPPET_CAP); // keep the newest 50
+	await chrome.storage.local.set({ [SNIPPETS_KEY]: next });
+}
+
+/** clear all saved snippets. */
+export async function clearSnippets(): Promise<void> {
+	await chrome.storage.local.set({ [SNIPPETS_KEY]: [] });
 }

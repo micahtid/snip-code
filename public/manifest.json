@@ -31,7 +31,7 @@
 			"run_at": "document_idle"
 		}
 	],
-	"permissions": ["activeTab", "scripting", "storage", "downloads", "sidePanel", "debugger"],
+	"permissions": ["activeTab", "scripting", "storage", "unlimitedStorage", "downloads", "sidePanel", "debugger"],
 	"host_permissions": ["<all_urls>"],
 	"web_accessible_resources": [
 		{

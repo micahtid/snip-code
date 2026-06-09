@@ -55,7 +55,7 @@ import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
 import { polish } from './polish/llm';
 import { buildAssistiveJson, deliver } from './assistive/emit';
-import { getPrefs } from '../utils/storage';
+import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
@@ -224,6 +224,17 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 
 	const output = composeDocument(finalHtml, cleanedCss);
 	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, warnings: captured.warnings });
+
+	// persist the snippet (fifo 50, decision 12). best-effort; a storage failure
+	// never fails the snip.
+	void storeSnippet({
+		id: crypto.randomUUID(),
+		capturedAt: captured.capturedAt,
+		page: captured.page,
+		element: captured.element,
+		output: { format, html: finalHtml, css: cleanedCss },
+		screenshot: captured.screenshot,
+	}).catch(() => {});
 	console.info('snipcode: snip complete');
 }
 
