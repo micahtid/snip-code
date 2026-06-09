@@ -1,139 +1,133 @@
 /**
  * content/index.ts — pipeline orchestrator + content-script entry point
  *
- * Phase: a (scaffold) — see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
+ * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
  * Pipeline position: spans 1-5 (this is the conductor, not a single phase)
- * Reads from Captured: n/a (constructs it)
- * Writes to Captured: n/a (owns the lifecycle)
+ * Reads from Captured: constructs it (capture phase), reads it downstream
+ * Writes to Captured: owns the lifecycle
  *
  * Principles applied: none directly; orchestrates the modules that apply P1-P5.
  *
  * Why this exists: chrome injects exactly one content script per page. this file
- * is that script. it owns the message protocol (section 19.2) and, once the
- * phases are built, runs them in order:
+ * is that script. it owns the message protocol (section 19.2) and runs the
+ * phases in order. as of commit 3 only pipeline phase 1 (capture) is wired:
  *
- *   1 capture   → content/capture/*   (picker, dom clone, stylesheets, gate)
- *   2 reconcile → content/reconcile/* (P1+P2+P4, tier 1+2 feature handlers)
- *   3 resolve   → content/resolve/*   (P3 vars, fonts, keyframes — single pass)
- *   4 convert   → content/convert/*   (P5 dead-code elim, vault, format emit)
- *   5 polish    → content/polish/*    (byok llm rename + hover, vault restore)
+ *   1 capture   → content/capture/*   (picker → dom clone → stylesheet discovery)
+ *   2 reconcile → content/reconcile/* (commits 6-7, g, h)
+ *   3 resolve   → content/resolve/*   (commit 8)
+ *   4 convert   → content/convert/*   (commits 9-15)
+ *   5 polish    → content/polish/*    (commits 35-36)
  *
- * assistive mode runs only phase 1 then emits json via content/assistive/emit.
- *
- * at this stage the phases do not exist yet; this registers the message listener
- * and ships a minimal highlight overlay so the sidebar's "pick element" button
- * has something to drive. the full picker (highlighter, arrowup decoration
- * climb, screenshot integration — ported from v1 element-selector.ts) replaces
- * this minimal version in content/capture/picker.ts at commit 3.
+ * capture produces a Captured object; at this stage the pipeline emits the raw
+ * cloned html (no styling baked yet) so the wiring is observable end to end. the
+ * reconcile→convert phases that turn it into clean code arrive in later commits.
  */
+import type { Captured } from './types';
+import { ElementPicker } from './capture/picker';
+import { buildElementMetadata, cloneElement, serializeRaw } from './capture/dom';
+import { discoverStylesheets } from './capture/sheets';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
 
+/** only one picker may be active at a time. */
+let activePicker: ElementPicker | null = null;
+
 /**
- * minimal element-highlight overlay.
+ * runs pipeline phase 1 (capture) on the chosen element, assembling the shared
+ * Captured object every later phase reads.
  *
- * draws a single absolutely-positioned box that tracks whichever element the
- * pointer is over, so the user gets visual feedback while choosing. esc cancels;
- * arrowup walks to the parent element (the "decoration climb" from section 19.7,
- * implemented fully in capture/picker.ts later); click selects.
- *
- * this is intentionally throwaway scaffolding — commit 3 replaces it with the
- * real capture pipeline entry. it deliberately does not build a Captured object
- * yet (no types.ts until commit 3); selecting an element just logs the target.
+ * @param root — the live element the user picked
+ * @param screenshot — cropped png data url from the picker (may be empty)
+ * @returns the populated Captured object
  */
-function startHighlightOverlay(): void {
-	// avoid stacking overlays if the user clicks "pick element" twice.
-	if (document.getElementById('snipcode-overlay')) return;
+function capture(root: Element, screenshot: string): Captured {
+	const sheets = discoverStylesheets();
+	return {
+		page: {
+			url: location.href,
+			title: document.title,
+			viewport: {
+				width: window.innerWidth,
+				height: window.innerHeight,
+				devicePixelRatio: window.devicePixelRatio || 1,
+			},
+			userAgent: navigator.userAgent,
+		},
+		capturedAt: new Date().toISOString(),
+		element: buildElementMetadata(root),
+		screenshot,
+		root,
+		clone: cloneElement(root),
+		stylesheets: sheets.stylesheets,
+		foundationRules: sheets.foundationRules,
+		componentRules: sheets.componentRules,
+		variables: sheets.variables,
+		fonts: sheets.fonts,
+		keyframes: sheets.keyframes,
+		inaccessible: {
+			crossOriginStylesheets: sheets.crossOriginStylesheets,
+			closedShadowRoots: 0, // cdp shadow-pierce lands in commit 4.
+		},
+		bakedStyles: new Map(),
+		warnings: [],
+	};
+}
 
-	const box = document.createElement('div');
-	box.id = 'snipcode-overlay';
-	Object.assign(box.style, {
-		position: 'fixed',
-		zIndex: '2147483647', // max — sit above any host-page stacking context.
-		pointerEvents: 'none', // never intercept the hover/click we are tracking.
-		border: '2px solid #4f6ef6',
-		background: 'rgba(79, 110, 246, 0.12)',
-		borderRadius: '2px',
-		transition: 'all 40ms ease-out',
-		top: '0',
-		left: '0',
-		width: '0',
-		height: '0',
-	} satisfies Partial<CSSStyleDeclaration>);
-	document.body.appendChild(box);
+/**
+ * runs the pipeline for a selected element and ships a result to the sidebar.
+ *
+ * at commit 3 the pipeline stops after capture and emits raw cloned html. later
+ * commits insert reconcile→resolve→convert→polish between capture and emit.
+ *
+ * @param root — the picked element
+ * @param screenshot — cropped png data url
+ * @param mode — snip (code) or assistive (json); assistive emit is fully built
+ *   in commit 37, so here it ships the metadata block as a json preview
+ */
+function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): void {
+	const captured = capture(root, screenshot);
+	const result =
+		mode === 'assistive'
+			? { mode, json: JSON.stringify({ page: captured.page, element: captured.element }, null, 2) }
+			: { mode, html: serializeRaw(captured.clone) };
 
-	let current: Element | null = null;
-
-	/** position the overlay box flush around `el`'s border rect. */
-	const frame = (el: Element): void => {
-		const r = el.getBoundingClientRect();
-		Object.assign(box.style, {
-			top: `${r.top}px`,
-			left: `${r.left}px`,
-			width: `${r.width}px`,
-			height: `${r.height}px`,
+	// hand the result to the sidebar. the ResultPanel renders it from phase e on;
+	// until then this message is the observable output of a snip.
+	chrome.runtime
+		.sendMessage({ type: 'SNIP_RESULT', requestId: crypto.randomUUID(), payload: result })
+		.catch(() => {
+			// sidebar may be closed; the snip still succeeded. swallow.
 		});
-	};
+	console.info('snipcode: snip complete', result);
+}
 
-	const onMove = (e: MouseEvent): void => {
-		const el = e.target as Element | null;
-		if (!el || el === box) return;
-		current = el;
-		frame(el);
-	};
-
-	/** tear down all listeners and remove the overlay. */
-	const stop = (): void => {
-		document.removeEventListener('mousemove', onMove, true);
-		document.removeEventListener('keydown', onKey, true);
-		document.removeEventListener('click', onClick, true);
-		box.remove();
-	};
-
-	const onKey = (e: KeyboardEvent): void => {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			stop();
-			return;
-		}
-		// arrowup: climb to the parent so the user can grab a wrapping section
-		// instead of the leaf they happen to be hovering (section 19.7).
-		if (e.key === 'ArrowUp' && current?.parentElement) {
-			e.preventDefault();
-			current = current.parentElement;
-			frame(current);
-		}
-	};
-
-	const onClick = (e: MouseEvent): void => {
-		e.preventDefault();
-		e.stopPropagation();
-		const selected = current;
-		stop();
-		// commit 3 turns this selection into a Captured object and runs the
-		// pipeline. for now, confirm the wiring works end to end.
-		if (selected) {
-			console.info('snipcode: selected element', selected.tagName.toLowerCase(), selected);
-		}
-	};
-
-	document.addEventListener('mousemove', onMove, true);
-	document.addEventListener('keydown', onKey, true);
-	document.addEventListener('click', onClick, true);
+/** start the picker overlay; on select, run the pipeline for the chosen mode. */
+function startPicker(mode: 'snip' | 'assistive'): void {
+	activePicker?.deactivate();
+	activePicker = new ElementPicker({
+		onSelect: (element, screenshot) => {
+			activePicker = null;
+			runPipeline(element, screenshot, mode);
+		},
+		onCancel: () => {
+			activePicker = null;
+		},
+	});
+	activePicker.activate();
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) => {
-	// the sidebar's "pick element" button sends this to start the overlay.
 	if (
 		typeof message === 'object' &&
 		message !== null &&
 		'type' in message &&
 		(message as { type: unknown }).type === START_PICKER
 	) {
-		startHighlightOverlay();
+		const mode = (message as { mode?: unknown }).mode === 'assistive' ? 'assistive' : 'snip';
+		startPicker(mode);
 	}
-	// no async response yet; keep the channel synchronous (return false).
+	// no async response from the picker path; keep the channel synchronous.
 	return false;
 });
 
