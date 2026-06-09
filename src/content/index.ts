@@ -36,6 +36,7 @@ import type { OutputFormat } from './types';
 import { emitHtml, composeDocument, type HtmlOutput } from './convert/html';
 import { emitTailwind } from './convert/tailwind';
 import { emitBem } from './convert/bem';
+import { emitJsx } from './convert/jsx';
 import { cleanCss } from './convert/clean';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
@@ -163,6 +164,10 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 			return emitBem(captured, false);
 		case 'bem-scss':
 			return emitBem(captured, true);
+		case 'jsx-tailwind':
+			return emitJsx(captured, 'tailwind');
+		case 'jsx-css':
+			return emitJsx(captured, 'css');
 		case 'html':
 		default:
 			return emitHtml(captured);
