@@ -41,6 +41,7 @@ import { apply as applyAnimation } from './reconcile/features/animation';
 import { apply as applyEffects } from './reconcile/features/effects';
 import { apply as applyLayers } from './reconcile/features/layers';
 import { apply as applyTables } from './reconcile/features/tables';
+import { apply as applyLists } from './reconcile/features/lists';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
@@ -75,6 +76,7 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
 	['effects', applyEffects],
 	['layers', applyLayers],
 	['tables', applyTables],
+	['lists', applyLists],
 ];
 
 /**
