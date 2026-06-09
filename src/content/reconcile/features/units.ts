@@ -61,9 +61,31 @@ export function apply(captured: Captured): Captured {
 		bakeNonDefault(clone, baked, computed, 'direction', (v) => v === '' || v === 'ltr');
 		bakeNonDefault(clone, baked, computed, 'writing-mode', (v) => v === '' || v === 'horizontal-tb');
 
+		// aspect-ratio: bake when explicitly set so the box keeps its ratio.
+		bakeNonDefault(clone, baked, computed, 'aspect-ratio', (v) => v === '' || v === 'auto');
+
+		// <img> intrinsic dimensions feed aspect-ratio: auto and prevent layout
+		// shift; copy the natural size to width/height attributes when missing.
+		if (original instanceof HTMLImageElement && clone instanceof HTMLImageElement) {
+			pinIntrinsicSize(original, clone, baked);
+		}
+
 		if (baked.size > 0) captured.bakedStyles.set(clone, baked);
 	}
 	return captured;
+}
+
+/**
+ * copy a loaded image's natural size to width/height attributes, but only when
+ * css sizes neither dimension — otherwise attr-derived aspect-ratio could fight
+ * the baked css and shift the box.
+ */
+function pinIntrinsicSize(original: HTMLImageElement, clone: HTMLImageElement, baked: Map<string, string>): void {
+	if (original.naturalWidth === 0 || original.naturalHeight === 0) return; // not loaded
+	if (baked.has('width') || baked.has('height')) return; // css already sizes it
+	if (clone.hasAttribute('width') || clone.hasAttribute('height')) return;
+	clone.setAttribute('width', String(original.naturalWidth));
+	clone.setAttribute('height', String(original.naturalHeight));
 }
 
 /** bake a computed property when a predicate says its value is non-default. */
