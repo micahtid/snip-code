@@ -217,4 +217,62 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 	return false;
 });
 
+// ---------------------------------------------------------------------------
+// headless test bridge (tests/run-pipeline.mjs — the HEADLESS_SNIP entry point,
+// section 19.2). the grader drives a snip by css selector instead of the picker.
+// page and content script share the document but live in separate js worlds, so
+// chrome.runtime messages and window.postMessage do not reach the page; a
+// CustomEvent dispatched on `document` does. the runner waits on
+// data-snip-injected, dispatches "snip-runner:snip" {selector, mode}, and reads
+// the reply on "snip-extension:result".
+// ---------------------------------------------------------------------------
+document.documentElement.setAttribute('data-snip-injected', '1');
+
+document.addEventListener('snip-runner:snip', (ev) => {
+	const detail = (ev as CustomEvent).detail ?? {};
+	const selector = String(detail.selector ?? '');
+	const mode: 'snip' | 'assistive' = detail.mode === 'assistive' ? 'assistive' : 'snip';
+	void runHeadless(selector, mode).then((result) => {
+		document.dispatchEvent(new CustomEvent('snip-extension:result', { detail: result }));
+	});
+});
+
+/**
+ * runs the full pipeline for a selector (no picker, no screenshot) and returns a
+ * self-contained output.html string. this is the deterministic path the grader
+ * measures — the byok llm polish (phase 5) is intentionally not run here.
+ *
+ * @param selector — css selector for the element to snip
+ * @param mode — snip (code) or assistive (json)
+ */
+async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promise<Record<string, unknown>> {
+	try {
+		const el = document.querySelector(selector);
+		if (!el) return { ok: false, error: `selector matched 0 elements: ${selector}` };
+
+		const gate = detectBuilder(el);
+		if (gate.blocked) return { ok: true, status: 'unsupported', warnings: [gate.message] };
+
+		const captured = await capture(el, '');
+		if (mode === 'assistive') {
+			return {
+				ok: true,
+				status: 'ok',
+				assistive: { page: captured.page, element: captured.element },
+				warnings: captured.warnings,
+			};
+		}
+
+		reconcile(captured);
+		resolveVariables(captured);
+		resolveFonts(captured);
+		resolveAnimations(captured);
+		const { html, css } = emitFormat(captured, 'html');
+		const cleanedCss = cleanCss(css, captured);
+		return { ok: true, status: 'ok', html: composeDocument(html, cleanedCss), warnings: captured.warnings };
+	} catch (err) {
+		return { ok: false, error: (err as Error).message };
+	}
+}
+
 export {};
