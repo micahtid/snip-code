@@ -25,48 +25,45 @@
  * lost ligatures). baking the computed value is pixel-safe: it reproduces exactly
  * what already rendered. the matching @font-face descriptors (size-adjust,
  * ascent/descent/line-gap-override, unicode-range, font-display) travel via
- * resolve/fonts.ts. tier 2 (commit 34) extends this file with text micro-features.
+ * resolve/fonts.ts.
+ *
+ * tier 2 extension (commit 34): the text micro-features below — text-overflow
+ * (ellipsis), text-decoration-skip-ink, word-break, overflow-wrap, hyphens,
+ * text-wrap, white-space-collapse — change how text wraps and truncates, which
+ * shifts line breaks and visible content; baking the non-default values keeps the
+ * captured text layout. (writing-mode lives in features/units with the logical
+ * properties it governs.)
  */
 import type { Captured } from '../../types';
-import { pairedSubtrees } from '../match';
+import { bakeNonDefaultProps } from '../match';
 
 /**
- * the font-metric properties this handler preserves — the bounded css-spec
- * surface for variable + opentype font rendering (a feature-handler spec set,
- * not a decision-layer property Set; section 6).
+ * the font + text properties this handler preserves — the bounded css-spec
+ * surface for variable/opentype fonts and text layout (a feature-handler spec
+ * set, not a decision-layer property Set; section 6).
  */
-const FONT_METRIC_PROPS = ['font-variation-settings', 'font-feature-settings', 'font-optical-sizing', 'font-stretch'];
-
-/** computed values that mean "default" and need no baking. */
-function isDefault(prop: string, value: string): boolean {
-	const v = value.trim();
-	if (v === '' || v === 'normal' || v === 'auto' || v === 'none') return true;
-	// font-stretch resolves to a percentage; 100% is the default.
-	if (prop === 'font-stretch' && (v === '100%' || v === 'normal')) return true;
-	return false;
-}
+const FONT_AND_TEXT_PROPS = [
+	// variable + opentype font metrics.
+	{ prop: 'font-variation-settings', isDefault: (v: string) => v === 'normal' },
+	{ prop: 'font-feature-settings', isDefault: (v: string) => v === 'normal' },
+	{ prop: 'font-optical-sizing', isDefault: (v: string) => v === 'auto' || v === 'normal' },
+	{ prop: 'font-stretch', isDefault: (v: string) => v === '100%' || v === 'normal' },
+	// text micro-features.
+	{ prop: 'text-overflow', isDefault: (v: string) => v === 'clip' },
+	{ prop: 'text-decoration-skip-ink', isDefault: (v: string) => v === 'auto' },
+	{ prop: 'word-break', isDefault: (v: string) => v === 'normal' },
+	{ prop: 'overflow-wrap', isDefault: (v: string) => v === 'normal' },
+	{ prop: 'hyphens', isDefault: (v: string) => v === 'manual' },
+	{ prop: 'text-wrap', isDefault: (v: string) => v === 'wrap' || v === 'auto' },
+	{ prop: 'white-space-collapse', isDefault: (v: string) => v === 'collapse' },
+];
 
 /**
- * bakes non-default variable-font and font-metric settings onto each element.
+ * bakes non-default font-metric and text-layout settings onto each element.
  *
  * @param captured — bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
-	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
-		const computed = getComputedStyle(original);
-		const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();
-		for (const prop of FONT_METRIC_PROPS) {
-			if (baked.has(prop)) continue; // already baked by P1 (authored)
-			const value = computed.getPropertyValue(prop);
-			if (isDefault(prop, value)) continue;
-			baked.set(prop, value);
-			try {
-				(clone as HTMLElement).style.setProperty(prop, value);
-			} catch {
-				// invalid for this element; skip.
-			}
-		}
-		captured.bakedStyles.set(clone, baked);
-	}
+	bakeNonDefaultProps(captured, FONT_AND_TEXT_PROPS);
 	return captured;
 }
