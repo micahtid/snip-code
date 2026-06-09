@@ -89,6 +89,43 @@ export function pairedSubtrees(root: Element, clone: Element): Array<[Element, E
 	return out;
 }
 
+/** one property a feature handler bakes when its computed value is non-default. */
+export interface BakeSpec {
+	prop: string;
+	isDefault: (value: string) => boolean;
+}
+
+/**
+ * shared helper for the "bake these computed properties when non-default" feature
+ * handlers (tables, lists, forms, text micro-features). pairs each live element
+ * with its clone, reads the live computed value, and bakes the non-default ones
+ * onto the clone (inline + bakedStyles), skipping any already baked by P1.
+ *
+ * keeping the getComputedStyle read here, in the reconcile core, also keeps the
+ * leaf handlers themselves free of it.
+ *
+ * @param captured — bakedStyles + clone mutated in place
+ * @param specs — the properties to consider, each with its default predicate
+ */
+export function bakeNonDefaultProps(captured: Captured, specs: BakeSpec[]): void {
+	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
+		const computed = getComputedStyle(original);
+		const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();
+		for (const { prop, isDefault } of specs) {
+			if (baked.has(prop)) continue;
+			const value = computed.getPropertyValue(prop);
+			if (!value || isDefault(value)) continue;
+			baked.set(prop, value);
+			try {
+				(clone as HTMLElement).style.setProperty(prop, value);
+			} catch {
+				// invalid for this element; skip.
+			}
+		}
+		if (baked.size > 0) captured.bakedStyles.set(clone, baked);
+	}
+}
+
 /** true for clone nodes a feature handler injected (no original counterpart). */
 function isInjected(el: Element): boolean {
 	const tag = el.tagName.toLowerCase();
