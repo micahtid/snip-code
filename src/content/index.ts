@@ -33,6 +33,8 @@ import { apply as applyIcons } from './reconcile/features/icons';
 import { apply as applyFonts } from './reconcile/features/fonts';
 import { apply as applyQueries } from './reconcile/features/queries';
 import { apply as applyPseudo } from './reconcile/features/pseudo';
+import { apply as applyImages } from './reconcile/features/images';
+import { apply as applyShadow } from './reconcile/features/shadow';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
@@ -59,6 +61,8 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
 	['fonts', applyFonts],
 	['queries', applyQueries],
 	['pseudo', applyPseudo],
+	['images', applyImages],
+	['shadow', applyShadow],
 ];
 
 /**

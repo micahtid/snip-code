@@ -25,6 +25,7 @@
  * so it survives the tailwind/bem emitters, which rewrite class but keep data-*.
  */
 import type { Captured } from '../../types';
+import { pairedSubtrees } from '../match';
 
 const MARKER = 'data-snip-ps';
 
@@ -48,17 +49,10 @@ const PSEUDO_PROPS = [
  * @param captured — clone is mutated in place
  */
 export function apply(captured: Captured): Captured {
-	const originals = subtreeElements(captured.root);
-	const clones = subtreeElements(captured.clone);
-	if (originals.length !== clones.length) return captured;
-
 	const rules: string[] = [];
 	let counter = 0;
 
-	for (let i = 0; i < originals.length; i++) {
-		const original = originals[i];
-		const clone = clones[i];
-		if (!original || !clone) continue;
+	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const pseudos = pseudosFor(original);
 		const elementRules: string[] = [];
 		for (const pseudo of pseudos) {
@@ -115,15 +109,4 @@ function ruleFor(el: Element, pseudo: string, id: number): string | null {
 	}
 	if (decls.length === 0) return null;
 	return `[${MARKER}="${id}"]${pseudo} {\n${decls.join('\n')}\n}`;
-}
-
-/** depth-first element list, root first — matches reconcile traversal order. */
-function subtreeElements(root: Element): Element[] {
-	const out: Element[] = [];
-	const walk = (el: Element): void => {
-		out.push(el);
-		for (const child of Array.from(el.children)) walk(child);
-	};
-	walk(root);
-	return out;
 }

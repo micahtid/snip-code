@@ -22,6 +22,7 @@
  * pass over the output.
  */
 import type { Captured } from '../types';
+import { pairedSubtrees } from '../reconcile/match';
 
 const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 
@@ -31,7 +32,9 @@ const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
  * @param captured — clone + bakedStyles are mutated in place
  */
 export function resolveVariables(captured: Captured): void {
-	const cloneToOriginal = pairSubtrees(captured.root, captured.clone);
+	const cloneToOriginal = new Map<Element, Element>(
+		pairedSubtrees(captured.root, captured.clone).map(([original, clone]) => [clone, original]),
+	);
 
 	// :root / html scoped definitions; survive only if we re-emit them.
 	const rootVars = new Map<string, string>();
@@ -129,31 +132,6 @@ function collectSubtreeDefs(captured: Captured): Set<string> {
 		}
 	}
 	return defs;
-}
-
-/** map each clone element to its live original by lockstep subtree walk. */
-function pairSubtrees(root: Element, clone: Element): Map<Element, Element> {
-	const originals = subtreeElements(root);
-	const clones = subtreeElements(clone);
-	const map = new Map<Element, Element>();
-	const n = Math.min(originals.length, clones.length);
-	for (let i = 0; i < n; i++) {
-		const o = originals[i];
-		const c = clones[i];
-		if (o && c) map.set(c, o);
-	}
-	return map;
-}
-
-/** depth-first element list, root first — matches the reconcile traversal order. */
-function subtreeElements(root: Element): Element[] {
-	const out: Element[] = [];
-	const walk = (el: Element): void => {
-		out.push(el);
-		for (const child of Array.from(el.children)) walk(child);
-	};
-	walk(root);
-	return out;
 }
 
 /** safely set a property on a clone element's inline style. */

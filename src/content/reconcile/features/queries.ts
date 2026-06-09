@@ -27,6 +27,7 @@
  * computed container-type is pixel-safe.
  */
 import type { Captured } from '../../types';
+import { pairedSubtrees } from '../match';
 
 /**
  * preserves the container-type containment context on each element.
@@ -34,14 +35,7 @@ import type { Captured } from '../../types';
  * @param captured — bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
-	const originals = subtreeElements(captured.root);
-	const clones = subtreeElements(captured.clone);
-	if (originals.length !== clones.length) return captured;
-
-	for (let i = 0; i < originals.length; i++) {
-		const original = originals[i];
-		const clone = clones[i];
-		if (!original || !clone) continue;
+	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const computed = getComputedStyle(original);
 		const containerType = computed.getPropertyValue('container-type');
 		// `normal` is the default (no containment); nothing to preserve.
@@ -65,15 +59,4 @@ function bake(clone: Element, baked: Map<string, string>, prop: string, value: s
 	} catch {
 		// invalid for this element; skip.
 	}
-}
-
-/** depth-first element list, root first — matches reconcile traversal order. */
-function subtreeElements(root: Element): Element[] {
-	const out: Element[] = [];
-	const walk = (el: Element): void => {
-		out.push(el);
-		for (const child of Array.from(el.children)) walk(child);
-	};
-	walk(root);
-	return out;
 }

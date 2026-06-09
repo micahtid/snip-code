@@ -58,6 +58,48 @@ export function authoredCascade(captured: Captured): Map<Element, Map<string, st
 	return result;
 }
 
+/**
+ * pairs each live original element with its clone counterpart, tolerant of nodes
+ * that feature handlers inject into the clone (a pseudo <style>, an icons sprite
+ * <svg>, etc.). without this, index-based pairing drifts the moment any handler
+ * mutates clone structure, and downstream handlers silently misalign.
+ *
+ * walks both trees in lockstep, skipping injected clone-only children at each
+ * level so the structural correspondence holds. shared by every handler that
+ * needs to read a live element's computed style while writing to its clone.
+ *
+ * @param root — the live snip root
+ * @param clone — the working clone (may carry handler-injected nodes)
+ * @returns aligned [original, clone] pairs, root first
+ */
+export function pairedSubtrees(root: Element, clone: Element): Array<[Element, Element]> {
+	const out: Array<[Element, Element]> = [];
+	const walk = (o: Element, c: Element): void => {
+		out.push([o, c]);
+		const oChildren = Array.from(o.children);
+		const cChildren = Array.from(c.children).filter((ch) => !isInjected(ch));
+		const n = Math.min(oChildren.length, cChildren.length);
+		for (let i = 0; i < n; i++) {
+			const oc = oChildren[i];
+			const cc = cChildren[i];
+			if (oc && cc) walk(oc, cc);
+		}
+	};
+	walk(root, clone);
+	return out;
+}
+
+/** true for clone nodes a feature handler injected (no original counterpart). */
+function isInjected(el: Element): boolean {
+	const tag = el.tagName.toLowerCase();
+	if (tag === 'style' || tag === 'script') return true;
+	// the icons sprite: a hidden zero-size svg we prepended.
+	if (tag === 'svg' && el.getAttribute('aria-hidden') === 'true' && /width:\s*0/.test(el.getAttribute('style') ?? '')) {
+		return true;
+	}
+	return false;
+}
+
 /** depth-first list of element nodes in the subtree, root first. */
 function subtreeElements(root: Element): Element[] {
 	const out: Element[] = [];
