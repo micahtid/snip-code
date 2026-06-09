@@ -29,6 +29,9 @@ import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
+import { resolveVariables } from './resolve/vars';
+import { resolveFonts } from './resolve/fonts';
+import { resolveAnimations } from './resolve/anim';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -117,8 +120,16 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// pipeline phase 2 — reconcile. P1 bakes authored-vs-computed onto the clone.
+	// pipeline phase 2 — reconcile. P1/P2/P4 bake onto the clone.
 	reconcile(captured);
+
+	// pipeline phase 3 — resolve. P3 var resolution (single pass), @font-face
+	// absolutization, @keyframes pairing. order: vars first (may rewrite values),
+	// then fonts/keyframes which read the now-stable baked styles.
+	resolveVariables(captured);
+	resolveFonts(captured);
+	resolveAnimations(captured);
+
 	shipResult({ mode, html: serializeRaw(captured.clone), warnings: captured.warnings });
 	console.info('snipcode: snip complete');
 }
