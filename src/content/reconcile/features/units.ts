@@ -22,8 +22,15 @@
  * crop: the grader renders output.html at the element's own dimensions, so a
  * viewport-sized wrapper would clip. resolving to the captured computed literal
  * locks the pixels exactly as P1 does when an authored value would not survive,
- * and needs no synthetic wrapper (consistent with P4). tier 2 (commits 29-30)
- * extends this file with logical properties and aspect-ratio.
+ * and needs no synthetic wrapper (consistent with P4).
+ *
+ * tier 2 extensions in this file:
+ * - logical properties (commit 29): logical props (margin-inline, inset-inline-
+ *   start, ...) survive via P1 when authored, but they resolve against the
+ *   element's direction/writing-mode, which must be baked when non-default for
+ *   rtl + vertical text (material v6 / tailwind v4 lean on logical props).
+ * - aspect-ratio (commit 30): the aspect-ratio property and intrinsic <img
+ *   width/height> attributes, baked so the box keeps its ratio standalone.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
@@ -38,21 +45,47 @@ const DYNAMIC_UNIT = /\b\d*\.?\d+(?:vw|vh|vi|vb|vmin|vmax|dvw|dvh|svw|svh|lvw|lv
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
-		const baked = captured.bakedStyles.get(clone);
-		if (!baked) continue;
-		let computed: CSSStyleDeclaration | null = null;
+		const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();
+		const computed = getComputedStyle(original);
+
+		// resolve viewport/container units to captured px.
 		for (const [prop, value] of baked) {
 			if (!DYNAMIC_UNIT.test(value)) continue;
-			computed ??= getComputedStyle(original);
 			const literal = computed.getPropertyValue(prop);
 			if (!literal || DYNAMIC_UNIT.test(literal)) continue; // could not resolve; leave as-is
-			baked.set(prop, literal);
-			try {
-				(clone as HTMLElement).style.setProperty(prop, literal);
-			} catch {
-				// invalid for this element; skip.
-			}
+			setBaked(clone, baked, prop, literal);
 		}
+
+		// logical properties resolve against direction + writing-mode; bake them
+		// when non-default so rtl / vertical text maps inline/block axes correctly.
+		bakeNonDefault(clone, baked, computed, 'direction', (v) => v === '' || v === 'ltr');
+		bakeNonDefault(clone, baked, computed, 'writing-mode', (v) => v === '' || v === 'horizontal-tb');
+
+		if (baked.size > 0) captured.bakedStyles.set(clone, baked);
 	}
 	return captured;
+}
+
+/** bake a computed property when a predicate says its value is non-default. */
+function bakeNonDefault(
+	clone: Element,
+	baked: Map<string, string>,
+	computed: CSSStyleDeclaration,
+	prop: string,
+	isDefault: (value: string) => boolean,
+): void {
+	if (baked.has(prop)) return;
+	const value = computed.getPropertyValue(prop);
+	if (isDefault(value)) return;
+	setBaked(clone, baked, prop, value);
+}
+
+/** record a value in the baked map and on the clone's inline style. */
+function setBaked(clone: Element, baked: Map<string, string>, prop: string, value: string): void {
+	baked.set(prop, value);
+	try {
+		(clone as HTMLElement).style.setProperty(prop, value);
+	} catch {
+		// invalid for this element; skip.
+	}
 }
