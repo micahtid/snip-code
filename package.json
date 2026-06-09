@@ -1,0 +1,31 @@
+{
+  "name": "snipcode",
+  "version": "2.0.0",
+  "description": "Snip any element on any page into clean, framework-formatted code or a structured assistive JSON document. Local-only, BYOK.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && vite build --config vite.content.config.ts",
+    "build:sidebar": "vite build",
+    "build:content": "vite build --config vite.content.config.ts",
+    "typecheck": "tsc -b",
+    "grade": "node tests/loop.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.6.2",
+    "vite": "^7.0.0"
+  }
+}

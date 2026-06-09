@@ -1,0 +1,35 @@
+{
+	// build-mode config (`tsc -b`). composite + emitDeclarationOnly means the
+	// typechecker validates the whole src tree and writes only .d.ts files into
+	// .tsbuild (gitignored); vite owns the actual js emission. strict flags below
+	// are mandated by SNIPCODE-REWRITE-PLAN.md section 19.9.
+	"compilerOptions": {
+		"composite": true,
+		"tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo",
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"outDir": "./.tsbuild",
+
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"jsx": "react-jsx",
+		"types": ["chrome", "node"],
+
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noFallthroughCasesInSwitch": true,
+
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true
+	},
+	"include": ["src"]
+}

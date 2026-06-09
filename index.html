@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  side-panel host document. vite treats this as the build entry for the sidebar
+  ui. the react app mounts into #root (wired up in phase a, commit 2, via
+  src/App.tsx). kept deliberately bare so the bundle owns all markup.
+-->
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SnipCode</title>
+	</head>
+	<body>
+		<div id="root"></div>
+		<!-- app entry is added in commit 2 (sidebar shell). scaffold has no script. -->
+	</body>
+</html>

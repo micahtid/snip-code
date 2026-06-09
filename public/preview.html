@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  preview.html — sandboxed render surface for snipped output.
+  declared as a web-accessible resource so the sidebar can load it in an iframe
+  and render the generated html/css in isolation from both the host page and the
+  extension's own privileged context. populated by preview.js. fleshed out when
+  ResultPanel gains a live preview; scaffold ships the shell.
+-->
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>SnipCode preview</title>
+	</head>
+	<body>
+		<div id="preview-root"></div>
+		<script src="preview.js"></script>
+	</body>
+</html>

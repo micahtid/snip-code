@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+.tsbuild/
+*.tsbuildinfo
+
+# secrets — byok keys live in chrome.storage.local, never in the repo
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+Thumbs.db
+*.log
