@@ -74,6 +74,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			return true;
 		}
 
+		case 'LLM_REQUEST': {
+			// byok phase-5 polish. the worker reads the key from storage (never
+			// logs it), calls the provider, and returns the parsed { renameMap,
+			// hoverRules } (section 19.2). content scripts cannot reach provider
+			// hosts (page csp), so all llm traffic goes through here.
+			const p = message.payload || {};
+			llmRequest(p.provider, p.model, p.prompt)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) => {
+					const msg = String(err && err.message ? err.message : err);
+					const code = msg === 'NO_KEY_CONFIGURED' ? 'NO_KEY_CONFIGURED' : 'PROVIDER_ERROR_0';
+					sendResponse({ requestId: message.requestId, ok: false, error: { code, message: msg } });
+				});
+			return true;
+		}
+
 		case 'FETCH_STYLESHEET': {
 			// background fetch bypasses cors via the <all_urls> host permission so
 			// the content script can recover cross-origin stylesheets (section 19.2).
@@ -188,6 +204,76 @@ function stripCdpRule(rm) {
 /** unwrap the rule object from a cdp RuleMatch. */
 function rule_of(rm) {
 	return rm.rule || null;
+}
+
+/**
+ * runs a byok llm polish request: reads the provider key from storage, calls the
+ * provider, and parses a strict-json reply into { renameMap, hoverRules }. throws
+ * NO_KEY_CONFIGURED when no key is stored (caller skips phase 5). the key is read
+ * here and attached to the request only; it is never logged or persisted elsewhere.
+ */
+async function llmRequest(provider, model, prompt) {
+	const stored = await chrome.storage.local.get('byok.' + provider);
+	const key = stored['byok.' + provider];
+	if (!key) throw new Error('NO_KEY_CONFIGURED');
+
+	const req = buildGenerationRequest(provider, key, model, prompt);
+	const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) });
+	if (!res.ok) throw new Error('PROVIDER_ERROR_' + res.status);
+	const text = req.extract(await res.json());
+	return parseReply(text);
+}
+
+/** build a chat/generation request per provider (mirrors utils/byok.ts shapes). */
+function buildGenerationRequest(provider, key, model, prompt) {
+	const json = 'application/json';
+	const MAX = 2000;
+	switch (provider) {
+		case 'anthropic':
+			return {
+				url: 'https://api.anthropic.com/v1/messages',
+				headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'Content-Type': json },
+				body: { model, max_tokens: MAX, messages: [{ role: 'user', content: prompt }] },
+				extract: (j) => (j.content && j.content[0] && j.content[0].text) || '',
+			};
+		case 'google':
+			return {
+				url: 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key),
+				headers: { 'Content-Type': json },
+				body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX } },
+				extract: (j) => (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '',
+			};
+		case 'openai':
+			return {
+				url: 'https://api.openai.com/v1/chat/completions',
+				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
+				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
+				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
+			};
+		case 'openrouter':
+		default:
+			return {
+				url: 'https://openrouter.ai/api/v1/chat/completions',
+				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
+				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
+				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
+			};
+	}
+}
+
+/** extract the first json object from the model's text and parse it leniently. */
+function parseReply(text) {
+	const match = text.match(/\{[\s\S]*\}/);
+	if (!match) return { renameMap: {}, hoverRules: [] };
+	try {
+		const parsed = JSON.parse(match[0]);
+		return {
+			renameMap: parsed.renameMap && typeof parsed.renameMap === 'object' ? parsed.renameMap : {},
+			hoverRules: Array.isArray(parsed.hoverRules) ? parsed.hoverRules : [],
+		};
+	} catch (e) {
+		return { renameMap: {}, hoverRules: [] };
+	}
 }
 
 /**

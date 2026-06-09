@@ -53,6 +53,9 @@ import { emitBem } from './convert/bem';
 import { emitJsx } from './convert/jsx';
 import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
+import { polish } from './polish/llm';
+import { getPrefs } from '../utils/storage';
+import { DEFAULT_MODELS } from '../utils/byok';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -196,15 +199,26 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	resolveFonts(captured);
 	resolveAnimations(captured);
 
-	// pipeline phase 4 — convert. emit the chosen format and run P5 dead-code
-	// elimination over the emitted stylesheet. format selection from prefs arrives
-	// in commit 35; until then the default html format is used (and is what the
-	// grader renders for fidelity).
-	const format: OutputFormat = 'html';
+	// pipeline phase 4 — convert. emit the user's chosen format and run P5
+	// dead-code elimination over the emitted stylesheet.
+	const prefs = await getPrefs();
+	const format: OutputFormat = prefs.defaultOutput;
 	const { html, css } = emitFormat(captured, format);
-	const cleanedCss = cleanCss(css, captured);
-	const output = composeDocument(html, cleanedCss);
-	shipResult({ mode, format, html, css: cleanedCss, output, warnings: captured.warnings });
+	let cleanedCss = cleanCss(css, captured);
+	let finalHtml = html;
+
+	// pipeline phase 5 — polish (byok, optional). additive class renames + hover
+	// rules from the user's own llm; silently no-ops without a key. gated to
+	// class-based formats so it never rewrites tailwind utilities or jsx.
+	if (format === 'html' || format === 'bem-css' || format === 'bem-scss') {
+		const model = prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider];
+		const polished = await polish(finalHtml, cleanedCss, prefs.activeProvider, model);
+		finalHtml = polished.html;
+		cleanedCss = polished.css;
+	}
+
+	const output = composeDocument(finalHtml, cleanedCss);
+	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, warnings: captured.warnings });
 	console.info('snipcode: snip complete');
 }
 
