@@ -29,6 +29,7 @@ import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
+import { apply as applyIcons } from './reconcile/features/icons';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
@@ -42,6 +43,36 @@ import { cleanCss } from './convert/clean';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
+
+/**
+ * the reconcile-phase feature handlers, in apply order (section 7). each handles
+ * one css/html spec mechanism universally and is orthogonal to the others
+ * (forbidden pattern #7). registered here, in the orchestrator, so no
+ * features/index.ts file is needed outside the declared repo tree. handlers are
+ * added one per commit across phases g (tier 1) and h (tier 2).
+ */
+const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
+	['icons', applyIcons],
+];
+
+/**
+ * runs every feature handler over the captured snip, isolating failures.
+ *
+ * a handler that throws never halts the pipeline (section 19.6): the error is
+ * recorded as a warning and the unmodified captured flows on. output ships with
+ * the warning; only output divergence affects the grader.
+ *
+ * @param captured — the reconciled snip; handlers mutate and return it
+ */
+function runFeatures(captured: Captured): void {
+	for (const [name, fn] of FEATURE_HANDLERS) {
+		try {
+			fn(captured);
+		} catch (err) {
+			captured.warnings.push(`feature ${name} failed: ${(err as Error).message}`);
+		}
+	}
+}
 
 /** only one picker may be active at a time. */
 let activePicker: ElementPicker | null = null;
@@ -127,8 +158,10 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// pipeline phase 2 — reconcile. P1/P2/P4 bake onto the clone.
+	// pipeline phase 2 — reconcile. P1/P2/P4 bake onto the clone, then the tier
+	// 1+2 feature handlers run over the result (isolated failures).
 	reconcile(captured);
+	runFeatures(captured);
 
 	// pipeline phase 3 — resolve. P3 var resolution (single pass), @font-face
 	// absolutization, @keyframes pairing. order: vars first (may rewrite values),
@@ -264,6 +297,7 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		}
 
 		reconcile(captured);
+		runFeatures(captured);
 		resolveVariables(captured);
 		resolveFonts(captured);
 		resolveAnimations(captured);
