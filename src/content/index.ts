@@ -27,6 +27,7 @@ import { ElementPicker } from './capture/picker';
 import { buildElementMetadata, cloneElement, serializeRaw } from './capture/dom';
 import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
+import { detectBuilder } from './capture/gate';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -94,6 +95,22 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
  *   in commit 37, so here it ships the metadata block as a json preview
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
+	// builder gate (decision 5): refuse framer/wix/etc before doing any capture
+	// work. cheap structural check; on a hit we emit a static unsupported message
+	// and stop — no degraded fallback output.
+	const gate = detectBuilder(root);
+	if (gate.blocked) {
+		chrome.runtime
+			.sendMessage({
+				type: 'SNIP_RESULT',
+				requestId: crypto.randomUUID(),
+				payload: { mode, unsupported: true, builder: gate.builder, message: gate.message },
+			})
+			.catch(() => {});
+		console.info('snipcode: snip refused (builder gate)', gate.builder);
+		return;
+	}
+
 	const captured = await capture(root, screenshot);
 	const result =
 		mode === 'assistive'
