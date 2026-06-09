@@ -56,7 +56,157 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				);
 			return true; // async response
 		}
+
+		case 'CDP_INHERITED': {
+			// read the authored inherited cascade via the devtools protocol. only
+			// the background can attach the debugger. capture-internal message (not
+			// in the section-19.2 union); see capture/cdp.ts for the rationale.
+			const tabId = _sender.tab && _sender.tab.id;
+			cdpInheritedChain(tabId, message.payload && message.payload.selector)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({
+						requestId: message.requestId,
+						ok: false,
+						error: { code: 'MALFORMED_REQUEST', message: String(err && err.message ? err.message : err) },
+					}),
+				);
+			return true;
+		}
+
+		case 'FETCH_STYLESHEET': {
+			// background fetch bypasses cors via the <all_urls> host permission so
+			// the content script can recover cross-origin stylesheets (section 19.2).
+			fetchStylesheet(message.payload && message.payload.href)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({
+						requestId: message.requestId,
+						ok: false,
+						error: { code: 'CORS_BLOCKED', message: String(err && err.message ? err.message : err) },
+					}),
+				);
+			return true;
+		}
+
 		default:
 			return false;
 	}
 });
+
+/**
+ * reads the authored inherited cascade for one node via the chrome devtools
+ * protocol, with closed shadow roots pierced.
+ *
+ * flow: attach debugger -> enable DOM+CSS -> DOM.getDocument({pierce:true}) ->
+ * DOM.querySelector(root, selector) -> CSS.getMatchedStylesForNode(nodeId).
+ * the response's `inherited[]` is the ancestor cascade devtools shows under
+ * "inherited from"; we strip user-agent + implicit rules at source. detaches in
+ * finally. throws on attach contention (devtools already attached) so the caller
+ * can soft-fail to cssom-only capture.
+ */
+async function cdpInheritedChain(tabId, selector) {
+	if (!tabId) throw new Error('no tab id');
+	if (!selector) throw new Error('no selector');
+	const target = { tabId };
+	let attached = false;
+	try {
+		await chrome.debugger.attach(target, '1.3');
+		attached = true;
+		await chrome.debugger.sendCommand(target, 'DOM.enable');
+		await chrome.debugger.sendCommand(target, 'CSS.enable');
+		// pierce:true so the tree (and the inherited chain) crosses closed shadow
+		// roots — the v2 addition over v1's pierce:false.
+		const doc = await chrome.debugger.sendCommand(target, 'DOM.getDocument', { depth: -1, pierce: true });
+		const closedShadowRoots = countClosedShadowRoots(doc.root);
+		const found = await chrome.debugger.sendCommand(target, 'DOM.querySelector', {
+			nodeId: doc.root.nodeId,
+			selector,
+		});
+		if (!found || !found.nodeId) throw new Error('target node not found via cdp');
+		const matched = await chrome.debugger.sendCommand(target, 'CSS.getMatchedStylesForNode', {
+			nodeId: found.nodeId,
+		});
+		const inherited = [];
+		for (const entry of matched.inherited || []) {
+			for (const rm of entry.matchedCSSRules || []) {
+				const stripped = stripCdpRule(rm);
+				if (stripped) inherited.push(stripped);
+			}
+		}
+		return { inherited, closedShadowRoots };
+	} finally {
+		if (attached) {
+			try {
+				await chrome.debugger.detach(target);
+			} catch (e) {
+				// already detached or tab gone; nothing to recover.
+			}
+		}
+	}
+}
+
+/** recursively count author-closed shadow roots in a cdp DOM.Node tree. */
+function countClosedShadowRoots(node) {
+	let count = 0;
+	if (node.shadowRoots) {
+		for (const sr of node.shadowRoots) {
+			if (sr.shadowRootType === 'closed') count++;
+			count += countClosedShadowRoots(sr);
+		}
+	}
+	if (node.children) {
+		for (const child of node.children) count += countClosedShadowRoots(child);
+	}
+	return count;
+}
+
+/**
+ * normalizes one cdp RuleMatch into { selector, properties, media? }, dropping
+ * user-agent and implicit/disabled declarations (we synthesize our own
+ * defaults, and ua rules would bloat the output). returns null if nothing usable.
+ */
+function stripCdpRule(rm) {
+	const rule = rm && rule_of(rm);
+	if (!rule) return null;
+	if ((rule.origin || 'regular') === 'user-agent') return null;
+	const selector = rule.selectorList && rule.selectorList.text;
+	if (!selector) return null;
+	const properties = {};
+	for (const p of (rule.style && rule.style.cssProperties) || []) {
+		if (p.implicit || p.disabled || p.parsedOk === false) continue;
+		if (!p.name || !p.value) continue;
+		properties[p.name] = p.value;
+	}
+	if (Object.keys(properties).length === 0) return null;
+	const out = { selector, properties };
+	const media = rule.media && rule.media.find((m) => m.text);
+	if (media) out.media = media.text;
+	return out;
+}
+
+/** unwrap the rule object from a cdp RuleMatch. */
+function rule_of(rm) {
+	return rm.rule || null;
+}
+
+/**
+ * fetches a cross-origin stylesheet from the background context. validates the
+ * url scheme, returns { text, mimeType } (section 19.2). throws on non-2xx so the
+ * caller records the href as still-inaccessible.
+ */
+async function fetchStylesheet(href) {
+	if (!href) throw new Error('no href');
+	let url;
+	try {
+		url = new URL(href);
+	} catch {
+		throw new Error('invalid url');
+	}
+	if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('unsupported scheme');
+	const res = await fetch(href);
+	if (!res.ok) throw new Error('http ' + res.status);
+	const text = await res.text();
+	const mimeType = res.headers.get('content-type') || 'text/css';
+	return { text, mimeType };
+}

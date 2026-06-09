@@ -73,11 +73,39 @@ export function discoverStylesheets(): SheetDiscovery {
 			continue;
 		}
 		const before = out.foundationRules.length + out.componentRules.length;
-		walkRules(rules, {}, out);
+		walkRules(rules, {}, out, 'cssom');
 		const after = out.foundationRules.length + out.componentRules.length;
 		out.stylesheets.push({ href: sheet.href, origin, ruleCount: after - before });
 	}
 
+	return out;
+}
+
+/**
+ * parses a raw css string into the same discovery shape, for cross-origin sheets
+ * recovered through the background worker (commit 4, capture/cdp.ts).
+ *
+ * uses a constructable stylesheet so parsing never touches the live page. the
+ * resulting rules carry the caller's `source` tag so downstream phases can tell
+ * recovered rules from cssom-read ones.
+ *
+ * @param cssText — the stylesheet text fetched by the background
+ * @param source — provenance tag for the produced CssRule entries
+ * @returns the discovery deltas (rules, variables, fonts, keyframes)
+ */
+export async function parseCssText(cssText: string, source: CssRule['source'] = 'cssom'): Promise<SheetDiscovery> {
+	const out: SheetDiscovery = {
+		stylesheets: [],
+		foundationRules: [],
+		componentRules: [],
+		variables: [],
+		fonts: [],
+		keyframes: [],
+		crossOriginStylesheets: [],
+	};
+	const sheet = new CSSStyleSheet();
+	await sheet.replace(cssText);
+	walkRules(sheet.cssRules, {}, out, source);
 	return out;
 }
 
@@ -98,14 +126,14 @@ function sheetOrigin(sheet: CSSStyleSheet): Stylesheet['origin'] {
  * lifted into their own collections; custom properties are harvested as
  * CssVariable definitions.
  */
-function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery): void {
+function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery, source: CssRule['source']): void {
 	for (const rule of Array.from(rules)) {
 		if (rule instanceof CSSStyleRule) {
-			collectStyleRule(rule, ctx, out);
+			collectStyleRule(rule, ctx, out, source);
 		} else if (rule instanceof CSSMediaRule) {
-			walkRules(rule.cssRules, { ...ctx, mediaQuery: rule.conditionText }, out);
+			walkRules(rule.cssRules, { ...ctx, mediaQuery: rule.conditionText }, out, source);
 		} else if (rule instanceof CSSSupportsRule) {
-			walkRules(rule.cssRules, { ...ctx, supports: rule.conditionText }, out);
+			walkRules(rule.cssRules, { ...ctx, supports: rule.conditionText }, out, source);
 		} else if (rule instanceof CSSFontFaceRule) {
 			collectFontFace(rule, out);
 		} else if (rule instanceof CSSKeyframesRule) {
@@ -126,7 +154,7 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery): v
 				...ctx,
 				...(layer ? { layer } : {}),
 				...(containerQuery ? { containerQuery } : {}),
-			}, out);
+			}, out, source);
 		}
 		// CSSImportRule and others are ignored here; @import resolution for
 		// cross-origin sheets is handled at fetch time (commit 4).
@@ -134,7 +162,7 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery): v
 }
 
 /** turn a CSSStyleRule into a CssRule, harvesting any custom-property defs. */
-function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscovery): void {
+function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscovery, source: CssRule['source']): void {
 	const properties = new Map<string, string>();
 	const style = rule.style;
 	for (let i = 0; i < style.length; i++) {
@@ -155,7 +183,7 @@ function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscov
 		selector: rule.selectorText,
 		properties,
 		specificity: specificityOf(rule.selectorText),
-		source: 'cssom',
+		source,
 		...(ctx.mediaQuery ? { mediaQuery: ctx.mediaQuery } : {}),
 		...(ctx.containerQuery ? { containerQuery: ctx.containerQuery } : {}),
 		...(ctx.layer ? { layer: ctx.layer } : {}),
@@ -213,7 +241,7 @@ function readField(rule: CSSRule, field: string): string {
  * good enough for cascade ordering in the reconcile phase. pseudo-elements
  * (::before) count toward c, pseudo-classes (:hover) toward b.
  */
-function specificityOf(selector: string): number {
+export function specificityOf(selector: string): number {
 	// score the most specific comma-branch (querySelector semantics).
 	let best = 0;
 	for (const branch of selector.split(',')) {

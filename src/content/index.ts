@@ -26,6 +26,7 @@ import type { Captured } from './types';
 import { ElementPicker } from './capture/picker';
 import { buildElementMetadata, cloneElement, serializeRaw } from './capture/dom';
 import { discoverStylesheets } from './capture/sheets';
+import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -41,9 +42,9 @@ let activePicker: ElementPicker | null = null;
  * @param screenshot — cropped png data url from the picker (may be empty)
  * @returns the populated Captured object
  */
-function capture(root: Element, screenshot: string): Captured {
+async function capture(root: Element, screenshot: string): Promise<Captured> {
 	const sheets = discoverStylesheets();
-	return {
+	const captured: Captured = {
 		page: {
 			url: location.href,
 			title: document.title,
@@ -72,6 +73,13 @@ function capture(root: Element, screenshot: string): Captured {
 		bakedStyles: new Map(),
 		warnings: [],
 	};
+
+	// privileged augmentation (background-mediated). both soft-fail: the snip
+	// proceeds on cssom-only data if cdp attach is refused or a fetch is blocked.
+	await augmentInheritedChainViaCDP(captured); // P2 inherited cascade via cdp
+	await recoverCrossOriginSheets(captured); // recover cors-blocked sheets
+
+	return captured;
 }
 
 /**
@@ -85,8 +93,8 @@ function capture(root: Element, screenshot: string): Captured {
  * @param mode — snip (code) or assistive (json); assistive emit is fully built
  *   in commit 37, so here it ships the metadata block as a json preview
  */
-function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): void {
-	const captured = capture(root, screenshot);
+async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
+	const captured = await capture(root, screenshot);
 	const result =
 		mode === 'assistive'
 			? { mode, json: JSON.stringify({ page: captured.page, element: captured.element }, null, 2) }
@@ -108,7 +116,7 @@ function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker = new ElementPicker({
 		onSelect: (element, screenshot) => {
 			activePicker = null;
-			runPipeline(element, screenshot, mode);
+			void runPipeline(element, screenshot, mode);
 		},
 		onCancel: () => {
 			activePicker = null;
