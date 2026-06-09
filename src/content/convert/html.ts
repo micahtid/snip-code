@@ -30,10 +30,20 @@ export interface HtmlOutput {
  * @param captured — reads the resolved clone, fonts, keyframes
  */
 export function emitHtml(captured: Captured): HtmlOutput {
+	return { html: captured.clone.outerHTML, css: atRulesCss(captured) };
+}
+
+/**
+ * builds the @font-face + @keyframes stylesheet block shared by every emitter
+ * (these at-rules cannot be expressed inline or as utility classes).
+ *
+ * @param captured — reads fonts + keyframes
+ */
+export function atRulesCss(captured: Captured): string {
 	const parts: string[] = [];
 	for (const font of captured.fonts) parts.push(fontFaceText(font));
 	for (const kf of captured.keyframes) parts.push(`@keyframes ${kf.name} {\n${kf.rules}\n}`);
-	return { html: captured.clone.outerHTML, css: parts.join('\n\n') };
+	return parts.join('\n\n');
 }
 
 /**
