@@ -54,6 +54,7 @@ import { emitJsx } from './convert/jsx';
 import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
 import { polish } from './polish/llm';
+import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 
@@ -182,8 +183,12 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// 37). snip mode runs the reconcile phase (P1 today; resolve/convert/polish
 	// land in later commits) and emits the inline-styled clone.
 	if (mode === 'assistive') {
-		const json = JSON.stringify({ page: captured.page, element: captured.element }, null, 2);
-		shipResult({ mode, json });
+		// assistive runs phase 1 only, then emits the section-9 json and delivers
+		// it over the user's chosen channels (clipboard / file / webhook).
+		const doc = buildAssistiveJson(captured);
+		const prefs = await getPrefs();
+		const deliveryWarnings = await deliver(doc, prefs);
+		shipResult({ mode, json: JSON.stringify(doc, null, 2), warnings: [...captured.warnings, ...deliveryWarnings] });
 		return;
 	}
 
@@ -328,12 +333,8 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 
 		const captured = await capture(el, '');
 		if (mode === 'assistive') {
-			return {
-				ok: true,
-				status: 'ok',
-				assistive: { page: captured.page, element: captured.element },
-				warnings: captured.warnings,
-			};
+			// headless assistive: emit the section-9 json (no delivery side effects).
+			return { ok: true, status: 'ok', assistive: buildAssistiveJson(captured), warnings: captured.warnings };
 		}
 
 		reconcile(captured);

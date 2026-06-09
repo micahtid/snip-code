@@ -1,0 +1,34 @@
+/**
+ * assistive/fonts.ts — font extraction (assistive)
+ *
+ * Phase: j (assistive mode) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1 — capture (assistive runs phase 1 only)
+ * Reads from Captured: root
+ * Writes to Captured: n/a (returns a font list)
+ *
+ * Principles applied: none (extraction).
+ *
+ * Why this exists: assistive mode reports the font families a component renders
+ * with so an agent can load or substitute them. this reuses the same "first non-
+ * generic family per element" idea as resolve/fonts.ts but reads it straight from
+ * the live subtree's computed styles (assistive runs only phase 1, so there are
+ * no baked styles yet). generic keywords are skipped without a keyword Set
+ * because the first family token is what renders.
+ */
+
+/**
+ * collects the distinct font-family stacks used across the subtree, most-used first.
+ *
+ * @param root — the picked element
+ */
+export function extractFonts(root: Element): string[] {
+	const counts = new Map<string, number>();
+	for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+		const family = getComputedStyle(el).fontFamily.trim();
+		if (!family) continue;
+		// the first listed family is the one that actually renders.
+		const first = family.split(',')[0]?.replace(/^["']|["']$/g, '').trim() ?? '';
+		if (first) counts.set(first, (counts.get(first) ?? 0) + 1);
+	}
+	return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([family]) => family);
+}
