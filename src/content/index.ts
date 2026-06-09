@@ -28,6 +28,7 @@ import { buildElementMetadata, cloneElement, serializeRaw } from './capture/dom'
 import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
+import { reconcile } from './reconcile/bake';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -100,31 +101,37 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// and stop — no degraded fallback output.
 	const gate = detectBuilder(root);
 	if (gate.blocked) {
-		chrome.runtime
-			.sendMessage({
-				type: 'SNIP_RESULT',
-				requestId: crypto.randomUUID(),
-				payload: { mode, unsupported: true, builder: gate.builder, message: gate.message },
-			})
-			.catch(() => {});
+		shipResult({ mode, unsupported: true, builder: gate.builder, message: gate.message });
 		console.info('snipcode: snip refused (builder gate)', gate.builder);
 		return;
 	}
 
 	const captured = await capture(root, screenshot);
-	const result =
-		mode === 'assistive'
-			? { mode, json: JSON.stringify({ page: captured.page, element: captured.element }, null, 2) }
-			: { mode, html: serializeRaw(captured.clone) };
 
-	// hand the result to the sidebar. the ResultPanel renders it from phase e on;
-	// until then this message is the observable output of a snip.
+	// assistive mode stops at capture and emits metadata json (full emit: commit
+	// 37). snip mode runs the reconcile phase (P1 today; resolve/convert/polish
+	// land in later commits) and emits the inline-styled clone.
+	if (mode === 'assistive') {
+		const json = JSON.stringify({ page: captured.page, element: captured.element }, null, 2);
+		shipResult({ mode, json });
+		return;
+	}
+
+	// pipeline phase 2 — reconcile. P1 bakes authored-vs-computed onto the clone.
+	reconcile(captured);
+	shipResult({ mode, html: serializeRaw(captured.clone), warnings: captured.warnings });
+	console.info('snipcode: snip complete');
+}
+
+/**
+ * sends a snip result to the sidebar. the ResultPanel renders it from phase e on;
+ * until then this message is the observable output of a snip. the sidebar may be
+ * closed, so a delivery failure is swallowed — the snip still succeeded.
+ */
+function shipResult(payload: Record<string, unknown>): void {
 	chrome.runtime
-		.sendMessage({ type: 'SNIP_RESULT', requestId: crypto.randomUUID(), payload: result })
-		.catch(() => {
-			// sidebar may be closed; the snip still succeeded. swallow.
-		});
-	console.info('snipcode: snip complete', result);
+		.sendMessage({ type: 'SNIP_RESULT', requestId: crypto.randomUUID(), payload })
+		.catch(() => {});
 }
 
 /** start the picker overlay; on select, run the pipeline for the chosen mode. */
