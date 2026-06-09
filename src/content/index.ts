@@ -35,6 +35,7 @@ import { resolveAnimations } from './resolve/anim';
 import type { OutputFormat } from './types';
 import { emitHtml, composeDocument, type HtmlOutput } from './convert/html';
 import { emitTailwind } from './convert/tailwind';
+import { emitBem } from './convert/bem';
 import { cleanCss } from './convert/clean';
 
 /** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
@@ -158,6 +159,10 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 	switch (format) {
 		case 'tailwind':
 			return emitTailwind(captured);
+		case 'bem-css':
+			return emitBem(captured, false);
+		case 'bem-scss':
+			return emitBem(captured, true);
 		case 'html':
 		default:
 			return emitHtml(captured);
