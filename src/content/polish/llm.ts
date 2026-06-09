@@ -15,8 +15,8 @@
  * configured, or the request fails, it returns the deterministic phases 1-4
  * output unchanged. token-heavy values are vaulted before the prompt so the model
  * cannot corrupt them and the token bill stays small. ported (rewritten) from
- * marketing-website openrouter.ts (request shape + response parsing only — no
- * auth/credit/firebase).
+ * marketing-website openrouter.ts (request shape + response parsing only — none
+ * of the original's account, credit-accounting, or backend-verification code).
  */
 import type { Provider } from '../types';
 import { VerbatimVault } from '../convert/vault';
