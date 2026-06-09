@@ -38,6 +38,7 @@ import { apply as applyShadow } from './reconcile/features/shadow';
 import { apply as applyUnits } from './reconcile/features/units';
 import { apply as applyColors } from './reconcile/features/colors';
 import { apply as applyAnimation } from './reconcile/features/animation';
+import { apply as applyEffects } from './reconcile/features/effects';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
@@ -69,6 +70,7 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
 	['units', applyUnits],
 	['colors', applyColors],
 	['animation', applyAnimation],
+	['effects', applyEffects],
 ];
 
 /**
