@@ -1,8 +1,8 @@
 /**
- * polish/restore.ts — vault restore, hover-rule merge, orphan prune
+ * polish/restore.ts: vault restore, hover-rule merge, orphan prune
  *
- * Phase: i (ai polish) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 5 — polish
+ * Phase: i (ai polish), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 5, polish
  * Reads from Captured: n/a (operates on html + css strings)
  * Writes to Captured: n/a
  *
@@ -21,10 +21,10 @@ import type { VerbatimVault } from '../convert/vault';
  * finalizes the polished output: restores vaulted values in the hover rules,
  * appends them, and prunes orphan css rules.
  *
- * @param html — the (renamed) markup
- * @param css — the (renamed) stylesheet
- * @param hoverRules — additive interaction rules from the llm
- * @param vault — the vault used for the prompt (to restore any echoed placeholders)
+ * @param html - the (renamed) markup
+ * @param css - the (renamed) stylesheet
+ * @param hoverRules - additive interaction rules from the llm
+ * @param vault - the vault used for the prompt (to restore any echoed placeholders)
  * @returns the finalized html + css
  */
 export function finalize(html: string, css: string, hoverRules: string[], vault: VerbatimVault): { html: string; css: string } {

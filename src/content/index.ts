@@ -1,7 +1,7 @@
 /**
- * content/index.ts — pipeline orchestrator + content-script entry point
+ * content/index.ts: pipeline orchestrator + content-script entry point
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
  * Pipeline position: spans 1-5 (this is the conductor, not a single phase)
  * Reads from Captured: constructs it (capture phase), reads it downstream
  * Writes to Captured: owns the lifecycle
@@ -92,7 +92,7 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
  * recorded as a warning and the unmodified captured flows on. output ships with
  * the warning; only output divergence affects the grader.
  *
- * @param captured — the reconciled snip; handlers mutate and return it
+ * @param captured - the reconciled snip; handlers mutate and return it
  */
 function runFeatures(captured: Captured): void {
 	for (const [name, fn] of FEATURE_HANDLERS) {
@@ -111,8 +111,8 @@ let activePicker: ElementPicker | null = null;
  * runs pipeline phase 1 (capture) on the chosen element, assembling the shared
  * Captured object every later phase reads.
  *
- * @param root — the live element the user picked
- * @param screenshot — cropped png data url from the picker (may be empty)
+ * @param root - the live element the user picked
+ * @param screenshot - cropped png data url from the picker (may be empty)
  * @returns the populated Captured object
  */
 async function capture(root: Element, screenshot: string): Promise<Captured> {
@@ -161,15 +161,15 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
  * at commit 3 the pipeline stops after capture and emits raw cloned html. later
  * commits insert reconcile→resolve→convert→polish between capture and emit.
  *
- * @param root — the picked element
- * @param screenshot — cropped png data url
- * @param mode — snip (code) or assistive (json); assistive emit is fully built
+ * @param root - the picked element
+ * @param screenshot - cropped png data url
+ * @param mode - snip (code) or assistive (json); assistive emit is fully built
  *   in commit 37, so here it ships the metadata block as a json preview
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
 	// builder gate (decision 5): refuse framer/wix/etc before doing any capture
 	// work. cheap structural check; on a hit we emit a static unsupported message
-	// and stop — no degraded fallback output.
+	// and stop, no degraded fallback output.
 	const gate = detectBuilder(root);
 	if (gate.blocked) {
 		shipResult({ mode, unsupported: true, builder: gate.builder, message: gate.message });
@@ -192,19 +192,19 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// pipeline phase 2 — reconcile. P1/P2/P4 bake onto the clone, then the tier
+	// pipeline phase 2, reconcile. P1/P2/P4 bake onto the clone, then the tier
 	// 1+2 feature handlers run over the result (isolated failures).
 	reconcile(captured);
 	runFeatures(captured);
 
-	// pipeline phase 3 — resolve. P3 var resolution (single pass), @font-face
+	// pipeline phase 3, resolve. P3 var resolution (single pass), @font-face
 	// absolutization, @keyframes pairing. order: vars first (may rewrite values),
 	// then fonts/keyframes which read the now-stable baked styles.
 	resolveVariables(captured);
 	resolveFonts(captured);
 	resolveAnimations(captured);
 
-	// pipeline phase 4 — convert. emit the user's chosen format and run P5
+	// pipeline phase 4, convert. emit the user's chosen format and run P5
 	// dead-code elimination over the emitted stylesheet.
 	const prefs = await getPrefs();
 	const format: OutputFormat = prefs.defaultOutput;
@@ -212,7 +212,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	let cleanedCss = cleanCss(css, captured);
 	let finalHtml = html;
 
-	// pipeline phase 5 — polish (byok, optional). additive class renames + hover
+	// pipeline phase 5, polish (byok, optional). additive class renames + hover
 	// rules from the user's own llm; silently no-ops without a key. gated to
 	// class-based formats so it never rewrites tailwind utilities or jsx.
 	if (format === 'html' || format === 'bem-css' || format === 'bem-scss') {
@@ -243,8 +243,8 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
  * format is a pure transform of the same Captured, so all 7 are derivable from
  * one capture without re-running phase 1. bem/jsx/vue land in commits 13-15.
  *
- * @param captured — the reconciled+resolved snip
- * @param format — the output format to emit
+ * @param captured - the reconciled+resolved snip
+ * @param format - the output format to emit
  */
 function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 	switch (format) {
@@ -269,7 +269,7 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 /**
  * sends a snip result to the sidebar. the ResultPanel renders it from phase e on;
  * until then this message is the observable output of a snip. the sidebar may be
- * closed, so a delivery failure is swallowed — the snip still succeeded.
+ * closed, so a delivery failure is swallowed, the snip still succeeded.
  */
 function shipResult(payload: Record<string, unknown>): void {
 	chrome.runtime
@@ -307,7 +307,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 });
 
 // ---------------------------------------------------------------------------
-// headless test bridge (tests/run-pipeline.mjs — the HEADLESS_SNIP entry point,
+// headless test bridge (tests/run-pipeline.mjs, the HEADLESS_SNIP entry point,
 // section 19.2). the grader drives a snip by css selector instead of the picker.
 // page and content script share the document but live in separate js worlds, so
 // chrome.runtime messages and window.postMessage do not reach the page; a
@@ -329,10 +329,10 @@ document.addEventListener('snip-runner:snip', (ev) => {
 /**
  * runs the full pipeline for a selector (no picker, no screenshot) and returns a
  * self-contained output.html string. this is the deterministic path the grader
- * measures — the byok llm polish (phase 5) is intentionally not run here.
+ * measures, the byok llm polish (phase 5) is intentionally not run here.
  *
- * @param selector — css selector for the element to snip
- * @param mode — snip (code) or assistive (json)
+ * @param selector - css selector for the element to snip
+ * @param mode - snip (code) or assistive (json)
  */
 async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promise<Record<string, unknown>> {
 	try {

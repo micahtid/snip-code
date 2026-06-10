@@ -1,8 +1,8 @@
 /**
- * features/icons.ts — svg sprite resolution
+ * features/icons.ts: svg sprite resolution
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root (source document), clone
  * Writes to Captured: clone (prepends a hidden <defs> sprite), warnings
  *
@@ -16,7 +16,7 @@
  *   document, clones them, and inlines them inside a hidden <svg><defs> at the
  *   top of the clone so the <use> refs resolve locally. modifies clone only;
  *   never reads other handlers' fields.
- * Test bundle: TODO — add in Stage 5 (sprite-based icon set).
+ * Test bundle: TODO, add in Stage 5 (sprite-based icon set).
  *
  * Why this exists: design systems store icons as <symbol> definitions in a shared
  * sprite outside the picked subtree. without resolving them at extraction time,
@@ -34,11 +34,11 @@ const XLINK_NS = 'http://www.w3.org/1999/xlink';
 /**
  * inlines the <symbol> definitions referenced by <use> elements in the clone.
  *
- * @param captured — clone is mutated in place; returned for the handler chain
+ * @param captured - clone is mutated in place; returned for the handler chain
  */
 export function apply(captured: Captured): Captured {
 	const uses = Array.from(captured.clone.querySelectorAll('use'));
-	if (uses.length === 0) return captured; // no sprite refs — nothing to do
+	if (uses.length === 0) return captured; // no sprite refs, nothing to do
 
 	const wantedIds = new Set<string>();
 	for (const use of uses) {

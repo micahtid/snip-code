@@ -1,8 +1,8 @@
 /**
- * convert/vault.ts — verbatim data vault
+ * convert/vault.ts: verbatim data vault
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert (stash) and 5 — polish (restore)
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert (stash) and 5, polish (restore)
  * Reads from Captured: nothing (operates on the emitted code string)
  * Writes to Captured: nothing (the caller owns the vault instance)
  *
@@ -33,7 +33,7 @@ export class VerbatimVault {
 	/**
 	 * vaults an entire block (e.g. a whole css block) behind one placeholder.
 	 *
-	 * @param content — the block to stash
+	 * @param content - the block to stash
 	 * @returns the placeholder standing in for it
 	 */
 	protectBlock(content: string): string {
@@ -47,13 +47,13 @@ export class VerbatimVault {
 	 * html-element patterns first (svg, path data, long urls), then css values,
 	 * only inside <style> blocks, so html attributes are never touched.
 	 *
-	 * @param code — the emitted document string
+	 * @param code - the emitted document string
 	 * @returns the same string with originals swapped for placeholders
 	 */
 	protect(code: string): string {
 		let result = code;
 
-		// phase 1 — html element vaulting (patterns that only match html).
+		// phase 1, html element vaulting (patterns that only match html).
 
 		// whole <svg>...</svg> blocks regardless of size: the biggest token sink.
 		result = result.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, (match) => this.stash(match));
@@ -70,7 +70,7 @@ export class VerbatimVault {
 			(_m, attr: string, url: string) => `${attr}="${this.stash(url)}"`,
 		);
 
-		// phase 2 — css value vaulting, scoped to <style> blocks only.
+		// phase 2, css value vaulting, scoped to <style> blocks only.
 		result = result.replace(
 			/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi,
 			(_m, open: string, cssContent: string, close: string) => `${open}${this.vaultCssValues(cssContent)}${close}`,
@@ -83,7 +83,7 @@ export class VerbatimVault {
 	 * vaults fragile css values inside a css string. safe because it only ever
 	 * runs on css content, never on html attributes.
 	 *
-	 * @param css — css text (the body of a <style> block)
+	 * @param css - css text (the body of a <style> block)
 	 */
 	private vaultCssValues(css: string): string {
 		let result = css;
@@ -131,7 +131,7 @@ export class VerbatimVault {
 	 * strips the html document wrapper (doctype/html/head/body) for token economy
 	 * before sending to the llm.
 	 *
-	 * @param code — a full or partial document string
+	 * @param code - a full or partial document string
 	 */
 	stripDocumentWrapper(code: string): string {
 		return code
@@ -150,7 +150,7 @@ export class VerbatimVault {
 	 * uses split/join (not String.replace) so a vaulted value containing "$" is
 	 * inserted literally, never interpreted as a replacement pattern.
 	 *
-	 * @param code — llm output (or any string) carrying placeholders
+	 * @param code - llm output (or any string) carrying placeholders
 	 */
 	restore(code: string): string {
 		let result = code;

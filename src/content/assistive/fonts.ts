@@ -1,8 +1,8 @@
 /**
- * assistive/fonts.ts — font extraction (assistive)
+ * assistive/fonts.ts: font extraction (assistive)
  *
- * Phase: j (assistive mode) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture (assistive runs phase 1 only)
+ * Phase: j (assistive mode), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture (assistive runs phase 1 only)
  * Reads from Captured: root
  * Writes to Captured: n/a (returns a font list)
  *
@@ -19,7 +19,7 @@
 /**
  * collects the distinct font-family stacks used across the subtree, most-used first.
  *
- * @param root — the picked element
+ * @param root - the picked element
  */
 export function extractFonts(root: Element): string[] {
 	const counts = new Map<string, number>();

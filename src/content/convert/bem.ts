@@ -1,8 +1,8 @@
 /**
- * convert/bem.ts — inline styles -> bem classes + css/scss
+ * convert/bem.ts: inline styles -> bem classes + css/scss
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: clone (inline-styled)
  * Writes to Captured: nothing (deep-copies the clone; canonical clone untouched)
  *
@@ -30,8 +30,8 @@ interface ClassRule {
 /**
  * emits the snip as bem-classed markup plus a css or scss stylesheet.
  *
- * @param captured — read-only; a deep copy of the clone is transformed
- * @param scss — true for nested scss output, false for flat css
+ * @param captured - read-only; a deep copy of the clone is transformed
+ * @param scss - true for nested scss output, false for flat css
  */
 export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 	const work = captured.clone.cloneNode(true) as Element;

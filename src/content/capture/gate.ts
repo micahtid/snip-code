@@ -1,8 +1,8 @@
 /**
- * capture/gate.ts — website-builder gate
+ * capture/gate.ts: website-builder gate
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture (final step; refuses unsupported pages)
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture (final step; refuses unsupported pages)
  * Reads from Captured: root (runs before Captured exists, on the live element)
  * Writes to Captured: n/a (gates the pipeline before it builds Captured)
  *
@@ -12,10 +12,10 @@
  * dependent, non-portable markup (scale-to-fit transforms, hashed class soups,
  * sprite refs to document-root <symbol>s). snipping them produces broken output,
  * so v2 refuses with a static "unsupported" message instead of degrading
- * silently (decision 5 — no fallback). detection is purely structural: data-*
+ * silently (decision 5, no fallback). detection is purely structural: data-*
  * rendering-chrome attributes and class-name fingerprints, sampled from a
  * bounded subtree walk. ported (rewritten) from v1 vision/builder-detection.ts;
- * the v1 version routed to a vision model — v2 drops that path and blocks.
+ * the v1 version routed to a vision model, v2 drops that path and blocks.
  *
  * note: the runtime Set in collectSampleClassNames dedups sampled class names; it
  * is not a hardcoded tag/role/property enumeration, so it does not fall under
@@ -55,7 +55,7 @@ const NAME_THRESHOLD = 0.3;
  * when its confidence clears BLOCK_THRESHOLD. cheap enough (one bounded dom walk)
  * to run unconditionally on every snip.
  *
- * @param root — the live picked element
+ * @param root - the live picked element
  * @returns the gate verdict; `blocked` gates the rest of the pipeline
  */
 export function detectBuilder(root: Element): GateResult {
@@ -174,8 +174,8 @@ function sum(signals: GateSignal[]): number {
  * caps both the result set and the traversal stack so detection stays cheap on
  * enormous pages. all fingerprint regexes test against this bounded sample.
  *
- * @param root — subtree to sample
- * @param cap — max distinct class names to collect
+ * @param root - subtree to sample
+ * @param cap - max distinct class names to collect
  */
 function collectSampleClassNames(root: Element, cap: number): string[] {
 	const seen = new Set<string>();

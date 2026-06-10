@@ -1,7 +1,7 @@
 /**
- * components/SnippetList.tsx — saved-snippets view
+ * components/SnippetList.tsx: saved-snippets view
  *
- * Phase: k (ship) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: k (ship), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (reads stored SnippetRecord[], section 19.10)
  * Reads from Captured: n/a
  * Writes to Captured: n/a

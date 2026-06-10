@@ -1,8 +1,8 @@
 /**
- * reconcile/match.ts — rule-to-element matching (the authored cascade)
+ * reconcile/match.ts: rule-to-element matching (the authored cascade)
  *
- * Phase: c (reconcile) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: c (reconcile), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, foundationRules, componentRules
  * Writes to Captured: nothing directly; returns the authored cascade for bake.ts
  *
@@ -10,7 +10,7 @@
  *
  * Why this exists: a captured element's appearance is the sum of every rule that
  * matches it, resolved by the cascade. this module recreates that cascade from
- * the flattened CssRule[] — for each live element in the picked subtree it finds
+ * the flattened CssRule[], for each live element in the picked subtree it finds
  * the matching rules (via the browser's own element.matches()), orders them by
  * specificity, and merges their declarations into one authored value per
  * property. bake.ts then asks, per property, whether that authored value round-
@@ -19,7 +19,7 @@
  * deliberately small (~150 lines, per section 16): no specificity edge-case
  * handling, no layer-assignment expansions, no hand-curated property Sets. the
  * probe in bake.ts validates every decision against the real computed value, so
- * a slightly-imperfect cascade here cannot produce a wrong pixel — it can only
+ * a slightly-imperfect cascade here cannot produce a wrong pixel, it can only
  * fall back to computed. ported (rewritten) from v1 css-extractor.ts.
  */
 import type { Captured, CssRule } from '../types';
@@ -35,7 +35,7 @@ interface RankedDecl {
 /**
  * builds the merged authored cascade for every element in the picked subtree.
  *
- * @param captured — the capture; reads root + the flattened rule lists
+ * @param captured - the capture; reads root + the flattened rule lists
  * @returns a map from each live element to its winning authored value per property
  */
 export function authoredCascade(captured: Captured): Map<Element, Map<string, string>> {
@@ -68,8 +68,8 @@ export function authoredCascade(captured: Captured): Map<Element, Map<string, st
  * level so the structural correspondence holds. shared by every handler that
  * needs to read a live element's computed style while writing to its clone.
  *
- * @param root — the live snip root
- * @param clone — the working clone (may carry handler-injected nodes)
+ * @param root - the live snip root
+ * @param clone - the working clone (may carry handler-injected nodes)
  * @returns aligned [original, clone] pairs, root first
  */
 export function pairedSubtrees(root: Element, clone: Element): Array<[Element, Element]> {
@@ -104,8 +104,8 @@ export interface BakeSpec {
  * keeping the getComputedStyle read here, in the reconcile core, also keeps the
  * leaf handlers themselves free of it.
  *
- * @param captured — bakedStyles + clone mutated in place
- * @param specs — the properties to consider, each with its default predicate
+ * @param captured - bakedStyles + clone mutated in place
+ * @param specs - the properties to consider, each with its default predicate
  */
 export function bakeNonDefaultProps(captured: Captured, specs: BakeSpec[]): void {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
@@ -153,7 +153,7 @@ function subtreeElements(root: Element): Element[] {
  *
  * uses the browser's live matcher so descendant/child combinators resolve
  * against the real ancestor chain. excludes pseudo-element rules (they target
- * ::before/::marker, not the element — the pseudo handler owns those) and rules
+ * ::before/::marker, not the element, the pseudo handler owns those) and rules
  * gated by an @media query that does not currently apply. @container/@supports
  * are not gated here: the bake probe validates every property against the
  * captured computed value, so an over-included rule can only fall back to
@@ -166,7 +166,7 @@ function ruleApplies(rule: CssRule, el: Element): boolean {
 		// a comma selector matches if any branch matches this element.
 		return el.matches(rule.selector);
 	} catch {
-		// :hover, :has() with unsupported args, malformed selectors — skip safely.
+		// :hover, :has() with unsupported args, malformed selectors, skip safely.
 		return false;
 	}
 }

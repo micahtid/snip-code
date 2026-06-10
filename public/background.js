@@ -1,5 +1,5 @@
 /**
- * background.js — mv3 service worker
+ * background.js: mv3 service worker
  *
  * phase: a (scaffold). pipeline position: n/a (privileged broker, not a phase).
  *
@@ -132,7 +132,7 @@ async function cdpInheritedChain(tabId, selector) {
 		await chrome.debugger.sendCommand(target, 'DOM.enable');
 		await chrome.debugger.sendCommand(target, 'CSS.enable');
 		// pierce:true so the tree (and the inherited chain) crosses closed shadow
-		// roots — the v2 addition over v1's pierce:false.
+		// roots, the v2 addition over v1's pierce:false.
 		const doc = await chrome.debugger.sendCommand(target, 'DOM.getDocument', { depth: -1, pierce: true });
 		const closedShadowRoots = countClosedShadowRoots(doc.root);
 		const found = await chrome.debugger.sendCommand(target, 'DOM.querySelector', {

@@ -1,7 +1,7 @@
 /**
- * components/Picker.tsx — sidebar picker control
+ * components/Picker.tsx: sidebar picker control
  *
- * Phase: a (scaffold) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: a (scaffold), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: triggers pipeline phase 1 (capture)
  * Reads from Captured: n/a
  * Writes to Captured: n/a
@@ -57,7 +57,7 @@ const styles = {
  * injected on a freshly loaded page) are surfaced to the console rather than
  * thrown, since a missing overlay is a recoverable user-retry, not a crash.
  *
- * @param mode — the capture mode to run once an element is chosen
+ * @param mode - the capture mode to run once an element is chosen
  */
 async function startPicker(mode: 'snip' | 'assistive'): Promise<void> {
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

@@ -1,8 +1,8 @@
 /**
- * convert/clean.ts — dead-code elimination (P5)
+ * convert/clean.ts: dead-code elimination (P5)
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: clone (to test selector/usage)
  * Writes to Captured: nothing (operates on the emitted css string)
  *
@@ -18,8 +18,8 @@
  *
  * this is the antithesis of v1's 2,477-line cleaner.ts: no hand-curated property
  * Sets, no is<X> predicates, no "shading-critical" / "vertical text spacing"
- * heuristics (forbidden pattern #4). usage is measured against ground truth — the
- * actual clone subtree and the actual declarations — so the cleaner can never
+ * heuristics (forbidden pattern #4). usage is measured against ground truth, the
+ * actual clone subtree and the actual declarations, so the cleaner can never
  * remove something the output depends on. it is reused by every format emitter
  * (html inline, bem/tailwind/scss class rules), so it must be format-agnostic.
  */
@@ -32,8 +32,8 @@ const DROP = '';
 /**
  * removes dead code from an emitted stylesheet per P5.
  *
- * @param css — the stylesheet text to prune
- * @param captured — the snip; usage is measured against captured.clone + the css
+ * @param css - the stylesheet text to prune
+ * @param captured - the snip; usage is measured against captured.clone + the css
  * @returns the cleaned stylesheet text
  */
 export function cleanCss(css: string, captured: Captured): string {

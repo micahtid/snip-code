@@ -1,8 +1,8 @@
 /**
- * resolve/vars.ts — css custom property resolution (P3, single pass)
+ * resolve/vars.ts: css custom property resolution (P3, single pass)
  *
- * Phase: d (resolve) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 3 — resolve
+ * Phase: d (resolve), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 3, resolve
  * Reads from Captured: root, clone, bakedStyles, variables
  * Writes to Captured: bakedStyles + clone (resolves var() refs; emits root vars)
  *
@@ -17,7 +17,7 @@
  * (read from the live element, which already resolved them in-page).
  *
  * single pass (forbidden pattern #9): every reference is decided in one sweep.
- * the only loop is computing the dependency closure of the root vars we keep —
+ * the only loop is computing the dependency closure of the root vars we keep , 
  * that is resolving a definition's own var() deps, not a second orphan-recovery
  * pass over the output.
  */
@@ -29,7 +29,7 @@ const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 /**
  * resolves every var() reference in the baked styles per P3.
  *
- * @param captured — clone + bakedStyles are mutated in place
+ * @param captured - clone + bakedStyles are mutated in place
  */
 export function resolveVariables(captured: Captured): void {
 	const cloneToOriginal = new Map<Element, Element>(

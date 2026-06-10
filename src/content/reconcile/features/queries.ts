@@ -1,8 +1,8 @@
 /**
- * features/queries.ts — @media + @container resolution
+ * features/queries.ts: @media + @container resolution
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (bakes container context)
  *
@@ -14,9 +14,9 @@
  *   early-returns per element otherwise.
  * Transform contract: bakes container-type (and container-name) onto the matching
  *   clone element. mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO — add in Stage 5 (container-query layout).
+ * Test bundle: TODO, add in Stage 5 (container-query layout).
  *
- * Why this exists: @media is already flattened at capture — match.ts only admits
+ * Why this exists: @media is already flattened at capture, match.ts only admits
  * rules whose @media currently applies (matchMedia), so prefers-color-scheme,
  * prefers-reduced-motion, and breakpoint variants are resolved to the captured
  * viewport's values and baked by P1. @container is the part that needs help: a
@@ -32,7 +32,7 @@ import { pairedSubtrees } from '../match';
 /**
  * preserves the container-type containment context on each element.
  *
- * @param captured — bakedStyles + clone are mutated in place
+ * @param captured - bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {

@@ -1,8 +1,8 @@
 /**
- * features/animation.ts — animation, transition, transform context
+ * features/animation.ts: animation, transition, transform context
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (transform context + anim declarations)
  *
@@ -15,13 +15,13 @@
  *   transform-context or animation/transition properties. per-element early-return.
  * Transform contract: bakes those computed values onto the matching clone
  *   element. it deliberately does NOT re-bake `transform` / individual
- *   translate/rotate/scale — those can be mid-animation at capture time, and P1
+ *   translate/rotate/scale, those can be mid-animation at capture time, and P1
  *   already owns the value. mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO — add in Stage 5 (3d card flip, keyframe loader).
+ * Test bundle: TODO, add in Stage 5 (3d card flip, keyframe loader).
  *
  * Why this exists: the static transform context (transform-origin, perspective,
  * 3d flags) and the animation/transition shorthands are easily omitted from the
- * authored cascade, yet they shape the rendered frame — the grader freezes
+ * authored cascade, yet they shape the rendered frame, the grader freezes
  * animations at frame 0 (reducedMotion), so the @keyframes 0% styles only apply
  * if the element still carries its `animation` declaration and the keyframes
  * travel (resolve/anim keeps the referenced ones, with cubic-bezier precision
@@ -33,7 +33,7 @@ import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
 
 /**
- * the transform-context and animation properties this handler preserves — the
+ * the transform-context and animation properties this handler preserves, the
  * bounded css-spec surface for animation/3d (a feature-handler spec set, not a
  * decision-layer property Set; section 6). `transform` is intentionally absent.
  */
@@ -58,7 +58,7 @@ function isDefault(prop: string, value: string): boolean {
 /**
  * bakes non-default transform-context and animation declarations onto each element.
  *
- * @param captured — bakedStyles + clone are mutated in place
+ * @param captured - bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {

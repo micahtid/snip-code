@@ -1,8 +1,8 @@
 /**
- * features/layers.ts — @layer / @property / @scope
+ * features/layers.ts: @layer / @property / @scope
  *
- * Phase: h (tier 2 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: h (tier 2 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: clone, bakedStyles, variables (used custom props)
  * Writes to Captured: clone (appends an @property <style>), warnings
  *
@@ -14,10 +14,10 @@
  *   custom property the snip uses. early-returns when none match.
  * Transform contract: appends a <style> of the matching @property rules to the
  *   clone. reads document.styleSheets (in-memory cssom). clone only.
- * Test bundle: TODO — add in Stage 5 (animated @property gradient angle).
+ * Test bundle: TODO, add in Stage 5 (animated @property gradient angle).
  *
  * Why this exists: @layer order and @scope are already resolved into the baked
- * inline styles — match.ts builds the cascade and bake.ts's P1 probe validates
+ * inline styles, match.ts builds the cascade and bake.ts's P1 probe validates
  * every value against the computed result, which the browser produced with layer
  * and scope precedence applied. so they need no separate handling. @property is
  * the part that does not survive: a registered custom property carries a syntax,
@@ -31,7 +31,7 @@ import type { Captured } from '../../types';
 /**
  * re-emits @property registrations for custom properties the snip uses.
  *
- * @param captured — clone is mutated in place
+ * @param captured - clone is mutated in place
  */
 export function apply(captured: Captured): Captured {
 	const used = usedCustomProps(captured);

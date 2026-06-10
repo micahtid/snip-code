@@ -1,8 +1,8 @@
 /**
- * features/units.ts — viewport + container units
+ * features/units.ts: viewport + container units
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (resolves viewport/container units)
  *
@@ -13,10 +13,10 @@
  *   vmin/vmax) or container (cqw/cqh/cqi/cqb/...) length. early-returns otherwise.
  * Transform contract: replaces such values with the live element's computed
  *   literal (px). mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO — add in Stage 5 (vh hero + container-query card).
+ * Test bundle: TODO, add in Stage 5 (vh hero + container-query card).
  *
  * Why this exists: viewport and container units resolve against the viewport /
- * containment context, which change when the snip is reparented — a 50vw hero
+ * containment context, which change when the snip is reparented, a 50vw hero
  * becomes half of whatever viewport it lands in. the plan's alternative (wrap the
  * snip in a captured-viewport container) cannot work for a standalone element
  * crop: the grader renders output.html at the element's own dimensions, so a
@@ -41,7 +41,7 @@ const DYNAMIC_UNIT = /\b\d*\.?\d+(?:vw|vh|vi|vb|vmin|vmax|dvw|dvh|svw|svh|lvw|lv
 /**
  * resolves baked values that use viewport/container units to their captured px.
  *
- * @param captured — bakedStyles + clone are mutated in place
+ * @param captured - bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
@@ -77,7 +77,7 @@ export function apply(captured: Captured): Captured {
 
 /**
  * copy a loaded image's natural size to width/height attributes, but only when
- * css sizes neither dimension — otherwise attr-derived aspect-ratio could fight
+ * css sizes neither dimension, otherwise attr-derived aspect-ratio could fight
  * the baked css and shift the box.
  */
 function pinIntrinsicSize(original: HTMLImageElement, clone: HTMLImageElement, baked: Map<string, string>): void {

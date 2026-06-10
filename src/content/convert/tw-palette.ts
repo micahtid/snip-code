@@ -1,8 +1,8 @@
 /**
- * convert/tw-palette.ts — tailwind color palette matcher
+ * convert/tw-palette.ts: tailwind color palette matcher
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: nothing (operates on color strings)
  * Writes to Captured: nothing (pure color matcher)
  *
@@ -10,14 +10,14 @@
  *
  * Why this exists: tailwind expresses colors as palette tokens (bg-slate-700).
  * to emit clean tailwind, an arbitrary captured color must map to the nearest
- * palette entry — but only when the match is perceptually faithful, else the
+ * palette entry, but only when the match is perceptually faithful, else the
  * converter must fall back to an arbitrary value (bg-[#4287f5]) so brand colors
  * are not silently drifted. matching uses ciede2000 (perceptual color distance),
  * with tight thresholds: <1 is exact, 1-2 is an acceptable nudge, >=2 forces an
  * arbitrary value. ported (rewritten) from v1 tailwind-palette.ts, full module.
  *
  * the palette table below is the tailwind v3 vocabulary (a finite output-format
- * data table, not a decision-layer property/tag Set — forbidden pattern #1 does
+ * data table, not a decision-layer property/tag Set, forbidden pattern #1 does
  * not apply to format vocabularies).
  */
 
@@ -66,7 +66,7 @@ export interface PaletteMatch {
  * finds the nearest tailwind palette token to a css color, or null if no token
  * is within perceptual tolerance (caller should emit an arbitrary value).
  *
- * @param colorValue — any css color string (hex/rgb/hsl; oklch returns null)
+ * @param colorValue - any css color string (hex/rgb/hsl; oklch returns null)
  */
 export function matchColor(colorValue: string): PaletteMatch | null {
 	const hex = parseColor(colorValue);
@@ -90,10 +90,10 @@ export function matchColor(colorValue: string): PaletteMatch | null {
 
 /**
  * parses a css color to a 6-digit #hex, or null for colors we cannot/should not
- * match (transparent, currentcolor, oklch/oklab, keywords). alpha is dropped —
+ * match (transparent, currentcolor, oklch/oklab, keywords). alpha is dropped , 
  * the caller preserves opacity separately.
  *
- * @param value — the css color string
+ * @param value - the css color string
  */
 export function parseColor(value: string): string | null {
 	const v = value.trim().toLowerCase();

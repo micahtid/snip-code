@@ -1,16 +1,16 @@
 /**
- * assistive/emit.ts — assistive json build + delivery
+ * assistive/emit.ts: assistive json build + delivery
  *
- * Phase: j (assistive mode) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture (assistive runs phase 1, then emits)
+ * Phase: j (assistive mode), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture (assistive runs phase 1, then emits)
  * Reads from Captured: page, capturedAt, element, screenshot, stylesheets, root
  * Writes to Captured: n/a (returns + delivers the json)
  *
  * Principles applied: none (serialization + io).
  *
  * Why this exists: assistive mode (mode 2) produces the section-9 json document a
- * coding agent can act on — page url, both selectors, bounding box, and the asset
- * manifest — instead of code. this builds that document verbatim to the section-9
+ * coding agent can act on, page url, both selectors, bounding box, and the asset
+ * manifest, instead of code. this builds that document verbatim to the section-9
  * schema and delivers it by the user's chosen channels (clipboard / file /
  * webhook, section 10). delivery failures never throw; each channel is attempted
  * independently.
@@ -34,7 +34,7 @@ export interface AssistiveDoc {
 /**
  * builds the assistive json document verbatim to the section-9 schema.
  *
- * @param captured — the phase-1 capture
+ * @param captured - the phase-1 capture
  */
 export function buildAssistiveJson(captured: Captured): AssistiveDoc {
 	const assets = extractAssets(captured.root);
@@ -53,8 +53,8 @@ export function buildAssistiveJson(captured: Captured): AssistiveDoc {
  * delivers the document over each channel the user enabled (section 10). each
  * channel is independent and best-effort; a failure is recorded, never thrown.
  *
- * @param doc — the assistive document
- * @param prefs — user preferences (delivery channels + webhook url)
+ * @param doc - the assistive document
+ * @param prefs - user preferences (delivery channels + webhook url)
  * @returns the warnings accumulated across channels
  */
 export async function deliver(doc: AssistiveDoc, prefs: UserPreferences): Promise<string[]> {

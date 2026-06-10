@@ -1,8 +1,8 @@
 /**
- * polish/rename.ts — class rename application
+ * polish/rename.ts: class rename application
  *
- * Phase: i (ai polish) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 5 — polish
+ * Phase: i (ai polish), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 5, polish
  * Reads from Captured: n/a (operates on html + css strings)
  * Writes to Captured: n/a
  *
@@ -18,9 +18,9 @@
 /**
  * applies a class renameMap to html and css in lockstep.
  *
- * @param html — the markup
- * @param css — the accompanying stylesheet
- * @param renameMap — old class token -> new class token
+ * @param html - the markup
+ * @param css - the accompanying stylesheet
+ * @param renameMap - old class token -> new class token
  * @returns the renamed html + css
  */
 export function applyRenames(html: string, css: string, renameMap: Record<string, string>): { html: string; css: string } {

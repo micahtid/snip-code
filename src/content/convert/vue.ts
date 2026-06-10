@@ -1,8 +1,8 @@
 /**
- * convert/vue.ts — vue single-file component output
+ * convert/vue.ts: vue single-file component output
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: clone (via the bem emitter)
  * Writes to Captured: nothing
  *
@@ -21,7 +21,7 @@ import type { HtmlOutput } from './html';
 /**
  * emits the snip as a vue sfc string (template + scoped style).
  *
- * @param captured — read-only
+ * @param captured - read-only
  * @returns html = the .vue file contents; css = the stylesheet (also embedded)
  */
 export function emitVue(captured: Captured): HtmlOutput {

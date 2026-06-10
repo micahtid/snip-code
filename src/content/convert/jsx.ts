@@ -1,8 +1,8 @@
 /**
- * convert/jsx.ts — html -> jsx (react)
+ * convert/jsx.ts: html -> jsx (react)
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: clone (via the tailwind/bem emitters)
  * Writes to Captured: nothing
  *
@@ -52,8 +52,8 @@ const REACT_ATTR: Record<string, string> = {
 /**
  * emits the snip as a react component plus its stylesheet.
  *
- * @param captured — read-only
- * @param variant — 'tailwind' (className utilities) or 'css' (bem classes + css)
+ * @param captured - read-only
+ * @param variant - 'tailwind' (className utilities) or 'css' (bem classes + css)
  */
 export function emitJsx(captured: Captured, variant: 'tailwind' | 'css'): HtmlOutput {
 	const base = variant === 'tailwind' ? emitTailwind(captured) : emitBem(captured, false);

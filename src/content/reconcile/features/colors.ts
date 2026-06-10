@@ -1,8 +1,8 @@
 /**
- * features/colors.ts — modern color preservation + currentColor consolidation
+ * features/colors.ts: modern color preservation + currentColor consolidation
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (consolidates currentColor)
  *
@@ -14,11 +14,11 @@
  *   element's resolved `color`. early-returns per element otherwise.
  * Transform contract: rewrites such literals to the `currentColor` keyword.
  *   mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO — add in Stage 5 (oklch palette + currentColor icons).
+ * Test bundle: TODO, add in Stage 5 (oklch palette + currentColor icons).
  *
  * Why this exists: oklch/oklab/color()/color-mix() already survive serialization
  * because P1 keeps the authored value when it round-trips and otherwise ships the
- * computed value (which chrome serializes in the same color space) — so this
+ * computed value (which chrome serializes in the same color space), so this
  * handler does not need to touch them. what it does fix is currentColor: chrome's
  * getComputedStyle resolves currentColor on fill/stroke/border to the literal,
  * severing the link to `color`, so an icon that should recolor with its text no
@@ -30,7 +30,7 @@ import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
 
 /**
- * svg paint properties that default to currentColor — the bounded css-spec
+ * svg paint properties that default to currentColor, the bounded css-spec
  * surface for the icon-recolor mechanism (a feature-handler spec set, not a
  * decision-layer property Set; section 6). border/outline color literals are
  * deliberately left alone: rewriting them to currentColor risks serialization
@@ -41,7 +41,7 @@ const COLOR_PROPS = ['fill', 'stroke'];
 /**
  * restores currentColor where a color-ish property's literal equals `color`.
  *
- * @param captured — bakedStyles + clone are mutated in place
+ * @param captured - bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
@@ -52,7 +52,7 @@ export function apply(captured: Captured): Captured {
 		for (const prop of COLOR_PROPS) {
 			const value = baked.get(prop);
 			// only collapse an exact literal match; never touch authored color
-			// functions (oklch/color-mix) — P1 already preserved those.
+			// functions (oklch/color-mix), P1 already preserved those.
 			if (value && value === colorLiteral) {
 				baked.set(prop, 'currentColor');
 				try {

@@ -1,8 +1,8 @@
 /**
- * assistive/selectors.ts — assistive element descriptor
+ * assistive/selectors.ts: assistive element descriptor
  *
- * Phase: j (assistive mode) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture
+ * Phase: j (assistive mode), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture
  * Reads from Captured: element
  * Writes to Captured: n/a (returns the element descriptor)
  *
@@ -20,7 +20,7 @@ import type { Captured } from '../types';
 /**
  * returns the section-9 element descriptor, asserting both selectors are present.
  *
- * @param captured — reads the element metadata built during capture
+ * @param captured - reads the element metadata built during capture
  */
 export function describeElement(captured: Captured): Captured['element'] {
 	const el = captured.element;

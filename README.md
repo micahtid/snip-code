@@ -1,6 +1,6 @@
 # SnipCode
 
-snip any element on any page into clean, framework-formatted code — or a
+snip any element on any page into clean, framework-formatted code, or a
 structured json document a coding agent can act on. runs entirely in your
 browser. no account, no backend, no cloud sync. bring your own llm key.
 
@@ -16,14 +16,14 @@ and fonts, and emits clean output.
 
 two modes:
 
-- **snip** — produces production code in one of 7 formats and fills the sidebar
+- **snip**, produces production code in one of 7 formats and fills the sidebar
   panels (code, colors, fonts, assets).
-- **assistive** — produces a json document with the page url, a shortest-unique
+- **assistive**, produces a json document with the page url, a shortest-unique
   selector and a robust `data-*` selector, bounding box, fonts, and assets,
   delivered to your clipboard, a file, or a webhook.
 
 builder pages (framer, wix, webflow, elementor, readymag) are intentionally
-unsupported — they render runtime-dependent markup that cannot be snipped into
+unsupported, they render runtime-dependent markup that cannot be snipped into
 clean code, so snipcode refuses rather than emit broken output.
 
 ## install (development)
@@ -45,10 +45,10 @@ the toolbar icon opens the side panel.
 
 1. open the side panel (click the snipcode toolbar icon)
 2. choose **snip** mode
-3. click **pick element** — the page dims and a highlight follows your cursor
+3. click **pick element**, the page dims and a highlight follows your cursor
 4. hover the element you want; press **↑** to climb to a wrapping container, or
    **esc** to cancel
-5. click to capture — the output appears in the sidebar and is saved to your
+5. click to capture, the output appears in the sidebar and is saved to your
    recent snippets
 
 ## output formats
@@ -69,7 +69,7 @@ pick the default in settings; all 7 are produced from a single capture.
 
 snipcode never ships an api key and never proxies your requests. the optional
 llm polish step (semantic class renames + hover/focus rules) uses your own key,
-stored only in `chrome.storage.local` on your machine — never `chrome.storage.sync`,
+stored only in `chrome.storage.local` on your machine, never `chrome.storage.sync`,
 never any server. phases 1-4 always run locally; phase 5 is skipped if no key is
 configured.
 
@@ -104,12 +104,12 @@ webhook. no telemetry, no analytics, no account.
 
 ## for contributors
 
-the full build spec — architecture, the five principles, the feature-handler
-discipline, and the test bench — lives in `SNIPCODE-REWRITE-PLAN.md`. the pipeline
+the full build spec, architecture, the five principles, the feature-handler
+discipline, and the test bench, lives in `SNIPCODE-REWRITE-PLAN.md`. the pipeline
 is five phases (capture → reconcile → resolve → convert → polish), each under
 `src/content/`. the grader (`tests/`) renders each bundle's output against a
 ground-truth screenshot and scores it with pixelmatch + ssim.
 
 ## license
 
-MIT — see [LICENSE](./LICENSE).
+MIT, see [LICENSE](./LICENSE).

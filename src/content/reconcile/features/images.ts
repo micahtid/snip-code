@@ -1,8 +1,8 @@
 /**
- * features/images.ts — responsive images + background images
+ * features/images.ts: responsive images + background images
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: clone (img src/srcset, <picture>), bakedStyles (bg urls), warnings
  *
@@ -16,14 +16,14 @@
  *   image that actually rendered at the captured viewport) and drops srcset/sizes
  *   + <source>s so it renders deterministically; absolutizes background-image
  *   url()s. mutates clone + bakedStyles only; no network (handler contract).
- * Test bundle: TODO — add in Stage 5 (srcset + background-image hero).
+ * Test bundle: TODO, add in Stage 5 (srcset + background-image hero).
  *
  * Why this exists: srcset/<picture> pick a source from viewport + dpr at render
  * time; reparented, the browser may pick a different one (or none), changing the
  * pixels. pinning currentSrc locks the captured-viewport image. background-image
  * urls are usually relative to the source page and 404 when pasted; absolutizing
  * fixes that. cross-origin image urls render fine without cors (only canvas reads
- * need it), so no base64 inline is required for fidelity — and feature handlers
+ * need it), so no base64 inline is required for fidelity, and feature handlers
  * may not fetch anyway; truly unreachable assets get a warning instead.
  */
 import type { Captured } from '../../types';
@@ -33,7 +33,7 @@ const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 /**
  * pins responsive images and absolutizes background-image urls.
  *
- * @param captured — clone + bakedStyles are mutated in place
+ * @param captured - clone + bakedStyles are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	const base = document.baseURI || location.href;

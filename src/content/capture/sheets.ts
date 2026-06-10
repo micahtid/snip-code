@@ -1,8 +1,8 @@
 /**
- * capture/sheets.ts — stylesheet discovery (cssom)
+ * capture/sheets.ts: stylesheet discovery (cssom)
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture
  * Reads from Captured: n/a (reads the live document.styleSheets)
  * Writes to Captured: stylesheets, foundationRules, componentRules, variables,
  *   fonts, keyframes, inaccessible.crossOriginStylesheets
@@ -10,7 +10,7 @@
  * Principles applied: none directly (capture-time discovery feeds P1-P3 later).
  *
  * Why this exists: a snipped element's appearance comes from rules scattered
- * across every sheet on the page — <style> blocks, linked css, injected sheets.
+ * across every sheet on the page, <style> blocks, linked css, injected sheets.
  * this module flattens all of them into a single CssRule[] (section 19.1),
  * preserving each rule's grouping context (@media/@container/@layer/@supports) so
  * later phases can decide what survives serialization. it splits broadly-scoped
@@ -89,8 +89,8 @@ export function discoverStylesheets(): SheetDiscovery {
  * resulting rules carry the caller's `source` tag so downstream phases can tell
  * recovered rules from cssom-read ones.
  *
- * @param cssText — the stylesheet text fetched by the background
- * @param source — provenance tag for the produced CssRule entries
+ * @param cssText - the stylesheet text fetched by the background
+ * @param source - provenance tag for the produced CssRule entries
  * @returns the discovery deltas (rules, variables, fonts, keyframes)
  */
 export async function parseCssText(cssText: string, source: CssRule['source'] = 'cssom'): Promise<SheetDiscovery> {
@@ -147,7 +147,7 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery, so
 			// @layer { ... } and @container ... { ... }. these are recent rule
 			// types not always present in the dom lib; detect structurally and read
 			// their identifying field defensively (the layers/units handlers refine
-			// this later — here we just preserve the context).
+			// this later, here we just preserve the context).
 			const layer = readField(rule, 'name');
 			const containerQuery = readField(rule, 'conditionText');
 			walkRules(rule.cssRules, {

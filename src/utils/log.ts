@@ -1,7 +1,7 @@
 /**
- * utils/log.ts — namespaced console logging
+ * utils/log.ts: namespaced console logging
  *
- * Phase: a (scaffold) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: a (scaffold), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (cross-cutting utility)
  *
  * Why this exists: a single prefixed logger so extension output is identifiable

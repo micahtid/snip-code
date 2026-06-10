@@ -1,8 +1,8 @@
 /**
- * features/pseudo.ts — generated-content pseudo-elements
+ * features/pseudo.ts: generated-content pseudo-elements
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone
  * Writes to Captured: clone (marks elements + appends a <style> of pseudo rules)
  *
@@ -16,7 +16,7 @@
  * Transform contract: tags the matching clone element with a data-snip-ps marker
  *   and appends one <style> to the clone carrying `[data-snip-ps="n"]::x { ... }`
  *   rules snapshotted from the live pseudo's computed style. clone only.
- * Test bundle: TODO — add in Stage 5 (icon-via-::before, custom list markers).
+ * Test bundle: TODO, add in Stage 5 (icon-via-::before, custom list markers).
  *
  * Why this exists: ::before/::after content (counters, quote glyphs, decorative
  * bars, css icons) and styled ::marker/::placeholder render no dom node, so a
@@ -30,7 +30,7 @@ import { pairedSubtrees } from '../match';
 const MARKER = 'data-snip-ps';
 
 /**
- * the visual properties snapshotted for a pseudo-element — the bounded css-spec
+ * the visual properties snapshotted for a pseudo-element, the bounded css-spec
  * surface that defines a generated box's appearance (a feature-handler spec set,
  * not a decision-layer property Set; section 6).
  */
@@ -46,7 +46,7 @@ const PSEUDO_PROPS = [
 /**
  * materializes generated-content pseudo-elements as css rules on the clone.
  *
- * @param captured — clone is mutated in place
+ * @param captured - clone is mutated in place
  */
 export function apply(captured: Captured): Captured {
 	const rules: string[] = [];

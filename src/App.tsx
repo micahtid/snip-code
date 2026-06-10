@@ -1,7 +1,7 @@
 /**
- * App.tsx — side-panel root + sidebar shell
+ * App.tsx: side-panel root + sidebar shell
  *
- * Phase: a (scaffold) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: a (scaffold), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (ui host, not a pipeline phase)
  * Reads from Captured: n/a
  * Writes to Captured: n/a
@@ -71,8 +71,8 @@ const styles = {
 /**
  * the sidebar shell: header, view nav, and the active view's body.
  *
- * holds the two pieces of cross-view ui state — which view is showing and the
- * current capture mode — and threads the mode into the picker so a snip carries
+ * holds the two pieces of cross-view ui state, which view is showing and the
+ * current capture mode, and threads the mode into the picker so a snip carries
  * the user's chosen mode into the pipeline.
  */
 function App() {

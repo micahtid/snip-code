@@ -1,14 +1,14 @@
 /**
- * components/SettingsView.tsx — byok + preferences settings tab
+ * components/SettingsView.tsx: byok + preferences settings tab
  *
- * Phase: i (byok) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: i (byok), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (configures pipeline phase 5 + assistive delivery)
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
  * Principles applied: none (ui).
  *
- * Why this exists: section 10's settings tab — provider dropdown, password-masked
+ * Why this exists: section 10's settings tab, provider dropdown, password-masked
  * api key, model override, test-key button, default output format, assistive
  * delivery, webhook url. everything persists to chrome.storage.local via
  * utils/storage (never sync). the key is validated against the live provider

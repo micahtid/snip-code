@@ -1,8 +1,8 @@
 /**
- * features/shadow.ts — shadow dom flattening
+ * features/shadow.ts: shadow dom flattening
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, inaccessible.closedShadowRoots
  * Writes to Captured: clone (flattens open shadow trees + styles), warnings
  *
@@ -18,7 +18,7 @@
  *   clone host so its rendered markup travels. closed roots cannot be read from a
  *   content script (only counted via cdp pierce at capture) and are surfaced as a
  *   warning. mutates clone only.
- * Test bundle: TODO — add in Stage 5 (open web-component).
+ * Test bundle: TODO, add in Stage 5 (open web-component).
  *
  * Why this exists: cloneNode(true) does not copy shadow roots, so a web
  * component's entire rendered content and its scoped styles vanish from the clone.
@@ -34,7 +34,7 @@ import { pairedSubtrees } from '../match';
 /**
  * flattens open shadow trees and their scoped styles into the clone.
  *
- * @param captured — clone is mutated in place
+ * @param captured - clone is mutated in place
  */
 export function apply(captured: Captured): Captured {
 	let hostId = 0;

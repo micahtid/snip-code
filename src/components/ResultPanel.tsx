@@ -1,7 +1,7 @@
 /**
- * components/ResultPanel.tsx — snip output viewer
+ * components/ResultPanel.tsx: snip output viewer
  *
- * Phase: a (scaffold) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: a (scaffold), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: consumes pipeline phase 4/5 output (the emitted code)
  * Reads from Captured: n/a (reads the serialized output, not Captured itself)
  * Writes to Captured: n/a

@@ -1,8 +1,8 @@
 /**
- * features/effects.ts — filters, masks, clip-path, blend, shadow
+ * features/effects.ts: filters, masks, clip-path, blend, shadow
  *
- * Phase: g (tier 1 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (bakes non-default effect properties)
  *
@@ -16,7 +16,7 @@
  * Transform contract: bakes those computed values onto the matching clone
  *   element, absolutizing any url() (mask-image, clip-path: url(#...)). mutates
  *   bakedStyles + clone inline styles only.
- * Test bundle: TODO — add in Stage 5 (glassmorphism backdrop, clip-path hero).
+ * Test bundle: TODO, add in Stage 5 (glassmorphism backdrop, clip-path hero).
  *
  * Why this exists: filter/backdrop-filter/clip-path/mask/mix-blend-mode and
  * multi-layer/inset box-shadow are central to a component's look but frequently
@@ -30,7 +30,7 @@ import { pairedSubtrees } from '../match';
 const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /**
- * the visual-effect properties this handler preserves — the bounded css-spec
+ * the visual-effect properties this handler preserves, the bounded css-spec
  * surface for filters/masking/compositing (a feature-handler spec set, not a
  * decision-layer property Set; section 6). vendor-prefixed forms are included
  * because chrome still computes some masks/clips under -webkit-.
@@ -51,7 +51,7 @@ function isDefault(value: string): boolean {
 /**
  * bakes non-default visual-effect properties onto each element.
  *
- * @param captured — bakedStyles + clone are mutated in place
+ * @param captured - bakedStyles + clone are mutated in place
  */
 export function apply(captured: Captured): Captured {
 	const base = document.baseURI || location.href;

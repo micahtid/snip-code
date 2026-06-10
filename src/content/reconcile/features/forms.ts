@@ -1,8 +1,8 @@
 /**
- * features/forms.ts — form control rendering + state
+ * features/forms.ts: form control rendering + state
  *
- * Phase: h (tier 2 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: h (tier 2 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone
  * Writes to Captured: bakedStyles + clone (appearance/accent-color + live state)
  *
@@ -17,10 +17,10 @@
  *   onto matching clone controls, and mirrors live value/checked/selected state
  *   onto the clone as attributes so the rendered control matches the capture.
  *   bakedStyles + clone only.
- * Test bundle: TODO — add in Stage 5 (custom checkbox/range/file input).
+ * Test bundle: TODO, add in Stage 5 (custom checkbox/range/file input).
  *
  * Why this exists: appearance: none is how authors replace native control chrome
- * with custom styling — lost, the control snaps back to the os widget. accent-
+ * with custom styling, lost, the control snaps back to the os widget. accent-
  * color tints checkboxes/radios/range. and cloneNode copies a control's attributes
  * but not its current value/checked/selected, so a filled input or ticked checkbox
  * renders empty in the clone. mirroring the state fixes that.
@@ -33,7 +33,7 @@ const FORM_CONTROL = 'input, select, textarea, button, meter, progress, option';
 /**
  * bakes form-control styling and mirrors live control state onto the clone.
  *
- * @param captured — bakedStyles + clone mutated in place
+ * @param captured - bakedStyles + clone mutated in place
  */
 export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {

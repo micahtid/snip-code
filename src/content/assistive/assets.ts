@@ -1,8 +1,8 @@
 /**
- * assistive/assets.ts — asset extraction
+ * assistive/assets.ts: asset extraction
  *
- * Phase: j (assistive mode) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture (assistive runs phase 1 only)
+ * Phase: j (assistive mode), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture (assistive runs phase 1 only)
  * Reads from Captured: root
  * Writes to Captured: n/a (returns an asset manifest)
  *
@@ -25,7 +25,7 @@ export interface AssetManifest {
 /**
  * collects image and icon assets used by the subtree.
  *
- * @param root — the picked element
+ * @param root - the picked element
  */
 export function extractAssets(root: Element): AssetManifest {
 	const base = document.baseURI || location.href;

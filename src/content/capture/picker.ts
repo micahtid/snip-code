@@ -1,16 +1,16 @@
 /**
- * capture/picker.ts — in-page element picker overlay
+ * capture/picker.ts: in-page element picker overlay
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture (the front door; produces the chosen Element)
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture (the front door; produces the chosen Element)
  * Reads from Captured: n/a (runs before Captured exists)
  * Writes to Captured: n/a (hands the chosen Element + screenshot to the orchestrator)
  *
  * Principles applied: none (interaction surface).
  *
  * Why this exists: every snip starts with the user choosing an element. this
- * overlay gives live visual feedback — a highlight box, edge guide lines, and a
- * tag/size tooltip — that tracks whatever is under the pointer, then resolves to
+ * overlay gives live visual feedback, a highlight box, edge guide lines, and a
+ * tag/size tooltip, that tracks whatever is under the pointer, then resolves to
  * the chosen element on click. ported (rewritten, not copied) from v1
  * element-selector.ts; the meaningful v2 change is the arrowup decoration-climb
  * (section 19.7), which v1 lacked, letting the user grab a wrapping section
@@ -18,7 +18,7 @@
  *
  * deliberately no Set<string> of "blocked" container tags (v1 had one to avoid
  * snapping to body/main): forbidden pattern #1 bans tag-name Sets, and the
- * arrowup climb makes the heuristic unnecessary — the user climbs on purpose.
+ * arrowup climb makes the heuristic unnecessary, the user climbs on purpose.
  */
 
 /** options the orchestrator passes to drive selection. */
@@ -276,7 +276,7 @@ export class ElementPicker {
  * keeps drop shadows and ::before/::after decorations that bleed outside the
  * border box. accounts for devicePixelRatio so css px map to device px.
  *
- * @param element — the element to crop around
+ * @param element - the element to crop around
  * @returns a png data url, or throws if capture/crop fails
  */
 async function captureElementScreenshot(element: Element): Promise<string> {

@@ -1,8 +1,8 @@
 /**
- * convert/tailwind.ts — inline styles -> tailwind utility classes
+ * convert/tailwind.ts: inline styles -> tailwind utility classes
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: clone (inline-styled)
  * Writes to Captured: nothing (deep-copies the clone; canonical clone untouched)
  *
@@ -13,7 +13,7 @@
  * formats stay derivable from one capture, per the definition of done) and turns
  * each element's inline declarations into utilities: a curated map for the common
  * properties (display, flex, spacing, color via the palette matcher), and
- * tailwind's arbitrary-value syntax `[prop:value]` for everything else — which
+ * tailwind's arbitrary-value syntax `[prop:value]` for everything else, which
  * guarantees full coverage and exact fidelity in a tailwind environment without
  * an exhaustive mapping table. ported (rewritten) from v1 css-to-tailwind.ts +
  * tailwind-extractor.ts (conversion mappings + arbitrary-value handling).
@@ -28,7 +28,7 @@ import { atRulesCss, type HtmlOutput } from './html';
  * block. fidelity in a tailwind project comes from utilities + arbitrary values;
  * the grader uses the inline html format, so this targets clean, usable output.
  *
- * @param captured — read-only; a deep copy of the clone is transformed
+ * @param captured - read-only; a deep copy of the clone is transformed
  */
 export function emitTailwind(captured: Captured): HtmlOutput {
 	const work = captured.clone.cloneNode(true) as Element;

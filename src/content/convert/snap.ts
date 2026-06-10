@@ -1,8 +1,8 @@
 /**
- * convert/snap.ts — value snapper
+ * convert/snap.ts: value snapper
  *
- * Phase: e (convert) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4 — convert
+ * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 4, convert
  * Reads from Captured: nothing (operates on property/value pairs)
  * Writes to Captured: nothing (pure value transform)
  *
@@ -13,10 +13,10 @@
  * 23, 42)"). before tailwind matching they read better and map to utilities more
  * cleanly when normalized: px lengths to rem (tailwind's spacing unit), opaque
  * rgb() to hex (tailwind's palette form). it deliberately does NOT snap to a
- * design grid or a type scale — v1 learned that snapping 13px->12px or 15px->14px
+ * design grid or a type scale, v1 learned that snapping 13px->12px or 15px->14px
  * causes visible ~8% drift, so exact values are preserved, only the unit/format
  * changes. ported from v1 value-snapper.ts, trimmed ~50% (dropped the html-string
- * inline parser — v2 snaps the bakedStyles maps directly — plus oklab math, grid-
+ * inline parser, v2 snaps the bakedStyles maps directly, plus oklab math, grid-
  * track fr conversion, and the animation-artifact detector).
  *
  * which properties keep px (border/outline widths, shadows, spacing) vs convert
@@ -39,8 +39,8 @@ export interface SnapResult {
  * px-native properties), and opaque rgb() to hex. multi-token values (e.g.
  * "10px 20px") snap each length independently.
  *
- * @param property — the css property (decides px-vs-rem treatment)
- * @param value — the declaration value
+ * @param property - the css property (decides px-vs-rem treatment)
+ * @param value - the declaration value
  */
 export function snapValue(property: string, value: string): SnapResult {
 	let result = value;
@@ -62,7 +62,7 @@ export function snapValue(property: string, value: string): SnapResult {
 
 /**
  * true for properties whose lengths read best left in px: border/outline widths
- * and offsets, shadows, and table border-spacing. radius is excluded — it reads
+ * and offsets, shadows, and table border-spacing. radius is excluded, it reads
  * better in rem. this is a css-spec category predicate (border width is a
  * px-native mechanism), not a curated property Set.
  */

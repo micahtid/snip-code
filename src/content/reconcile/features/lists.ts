@@ -1,8 +1,8 @@
 /**
- * features/lists.ts — list + counter properties
+ * features/lists.ts: list + counter properties
  *
- * Phase: h (tier 2 feature handlers) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: h (tier 2 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone (via bakeNonDefaultProps)
  * Writes to Captured: bakedStyles + clone (list + counter properties)
  *
@@ -15,7 +15,7 @@
  * Transform contract: bakes the non-default values onto the matching clone
  *   element. list-style-image urls arrive already-absolute from getComputedStyle.
  *   bakedStyles + clone only.
- * Test bundle: TODO — add in Stage 5 (custom counter list).
+ * Test bundle: TODO, add in Stage 5 (custom counter list).
  *
  * Why this exists: custom bullet glyphs (list-style-type), bullet images
  * (list-style-image), and counters (counter-reset/increment, rendered through
@@ -29,7 +29,7 @@ import { bakeNonDefaultProps } from '../match';
 /**
  * bakes non-default list-style and counter properties.
  *
- * @param captured — bakedStyles + clone mutated in place
+ * @param captured - bakedStyles + clone mutated in place
  */
 export function apply(captured: Captured): Captured {
 	bakeNonDefaultProps(captured, [

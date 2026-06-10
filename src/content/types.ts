@@ -1,7 +1,7 @@
 /**
- * content/types.ts — the shared contracts that bind every pipeline phase
+ * content/types.ts: the shared contracts that bind every pipeline phase
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
  * Pipeline position: spans 1-5 (the type every phase reads/writes)
  * Reads from Captured: n/a (defines it)
  * Writes to Captured: n/a (defines it)
@@ -9,8 +9,8 @@
  * Principles applied: none (type definitions).
  *
  * Why this exists: the entire extension is a pipeline that threads one mutable
- * object (`Captured`) through five phases. defining that object — plus the
- * message envelope (section 19.2) and the storage schemas (section 19.10) — in
+ * object (`Captured`) through five phases. defining that object, plus the
+ * message envelope (section 19.2) and the storage schemas (section 19.10), in
  * one place is what lets the phases stay decoupled: each phase only needs to
  * know the shape, not the other phases. these definitions are copied verbatim
  * from the build spec (section 19.1) and must not drift; deviations break
@@ -78,7 +78,7 @@ export interface Captured {
 	warnings: string[];
 }
 
-/** metadata about one discovered stylesheet (not its rules — those are flattened into CssRule[]). */
+/** metadata about one discovered stylesheet (not its rules, those are flattened into CssRule[]). */
 export interface Stylesheet {
 	href: string | null;
 	origin: 'same-origin' | 'cross-origin' | 'inline' | 'shadow';
@@ -172,7 +172,7 @@ export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google';
 /** the 7 output formats (decision 10). */
 export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' | 'jsx-css' | 'vue' | 'html';
 
-/** one stored snippet (last 50, fifo — decision 12). */
+/** one stored snippet (last 50, fifo, decision 12). */
 export interface SnippetRecord {
 	id: string; // uuid v4
 	capturedAt: string;

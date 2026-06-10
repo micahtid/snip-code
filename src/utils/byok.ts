@@ -1,13 +1,13 @@
 /**
- * utils/byok.ts — bring-your-own-key provider config + validation
+ * utils/byok.ts: bring-your-own-key provider config + validation
  *
- * Phase: i (byok) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: i (byok), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (configures pipeline phase 5)
  *
  * Why this exists: snipcode never ships a key and never proxies requests
  * (decision 8). this module holds the four supported providers' default models
  * (decisions 9a-9d) and endpoints, and the "test key" validation (section 19.5).
- * validation fetches the provider directly from the sidebar — the manifest CSP
+ * validation fetches the provider directly from the sidebar, the manifest CSP
  * (section 19.8) whitelists all four hosts for extension pages, so no background
  * round-trip is needed and the key never leaves the user's machine. the actual
  * llm polish runs in the background (content scripts are bound by the page's csp),
@@ -44,9 +44,9 @@ export interface ValidationResult {
  * succeeds iff http 200 AND the body parses as json AND contains the provider's
  * success indicator. a minimal 1-token request keeps cost negligible.
  *
- * @param provider — which provider to test
- * @param key — the api key to validate (never logged)
- * @param model — the model to test with (defaults to the provider default)
+ * @param provider - which provider to test
+ * @param key - the api key to validate (never logged)
+ * @param model - the model to test with (defaults to the provider default)
  */
 export async function validateKey(provider: Provider, key: string, model?: string): Promise<ValidationResult> {
 	if (!key.trim()) return { valid: false, error: 'no key provided' };

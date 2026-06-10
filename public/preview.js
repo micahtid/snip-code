@@ -1,5 +1,5 @@
 /**
- * preview.js — renders snipped output inside the sandboxed preview.html iframe.
+ * preview.js: renders snipped output inside the sandboxed preview.html iframe.
  *
  * phase: a (scaffold). receives a { html, css } message from the sidebar via
  * postMessage and injects it into #preview-root, isolated from the host page.

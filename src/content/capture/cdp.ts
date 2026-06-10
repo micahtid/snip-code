@@ -1,20 +1,20 @@
 /**
- * capture/cdp.ts — privileged capture augmentation (inherited chain + cross-origin)
+ * capture/cdp.ts: privileged capture augmentation (inherited chain + cross-origin)
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture
  * Reads from Captured: root, element.selector, inaccessible.crossOriginStylesheets
  * Writes to Captured: foundationRules (cdp inherited rules), componentRules,
  *   variables, fonts, keyframes (recovered cross-origin), inaccessible
  *
- * Principles applied: feeds P2 (inheritance crosses snip boundaries) — the cdp
+ * Principles applied: feeds P2 (inheritance crosses snip boundaries), the cdp
  * inherited chain is the authored ancestor cascade that bake.ts later bakes onto
  * the snip root.
  *
  * Why this exists: two things the content script cannot do alone. (1) read the
- * *authored* ancestor cascade (devtools' "inherited from" section) — only the
+ * *authored* ancestor cascade (devtools' "inherited from" section), only the
  * chrome devtools protocol exposes it, and chrome.debugger is background-only.
- * (2) read cross-origin stylesheets blocked by the same-origin policy — only a
+ * (2) read cross-origin stylesheets blocked by the same-origin policy, only a
  * background fetch with <all_urls> host permission can. both are delegated to
  * the background worker over capture-internal messages (CDP_INHERITED /
  * FETCH_STYLESHEET). FETCH_STYLESHEET is the section-19.2 protocol message;
@@ -54,9 +54,9 @@ interface CdpInheritedResult {
  * folds the ancestor rules into foundationRules (P2 will bake the inherited
  * properties onto the snip root in commit 7). soft-fails: if the debugger is
  * busy (devtools open) or attach is refused, the snip continues on cssom data
- * alone with a warning — cdp is an enhancement, never a hard dependency.
+ * alone with a warning, cdp is an enhancement, never a hard dependency.
  *
- * @param captured — the in-flight capture; mutated in place
+ * @param captured - the in-flight capture; mutated in place
  */
 export async function augmentInheritedChainViaCDP(captured: Captured): Promise<void> {
 	const root = captured.root;
@@ -108,7 +108,7 @@ export async function augmentInheritedChainViaCDP(captured: Captured): Promise<v
  * from the inaccessible list. failures stay recorded as inaccessible with a
  * warning rather than blocking the snip.
  *
- * @param captured — the in-flight capture; mutated in place
+ * @param captured - the in-flight capture; mutated in place
  */
 export async function recoverCrossOriginSheets(captured: Captured): Promise<void> {
 	const pending = captured.inaccessible.crossOriginStylesheets;

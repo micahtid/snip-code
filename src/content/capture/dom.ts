@@ -1,8 +1,8 @@
 /**
- * capture/dom.ts — dom clone + element metadata extraction
+ * capture/dom.ts: dom clone + element metadata extraction
  *
- * Phase: b (capture) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1 — capture
+ * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 1, capture
  * Reads from Captured: root (the live element)
  * Writes to Captured: clone, element (metadata block)
  *
@@ -20,7 +20,7 @@ import type { Captured } from '../types';
 
 /**
  * common lazy-loading attribute names, in priority order. not a banned tag/role/
- * css Set (forbidden pattern #1) — these are html attribute names for a
+ * css Set (forbidden pattern #1), these are html attribute names for a
  * universal lazy-img convention, normalized at capture so output is portable.
  */
 const LAZY_SRC_ATTRS = ['data-src', 'data-lazy-src', 'data-original', 'data-srcset'] as const;
@@ -33,7 +33,7 @@ const LAZY_SRC_ATTRS = ['data-src', 'data-lazy-src', 'data-original', 'data-srcs
  * stashed in a data-* attribute, so a pasted snip shows the image immediately
  * instead of waiting for the host page's lazy-load script that no longer runs.
  *
- * @param root — the live element the user picked
+ * @param root - the live element the user picked
  * @returns a detached clone, safe to mutate downstream
  */
 export function cloneElement(root: Element): Element {
@@ -61,11 +61,11 @@ function isPlaceholderSrc(src: string): boolean {
  * builds the element metadata block (section 19.1 `Captured.element`).
  *
  * both modes need this: snip uses the tag/box, assistive emits the whole block
- * as json (section 9). emits two selectors — `selector` (shortest unique) and
+ * as json (section 9). emits two selectors, `selector` (shortest unique) and
  * `robustSelector` (prefers stable data-attributes or ids over class hashes) so a
  * downstream agent can re-find the element even if class hashes churn.
  *
- * @param root — the live picked element
+ * @param root - the live picked element
  * @returns the populated metadata block
  */
 export function buildElementMetadata(root: Element): Captured['element'] {

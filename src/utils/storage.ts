@@ -1,11 +1,11 @@
 /**
- * utils/storage.ts — chrome.storage.local access
+ * utils/storage.ts: chrome.storage.local access
  *
- * Phase: i (byok) — see SNIPCODE-REWRITE-PLAN.md section 12
+ * Phase: i (byok), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (cross-cutting utility)
  *
  * Why this exists: all persistent state (preferences, byok keys, snippets) lives
- * in chrome.storage.local and NEVER chrome.storage.sync — sync would replicate to
+ * in chrome.storage.local and NEVER chrome.storage.sync, sync would replicate to
  * google's cloud, violating the local-only guarantee (decision 3, forbidden #8).
  * this is the single typed gateway to that store so the policy is enforced in one
  * place. byok keys are stored under per-provider keys and are never logged.
@@ -59,7 +59,7 @@ export async function listSnippets(): Promise<SnippetRecord[]> {
 /**
  * append a snippet, evicting the oldest beyond the 50-cap (fifo, decision 12).
  *
- * @param record — the snippet to store
+ * @param record - the snippet to store
  */
 export async function storeSnippet(record: SnippetRecord): Promise<void> {
 	const current = await listSnippets();

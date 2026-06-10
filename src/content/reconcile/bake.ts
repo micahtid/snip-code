@@ -1,8 +1,8 @@
 /**
- * reconcile/bake.ts — style reconciliation (P1 authored-vs-computed)
+ * reconcile/bake.ts: style reconciliation (P1 authored-vs-computed)
  *
- * Phase: c (reconcile) — see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2 — reconcile
+ * Phase: c (reconcile), see SNIPCODE-REWRITE-PLAN.md section 12
+ * Pipeline position: 2, reconcile
  * Reads from Captured: root, clone, foundationRules, componentRules
  * Writes to Captured: bakedStyles (per clone element), clone (inline styles), warnings
  *
@@ -15,13 +15,13 @@
  *
  * - P1 (per element): if the authored value (from match.ts) reproduces the
  *   captured computed value when forced onto the live element, ship the authored
- *   string — preserving var()/clamp()/%/oklch()/calc(). otherwise ship computed
+ *   string, preserving var()/clamp()/%/oklch()/calc(). otherwise ship computed
  *   so pixel fidelity is locked at the capture viewport.
  * - P2 (snip root only): inherited properties whose computed value at the root
  *   diverges from the document default are baked onto the root, so they survive
  *   when the snip loses its ancestor chain. children inherit from the root
  *   automatically, so only the root needs them. the inherited-property list is
- *   read dynamically from the browser (a parent/child probe), never hardcoded —
+ *   read dynamically from the browser (a parent/child probe), never hardcoded , 
  *   forbidden pattern #1 bans property-name Sets, and the engine is the
  *   authoritative source of which properties inherit anyway.
  * - P4 (snip root only): if the root was a flex/grid item of a parent outside
@@ -42,7 +42,7 @@ import { authoredCascade } from './match';
  * clone, recording the result in bakedStyles and writing inline styles so the
  * clone serializes to standalone html.
  *
- * @param captured — the capture; clone + bakedStyles are mutated in place
+ * @param captured - the capture; clone + bakedStyles are mutated in place
  */
 export function reconcile(captured: Captured): void {
 	const cascade = authoredCascade(captured);
@@ -78,9 +78,9 @@ export function reconcile(captured: Captured): void {
 /**
  * applies P2 (inherited divergence) and P4 (escaped layout) to the snip root.
  *
- * @param original — the live root element
- * @param clone — the corresponding clone node (receives the baked values)
- * @param captured — updates bakedStyles for the root clone
+ * @param original - the live root element
+ * @param clone - the corresponding clone node (receives the baked values)
+ * @param captured - updates bakedStyles for the root clone
  */
 function bakeRootContext(original: Element, clone: Element, captured: Captured): void {
 	const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();
@@ -100,8 +100,8 @@ function bakeRootContext(original: Element, clone: Element, captured: Captured):
  * be lost when the snip is reparented, so it is baked onto the root. P1-baked
  * authored values are left untouched (authored wins).
  *
- * @param original — the live root
- * @param baked — the root's baked map, extended in place
+ * @param original - the live root
+ * @param baked - the root's baked map, extended in place
  */
 function bakeInheritedDivergence(original: Element, baked: Map<string, string>): void {
 	const rootComputed = getComputedStyle(original);
@@ -133,8 +133,8 @@ function bakeInheritedDivergence(original: Element, baked: Map<string, string>):
 /**
  * dynamic inheritance test: sets `value` on the probe parent and checks whether
  * the probe child (which has no own declaration for the property) picks it up.
- * the value is the root's own computed value — always a valid css value for the
- * property — so the probe never needs a per-property sentinel.
+ * the value is the root's own computed value, always a valid css value for the
+ * property, so the probe never needs a per-property sentinel.
  *
  * @returns true when the property inherits (and is therefore divergence-prone)
  */
@@ -157,10 +157,10 @@ function isInherited(parent: HTMLElement, child: Element, prop: string, value: s
  *
  * width/height are named explicitly here because they are the specific geometry
  * a flex/grid container imposes on its items (a bounded css-spec mechanism, not a
- * curated heuristic Set) — and only when the escaped-context condition holds.
+ * curated heuristic Set), and only when the escaped-context condition holds.
  *
- * @param original — the live root
- * @param baked — the root's baked map, extended in place
+ * @param original - the live root
+ * @param baked - the root's baked map, extended in place
  */
 function bakeEscapedLayout(original: Element, baked: Map<string, string>): void {
 	const parent = original.parentElement;
@@ -180,8 +180,8 @@ function bakeEscapedLayout(original: Element, baked: Map<string, string>): void 
 /**
  * applies P1 to one element, returning its baked prop→value map.
  *
- * @param original — the live element (has document context for getComputedStyle)
- * @param authored — its winning authored values from the cascade
+ * @param original - the live element (has document context for getComputedStyle)
+ * @param authored - its winning authored values from the cascade
  */
 function bakeElement(original: Element, authored: Map<string, string>): Map<string, string> {
 	const baked = new Map<string, string>();
@@ -241,7 +241,7 @@ function writeInline(clone: Element, baked: Map<string, string>): void {
 	}
 }
 
-/** depth-first element list, root first — must match match.ts traversal order. */
+/** depth-first element list, root first, must match match.ts traversal order. */
 function subtreeElements(root: Element): Element[] {
 	const out: Element[] = [];
 	const walk = (el: Element): void => {
