@@ -1,48 +1,59 @@
 /**
  * capture/picker.ts: in-page element picker overlay
  *
- * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1, capture (the front door; produces the chosen Element)
+ * Pipeline position: capture (the front door; produces the chosen Element)
  * Reads from Captured: n/a (runs before Captured exists)
  * Writes to Captured: n/a (hands the chosen Element + screenshot to the orchestrator)
  *
- * Principles applied: none (interaction surface).
- *
- * Why this exists: every snip starts with the user choosing an element. this
+ * Why this exists: every snip starts with the user choosing an element. This
  * overlay gives live visual feedback, a highlight box, edge guide lines, and a
  * tag/size tooltip, that tracks whatever is under the pointer, then resolves to
- * the chosen element on click. ported (rewritten, not copied) from v1
- * element-selector.ts; the meaningful v2 change is the arrowup decoration-climb
- * (section 19.7), which v1 lacked, letting the user grab a wrapping section
- * instead of the leaf they happen to be hovering.
+ * the chosen element on click. Ported (rewritten, not copied) from v1
+ * element-selector.ts; the meaningful v2 change is the sticky arrow-climb, which
+ * v1 lacked, letting the user grab a wrapping container instead of the leaf they
+ * happen to be hovering.
  *
- * deliberately no Set<string> of "blocked" container tags (v1 had one to avoid
- * snapping to body/main): forbidden pattern #1 bans tag-name Sets, and the
- * arrowup climb makes the heuristic unnecessary, the user climbs on purpose.
+ * The climb is sticky: arrowup walks to the parent, arrowdown walks back down
+ * toward the leaf the cursor is over, and a climbed selection is preserved while
+ * the pointer stays inside it (a plain mousemove no longer snaps back to the leaf,
+ * the regression that made wrapping containers unreachable). Moving the pointer
+ * out of the selection re-baselines to the fresh leaf under the cursor.
+ *
+ * Deliberately no Set<string> of "blocked" container tags (v1 had one to avoid
+ * snapping to body/main): hardcoded tag-name Sets are disallowed, and the sticky
+ * climb makes the heuristic unnecessary, the user climbs on purpose.
  */
 
-/** options the orchestrator passes to drive selection. */
+/** Options the orchestrator passes to drive selection. */
 export interface PickerOptions {
-	/** called with the chosen element and a cropped screenshot data url. */
+	/** Called with the chosen element and a cropped screenshot data url. */
 	onSelect: (element: Element, screenshot: string) => void;
-	/** called when the user presses esc. */
+	/** Called when the user presses esc. */
 	onCancel: () => void;
 }
 
 const OVERLAY_ID = 'snipcode-overlay';
 const TOOLTIP_ID = 'snipcode-tooltip';
-// sit one below the overlay so the box paints over the guide lines.
+// Sit one below the overlay so the box paints over the guide lines.
 const Z_OVERLAY = 2147483647;
 const Z_GUIDES = 2147483646;
 
 /**
- * drives the pick interaction. construct, then call activate(); the overlay
+ * Drives the pick interaction. Construct, then call activate(); the overlay
  * tears itself down on select or cancel.
  */
 export class ElementPicker {
 	private readonly options: PickerOptions;
 	private active = false;
+	/** The element that would be snipped on click (may be a climbed ancestor of `leaf`). */
 	private current: Element | null = null;
+	/** The actual element under the cursor; the floor that arrowdown descends toward. */
+	private leaf: Element | null = null;
+	/** True once the user has climbed above the leaf; preserved across mousemove. */
+	private climbed = false;
+	/** Last cursor position, so a keyboard climb can re-place the tooltip. */
+	private lastX = 0;
+	private lastY = 0;
 	private scrolling = false;
 	private scrollTimer: number | null = null;
 
@@ -54,7 +65,7 @@ export class ElementPicker {
 		this.options = options;
 	}
 
-	/** show the overlay and start tracking the pointer. */
+	/** Show the overlay and start tracking the pointer. */
 	activate(): void {
 		if (this.active) return;
 		this.active = true;
@@ -66,11 +77,13 @@ export class ElementPicker {
 		window.addEventListener('resize', this.onScrollOrResize, true);
 	}
 
-	/** remove the overlay and detach every listener. idempotent. */
+	/** Remove the overlay and detach every listener. Idempotent. */
 	deactivate(): void {
 		if (!this.active) return;
 		this.active = false;
 		this.current = null;
+		this.leaf = null;
+		this.climbed = false;
 		if (this.scrollTimer !== null) {
 			window.clearTimeout(this.scrollTimer);
 			this.scrollTimer = null;
@@ -87,22 +100,24 @@ export class ElementPicker {
 		this.guides = [];
 	}
 
-	/** build the highlight box, four edge guides, and the tooltip. */
+	/** Build the highlight box, four edge guides, and the tooltip. */
 	private buildChrome(): void {
 		const overlay = document.createElement('div');
 		overlay.id = OVERLAY_ID;
 		Object.assign(overlay.style, {
 			position: 'fixed',
 			zIndex: String(Z_OVERLAY),
-			pointerEvents: 'none', // never intercept the hover/click we track.
+			pointerEvents: 'none', // Never intercept the hover/click we track.
 			border: '1.5px solid #4f6ef6',
 			background: 'rgba(79, 110, 246, 0.10)',
-			// dim the rest of the page so the target stands out (set-of-marks).
+			// Dim the rest of the page so the target stands out (set-of-marks).
 			boxShadow: '0 0 0 16000px rgba(7, 9, 15, 0.30)',
 			borderRadius: '2px',
-			// translate (gpu-composited) instead of top/left to avoid layout thrash.
+			// Translate (gpu-composited) instead of top/left to avoid layout thrash.
 			transform: 'translate(0,0)',
-			transition: 'transform 0.12s ease-out, width 0.12s ease-out, height 0.12s ease-out, opacity 0.15s',
+			// Elastic settle (matches v1's selection feel); opacity fades faster.
+			transition:
+				'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.25s cubic-bezier(0.22, 1, 0.36, 1), height 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out',
 			top: '0',
 			left: '0',
 			width: '0',
@@ -146,7 +161,7 @@ export class ElementPicker {
 		this.tooltip = tooltip;
 	}
 
-	/** track the element under the cursor (via hit-testing, not event.target). */
+	/** Track the element under the cursor (via hit-testing, not event.target). */
 	private readonly onMove = (e: MouseEvent): void => {
 		if (this.scrolling) return;
 		// elementFromPoint is more reliable than e.target for nested/overlapped
@@ -155,12 +170,25 @@ export class ElementPicker {
 		if (!el || el === this.overlay || el === this.tooltip || this.guides.includes(el as HTMLDivElement)) {
 			return;
 		}
+		this.lastX = e.clientX;
+		this.lastY = e.clientY;
+		// Sticky climb: while a climbed selection still contains the cursor, keep it.
+		// Only track the leaf underneath so arrowdown has a floor to descend toward.
+		// This is the fix for the regression where any mousemove snapped the highlight
+		// back to the leaf, leaving wrapping containers unreachable.
+		if (this.climbed && this.current && this.current !== el && this.current.contains(el)) {
+			this.leaf = el;
+			return;
+		}
+		// Fresh target under the cursor: re-baseline and drop any climb.
+		this.leaf = el;
 		this.current = el;
+		this.climbed = false;
 		this.frame(el);
 		this.label(el, e.clientX, e.clientY);
 	};
 
-	/** position the highlight box + guides flush around `el`'s border rect. */
+	/** Position the highlight box + guides flush around `el`'s border rect. */
 	private frame(el: Element): void {
 		if (!this.overlay) return;
 		const r = el.getBoundingClientRect();
@@ -173,7 +201,7 @@ export class ElementPicker {
 		});
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
-		// top, bottom, left, right edge lines spanning the viewport.
+		// Top, bottom, left, right edge lines spanning the viewport.
 		const edges: Array<Partial<CSSStyleDeclaration>> = [
 			{ left: '0', top: `${r.top}px`, width: `${vw}px`, height: '1px' },
 			{ left: '0', top: `${r.bottom}px`, width: `${vw}px`, height: '1px' },
@@ -185,7 +213,7 @@ export class ElementPicker {
 		});
 	}
 
-	/** render `<tag#id.class> WxH` near the cursor, flipping at viewport edges. */
+	/** Render `<tag#id.class> WxH` near the cursor, flipping at viewport edges. */
 	private label(el: Element, x: number, y: number): void {
 		if (!this.tooltip) return;
 		const r = el.getBoundingClientRect();
@@ -213,22 +241,43 @@ export class ElementPicker {
 			this.options.onCancel();
 			return;
 		}
-		// arrowup: climb to the parent so the user can grab a wrapping container
-		// rather than the leaf under the cursor (section 19.7 decoration climb).
+		// Arrowup: climb to the parent so the user can grab a wrapping container
+		// rather than the leaf under the cursor. The climb is sticky (see onMove)
+		// and the tooltip is re-rendered so the user sees which element they are
+		// now on.
 		if (e.key === 'ArrowUp' && this.current?.parentElement) {
 			e.preventDefault();
 			this.current = this.current.parentElement;
+			this.climbed = true;
 			this.frame(this.current);
+			this.label(this.current, this.lastX, this.lastY);
+			return;
+		}
+		// Arrowdown: walk back down one step toward the leaf under the cursor, undoing
+		// one climb. Bottoming out at the leaf clears the climb so mousemove tracks again.
+		if (e.key === 'ArrowDown' && this.current && this.leaf && this.current !== this.leaf && this.current.contains(this.leaf)) {
+			e.preventDefault();
+			const next = childTowardLeaf(this.current, this.leaf);
+			if (next) {
+				this.current = next;
+				this.climbed = next !== this.leaf;
+				this.frame(this.current);
+				this.label(this.current, this.lastX, this.lastY);
+			}
 		}
 	};
 
-	/** while scrolling, fade the chrome out; positions are stale until it settles. */
+	/** While scrolling, fade the chrome out; positions are stale until it settles. */
 	private readonly onScrollOrResize = (): void => {
 		this.scrolling = true;
 		if (this.overlay) this.overlay.style.opacity = '0';
 		if (this.tooltip) this.tooltip.style.opacity = '0';
 		this.guides.forEach((g) => (g.style.opacity = '0'));
+		// Positions are stale after a scroll; drop the selection and any climb so the
+		// next hover starts clean.
 		this.current = null;
+		this.leaf = null;
+		this.climbed = false;
 		if (this.scrollTimer !== null) window.clearTimeout(this.scrollTimer);
 		this.scrollTimer = window.setTimeout(() => {
 			this.scrolling = false;
@@ -238,7 +287,7 @@ export class ElementPicker {
 
 	private readonly onClick = (e: MouseEvent): void => {
 		if (!this.current) return;
-		// swallow the click entirely so the host page never sees it.
+		// Swallow the click entirely so the host page never sees it.
 		e.preventDefault();
 		e.stopPropagation();
 		e.stopImmediatePropagation();
@@ -246,20 +295,20 @@ export class ElementPicker {
 		void this.complete(chosen);
 	};
 
-	/** hide the chrome, grab a cropped screenshot, then fire onSelect. */
+	/** Hide the chrome, grab a cropped screenshot, then fire onSelect. */
 	private async complete(element: Element): Promise<void> {
-		// hide our own chrome before the capture so it is not in the screenshot.
+		// Hide our own chrome before the capture so it is not in the screenshot.
 		if (this.overlay) this.overlay.style.display = 'none';
 		if (this.tooltip) this.tooltip.style.display = 'none';
 		this.guides.forEach((g) => (g.style.display = 'none'));
-		// let the browser paint one frame without the overlay before capturing.
+		// Let the browser paint one frame without the overlay before capturing.
 		await new Promise((r) => requestAnimationFrame(() => r(null)));
 
 		let screenshot = '';
 		try {
 			screenshot = await captureElementScreenshot(element);
 		} catch {
-			// a missing screenshot never blocks the snip; phases 1-4 do not need it.
+			// A missing screenshot never blocks the snip; the code phases do not need it.
 			screenshot = '';
 		}
 		this.deactivate();
@@ -268,13 +317,30 @@ export class ElementPicker {
 }
 
 /**
- * captures the visible tab and crops to the element's padded border box.
+ * Given an `ancestor` and a `leaf` somewhere beneath it, returns the direct child
+ * of `ancestor` that sits on the path down to `leaf`. Used by the arrowdown descend
+ * to step exactly one level back toward the element under the cursor.
  *
- * the privileged screenshot lives in the background worker (content scripts
+ * @param ancestor - the currently selected (climbed) element
+ * @param leaf - the element under the cursor, a descendant of `ancestor`
+ * @returns the child of `ancestor` containing `leaf`, or null if not on the path
+ */
+function childTowardLeaf(ancestor: Element, leaf: Element): Element | null {
+	let node: Element = leaf;
+	while (node.parentElement && node.parentElement !== ancestor) {
+		node = node.parentElement;
+	}
+	return node.parentElement === ancestor ? node : null;
+}
+
+/**
+ * Captures the visible tab and crops to the element's padded border box.
+ *
+ * The privileged screenshot lives in the background worker (content scripts
  * cannot call chrome.tabs.captureVisibleTab), so this messages CAPTURE_SCREENSHOT
- * and crops the returned full-viewport image to the element rect. a 24px pad
+ * and crops the returned full-viewport image to the element rect. A 24px pad
  * keeps drop shadows and ::before/::after decorations that bleed outside the
- * border box. accounts for devicePixelRatio so css px map to device px.
+ * border box. Accounts for devicePixelRatio so css px map to device px.
  *
  * @param element - the element to crop around
  * @returns a png data url, or throws if capture/crop fails
@@ -310,13 +376,13 @@ async function captureElementScreenshot(element: Element): Promise<string> {
 	return await blobToDataUrl(blob);
 }
 
-/** load a data url into an ImageBitmap-compatible source. */
+/** Load a data url into an ImageBitmap-compatible source. */
 async function loadImage(dataUrl: string): Promise<ImageBitmap> {
 	const blob = await (await fetch(dataUrl)).blob();
 	return await createImageBitmap(blob);
 }
 
-/** serialize a blob to a base64 data url. */
+/** Serialize a blob to a base64 data url. */
 function blobToDataUrl(blob: Blob): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
@@ -326,7 +392,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 	});
 }
 
-/** a uuid v4 for message correlation; crypto.randomUUID is available in mv3. */
+/** A uuid v4 for message correlation; crypto.randomUUID is available in mv3. */
 function cryptoId(): string {
 	return crypto.randomUUID();
 }

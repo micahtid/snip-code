@@ -1,26 +1,21 @@
 /**
  * content/index.ts: pipeline orchestrator + content-script entry point
  *
- * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12 for phase map
- * Pipeline position: spans 1-5 (this is the conductor, not a single phase)
+ * Pipeline position: spans the whole pipeline (this is the conductor, not a single phase)
  * Reads from Captured: constructs it (capture phase), reads it downstream
  * Writes to Captured: owns the lifecycle
  *
- * Principles applied: none directly; orchestrates the modules that apply P1-P5.
+ * Why this exists: chrome injects exactly one content script per page. This file
+ * is that script. It owns the message protocol and runs the phases in order:
  *
- * Why this exists: chrome injects exactly one content script per page. this file
- * is that script. it owns the message protocol (section 19.2) and runs the
- * phases in order. as of commit 3 only pipeline phase 1 (capture) is wired:
+ * capture → content/capture/* (picker → dom clone → stylesheet discovery)
+ * reconcile → content/reconcile/*
+ * resolve → content/resolve/*
+ * convert → content/convert/*
+ * polish → content/polish/*
  *
- *   1 capture   → content/capture/*   (picker → dom clone → stylesheet discovery)
- *   2 reconcile → content/reconcile/* (commits 6-7, g, h)
- *   3 resolve   → content/resolve/*   (commit 8)
- *   4 convert   → content/convert/*   (commits 9-15)
- *   5 polish    → content/polish/*    (commits 35-36)
- *
- * capture produces a Captured object; at this stage the pipeline emits the raw
- * cloned html (no styling baked yet) so the wiring is observable end to end. the
- * reconcile→convert phases that turn it into clean code arrive in later commits.
+ * capture produces a Captured object, which the reconcile through convert phases
+ * turn into clean code before it is emitted.
  */
 import type { Captured } from './types';
 import { ElementPicker } from './capture/picker';
@@ -58,15 +53,18 @@ import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 
-/** ui-local signal from the sidebar's picker control (components/Picker.tsx). */
+/** Ui-local signals from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
+/** Sent when the user presses esc with focus in the side panel (App.tsx). The
+ * picker's own esc handler only fires when the page holds keyboard focus, so this
+ * is the panel-side path that tears the overlay down regardless of focus. */
+const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
 
 /**
- * the reconcile-phase feature handlers, in apply order (section 7). each handles
- * one css/html spec mechanism universally and is orthogonal to the others
- * (forbidden pattern #7). registered here, in the orchestrator, so no
- * features/index.ts file is needed outside the declared repo tree. handlers are
- * added one per commit across phases g (tier 1) and h (tier 2).
+ * The reconcile-phase feature handlers, in apply order. Each handles
+ * one css/html spec mechanism universally and is orthogonal to the others.
+ * Registered here, in the orchestrator, so no features/index.ts file is needed
+ * outside the declared repo tree.
  */
 const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
 	['icons', applyIcons],
@@ -86,10 +84,10 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
 ];
 
 /**
- * runs every feature handler over the captured snip, isolating failures.
+ * Runs every feature handler over the captured snip, isolating failures.
  *
- * a handler that throws never halts the pipeline (section 19.6): the error is
- * recorded as a warning and the unmodified captured flows on. output ships with
+ * A handler that throws never halts the pipeline: the error is
+ * recorded as a warning and the unmodified captured flows on. Output ships with
  * the warning; only output divergence affects the grader.
  *
  * @param captured - the reconciled snip; handlers mutate and return it
@@ -104,11 +102,11 @@ function runFeatures(captured: Captured): void {
 	}
 }
 
-/** only one picker may be active at a time. */
+/** Only one picker may be active at a time. */
 let activePicker: ElementPicker | null = null;
 
 /**
- * runs pipeline phase 1 (capture) on the chosen element, assembling the shared
+ * Runs the capture phase on the chosen element, assembling the shared
  * Captured object every later phase reads.
  *
  * @param root - the live element the user picked
@@ -141,34 +139,30 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 		keyframes: sheets.keyframes,
 		inaccessible: {
 			crossOriginStylesheets: sheets.crossOriginStylesheets,
-			closedShadowRoots: 0, // cdp shadow-pierce lands in commit 4.
+			closedShadowRoots: 0, // Cdp shadow-pierce fills this in.
 		},
 		bakedStyles: new Map(),
 		warnings: [],
 	};
 
-	// privileged augmentation (background-mediated). both soft-fail: the snip
+	// Privileged augmentation (background-mediated). Both soft-fail: the snip
 	// proceeds on cssom-only data if cdp attach is refused or a fetch is blocked.
-	await augmentInheritedChainViaCDP(captured); // P2 inherited cascade via cdp
-	await recoverCrossOriginSheets(captured); // recover cors-blocked sheets
+	await augmentInheritedChainViaCDP(captured); // inherited cascade via cdp
+	await recoverCrossOriginSheets(captured); // Recover cors-blocked sheets
 
 	return captured;
 }
 
 /**
- * runs the pipeline for a selected element and ships a result to the sidebar.
- *
- * at commit 3 the pipeline stops after capture and emits raw cloned html. later
- * commits insert reconcile→resolve→convert→polish between capture and emit.
+ * Runs the pipeline for a selected element and ships a result to the sidebar.
  *
  * @param root - the picked element
  * @param screenshot - cropped png data url
- * @param mode - snip (code) or assistive (json); assistive emit is fully built
- *   in commit 37, so here it ships the metadata block as a json preview
+ * @param mode - snip (code) or assistive (json)
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
-	// builder gate (decision 5): refuse framer/wix/etc before doing any capture
-	// work. cheap structural check; on a hit we emit a static unsupported message
+	// Builder gate: refuse framer/wix/etc before doing any capture
+	// work. Cheap structural check; on a hit we emit a static unsupported message
 	// and stop, no degraded fallback output.
 	const gate = detectBuilder(root);
 	if (gate.blocked) {
@@ -179,12 +173,11 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 
 	const captured = await capture(root, screenshot);
 
-	// assistive mode stops at capture and emits metadata json (full emit: commit
-	// 37). snip mode runs the reconcile phase (P1 today; resolve/convert/polish
-	// land in later commits) and emits the inline-styled clone.
+	// Assistive mode stops at capture and emits metadata json. Snip mode runs the
+	// full pipeline (reconcile, resolve, convert, polish) and emits the styled clone.
 	if (mode === 'assistive') {
-		// assistive runs phase 1 only, then emits the section-9 json and delivers
-		// it over the user's chosen channels (clipboard / file / webhook).
+		// Assistive runs the capture phase only, then emits the assistive json and
+		// delivers it over the user's chosen channels (clipboard / file / webhook).
 		const doc = buildAssistiveJson(captured);
 		const prefs = await getPrefs();
 		const deliveryWarnings = await deliver(doc, prefs);
@@ -192,29 +185,29 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// pipeline phase 2, reconcile. P1/P2/P4 bake onto the clone, then the tier
-	// 1+2 feature handlers run over the result (isolated failures).
+	// Reconcile phase. Authored and inherited styles bake onto the clone, then the
+	// feature handlers run over the result (isolated failures).
 	reconcile(captured);
 	runFeatures(captured);
 
-	// pipeline phase 3, resolve. P3 var resolution (single pass), @font-face
-	// absolutization, @keyframes pairing. order: vars first (may rewrite values),
-	// then fonts/keyframes which read the now-stable baked styles.
+	// Resolve phase. Var resolution (single pass), @font-face absolutization,
+	// @keyframes pairing. Order: vars first (may rewrite values), then
+	// fonts/keyframes which read the now-stable baked styles.
 	resolveVariables(captured);
 	resolveFonts(captured);
 	resolveAnimations(captured);
 
-	// pipeline phase 4, convert. emit the user's chosen format and run P5
-	// dead-code elimination over the emitted stylesheet.
+	// Convert phase. Emit the user's chosen format and run dead-code elimination
+	// over the emitted stylesheet.
 	const prefs = await getPrefs();
 	const format: OutputFormat = prefs.defaultOutput;
 	const { html, css } = emitFormat(captured, format);
 	let cleanedCss = cleanCss(css, captured);
 	let finalHtml = html;
 
-	// pipeline phase 5, polish (byok, optional). additive class renames + hover
-	// rules from the user's own llm; silently no-ops without a key. gated to
-	// class-based formats so it never rewrites tailwind utilities or jsx.
+	// Polish phase (byok, optional). Additive class renames + hover rules from the
+	// user's own llm; silently no-ops without a key. Gated to class-based formats
+	// so it never rewrites tailwind utilities or jsx.
 	if (format === 'html' || format === 'bem-css' || format === 'bem-scss') {
 		const model = prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider];
 		const polished = await polish(finalHtml, cleanedCss, prefs.activeProvider, model);
@@ -225,7 +218,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const output = composeDocument(finalHtml, cleanedCss);
 	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, warnings: captured.warnings });
 
-	// persist the snippet (fifo 50, decision 12). best-effort; a storage failure
+	// Persist the snippet (fifo, capped at 50). Best-effort; a storage failure
 	// never fails the snip.
 	void storeSnippet({
 		id: crypto.randomUUID(),
@@ -239,9 +232,9 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 }
 
 /**
- * dispatches to the emitter for the chosen output format (decision 10). every
+ * Dispatches to the emitter for the chosen output format. Every
  * format is a pure transform of the same Captured, so all 7 are derivable from
- * one capture without re-running phase 1. bem/jsx/vue land in commits 13-15.
+ * one capture without re-running the capture phase.
  *
  * @param captured - the reconciled+resolved snip
  * @param format - the output format to emit
@@ -267,9 +260,9 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 }
 
 /**
- * sends a snip result to the sidebar. the ResultPanel renders it from phase e on;
- * until then this message is the observable output of a snip. the sidebar may be
- * closed, so a delivery failure is swallowed, the snip still succeeded.
+ * Sends a snip result to the sidebar, where the ResultPanel renders it. The
+ * sidebar may be closed, so a delivery failure is swallowed, the snip still
+ * succeeded.
  */
 function shipResult(payload: Record<string, unknown>): void {
 	chrome.runtime
@@ -277,7 +270,7 @@ function shipResult(payload: Record<string, unknown>): void {
 		.catch(() => {});
 }
 
-/** start the picker overlay; on select, run the pipeline for the chosen mode. */
+/** Start the picker overlay; on select, run the pipeline for the chosen mode. */
 function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker?.deactivate();
 	activePicker = new ElementPicker({
@@ -293,25 +286,26 @@ function startPicker(mode: 'snip' | 'assistive'): void {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) => {
-	if (
-		typeof message === 'object' &&
-		message !== null &&
-		'type' in message &&
-		(message as { type: unknown }).type === START_PICKER
-	) {
+	const type = typeof message === 'object' && message !== null && 'type' in message ? (message as { type: unknown }).type : null;
+	if (type === START_PICKER) {
 		const mode = (message as { mode?: unknown }).mode === 'assistive' ? 'assistive' : 'snip';
 		startPicker(mode);
+	} else if (type === CANCEL_PICKER) {
+		// Panel-side esc: tear the overlay down. The panel already cleared its own
+		// picking state, so no onCancel callback is needed here.
+		activePicker?.deactivate();
+		activePicker = null;
 	}
-	// no async response from the picker path; keep the channel synchronous.
+	// No async response from the picker path; keep the channel synchronous.
 	return false;
 });
 
 // ---------------------------------------------------------------------------
-// headless test bridge (tests/run-pipeline.mjs, the HEADLESS_SNIP entry point,
-// section 19.2). the grader drives a snip by css selector instead of the picker.
-// page and content script share the document but live in separate js worlds, so
+// Headless test bridge (tests/run-pipeline.mjs, the HEADLESS_SNIP entry point).
+// The grader drives a snip by css selector instead of the picker.
+// Page and content script share the document but live in separate js worlds, so
 // chrome.runtime messages and window.postMessage do not reach the page; a
-// CustomEvent dispatched on `document` does. the runner waits on
+// CustomEvent dispatched on `document` does. The runner waits on
 // data-snip-injected, dispatches "snip-runner:snip" {selector, mode}, and reads
 // the reply on "snip-extension:result".
 // ---------------------------------------------------------------------------
@@ -327,9 +321,9 @@ document.addEventListener('snip-runner:snip', (ev) => {
 });
 
 /**
- * runs the full pipeline for a selector (no picker, no screenshot) and returns a
- * self-contained output.html string. this is the deterministic path the grader
- * measures, the byok llm polish (phase 5) is intentionally not run here.
+ * Runs the full pipeline for a selector (no picker, no screenshot) and returns a
+ * self-contained output.html string. This is the deterministic path the grader
+ * measures, the byok llm polish phase is intentionally not run here.
  *
  * @param selector - css selector for the element to snip
  * @param mode - snip (code) or assistive (json)
@@ -344,7 +338,7 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 
 		const captured = await capture(el, '');
 		if (mode === 'assistive') {
-			// headless assistive: emit the section-9 json (no delivery side effects).
+			// Headless assistive: emit the assistive json (no delivery side effects).
 			return { ok: true, status: 'ok', assistive: buildAssistiveJson(captured), warnings: captured.warnings };
 		}
 

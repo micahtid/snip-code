@@ -1,26 +1,25 @@
 /**
  * convert/bem.ts: inline styles -> bem classes + css/scss
  *
- * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4, convert
+ * Pipeline position: convert
  * Reads from Captured: clone (inline-styled)
  * Writes to Captured: nothing (deep-copies the clone; canonical clone untouched)
  *
- * Principles applied: none directly; a format transform of the baked result.
+ * A format transform of the baked result.
  *
- * Why this exists: the bem-css and bem-scss formats (decision 10) want semantic
- * classes and a separate stylesheet instead of inline styles. this dedups
+ * Why this exists: the bem-css and bem-scss formats want semantic
+ * classes and a separate stylesheet instead of inline styles. This dedups
  * identical declaration sets into shared bem-named classes (block + block__element)
- * and emits either a flat css ruleset or a nested scss block. like the other
+ * and emits either a flat css ruleset or a nested scss block. Like the other
  * emitters it works on a copy of the clone so all 7 formats stay derivable from
- * one capture. ported (rewritten) from v1 css-to-bem.ts (inline-to-class dedup),
+ * one capture. Ported (rewritten) from v1 css-to-bem.ts (inline-to-class dedup),
  * dropping the per-case branches.
  */
 import type { Captured } from '../types';
 import { snapValue } from './snap';
 import { atRulesCss, type HtmlOutput } from './html';
 
-/** one generated class and the declarations it carries. */
+/** One generated class and the declarations it carries. */
 interface ClassRule {
 	className: string;
 	decls: Array<[string, string]>;
@@ -28,7 +27,7 @@ interface ClassRule {
 }
 
 /**
- * emits the snip as bem-classed markup plus a css or scss stylesheet.
+ * Emits the snip as bem-classed markup plus a css or scss stylesheet.
  *
  * @param captured - read-only; a deep copy of the clone is transformed
  * @param scss - true for nested scss output, false for flat css
@@ -65,7 +64,7 @@ export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 	return { html: work.outerHTML, css };
 }
 
-/** read an element's inline declarations, snapping values for cleaner output. */
+/** Read an element's inline declarations, snapping values for cleaner output. */
 function readDecls(el: HTMLElement): Array<[string, string]> {
 	const out: Array<[string, string]> = [];
 	const style = el.style;
@@ -77,7 +76,7 @@ function readDecls(el: HTMLElement): Array<[string, string]> {
 	return out;
 }
 
-/** a stable key over a declaration set so identical sets share one class. */
+/** A stable key over a declaration set so identical sets share one class. */
 function declKey(decls: Array<[string, string]>): string {
 	return [...decls]
 		.sort(([a], [b]) => a.localeCompare(b))
@@ -85,20 +84,20 @@ function declKey(decls: Array<[string, string]>): string {
 		.join(';');
 }
 
-/** a fresh `block__tag-n` class, numbered per tag so names stay readable. */
+/** A fresh `block__tag-n` class, numbered per tag so names stay readable. */
 function uniqueElementClass(block: string, tag: string, counters: Map<string, number>): string {
 	const n = (counters.get(tag) ?? 0) + 1;
 	counters.set(tag, n);
 	return `${block}__${sanitize(tag)}-${n}`;
 }
 
-/** flat css: one rule per generated class. */
+/** Flat css: one rule per generated class. */
 function cssText(rules: ClassRule[]): string {
 	return rules.map((r) => `.${r.className} {\n${declLines(r.decls)}\n}`).join('\n\n');
 }
 
 /**
- * nested scss: the block rule with its element rules nested via `&__...`. bem
+ * Nested scss: the block rule with its element rules nested via `&__...`. Bem
  * names are flat regardless of dom depth, so every element rule nests one level
  * under the block.
  */
@@ -112,25 +111,25 @@ function scssText(block: string, rules: ClassRule[]): string {
 	return `.${block} {\n${rootDecls}${rootDecls && inner ? '\n' : ''}${inner}\n}`;
 }
 
-/** serialize declarations as indented `prop: value;` lines. */
+/** Serialize declarations as indented `prop: value;` lines. */
 function declLines(decls: Array<[string, string]>, indent = 1): string {
 	const pad = '\t'.repeat(indent);
 	return decls.map(([p, v]) => `${pad}${p}: ${v};`).join('\n');
 }
 
-/** the @font-face/@keyframes block, prefixed with a blank line if present. */
+/** The @font-face/@keyframes block, prefixed with a blank line if present. */
 function atRulesAppendix(captured: Captured): string {
 	const at = atRulesCss(captured);
 	return at ? `\n\n${at}` : '';
 }
 
-/** the first author class token on the root, or its tag name, as the block base. */
+/** The first author class token on the root, or its tag name, as the block base. */
 function firstClassOrTag(el: Element): string {
 	const first = Array.from(el.classList)[0];
 	return first ?? el.tagName.toLowerCase();
 }
 
-/** lowercase, hyphenate, and trim a token for use in a class name. */
+/** Lowercase, hyphenate, and trim a token for use in a class name. */
 function sanitize(name: string): string {
 	return name
 		.toLowerCase()

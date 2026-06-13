@@ -1,28 +1,25 @@
 /**
  * capture/sheets.ts: stylesheet discovery (cssom)
  *
- * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1, capture
+ * Pipeline position: capture
  * Reads from Captured: n/a (reads the live document.styleSheets)
  * Writes to Captured: stylesheets, foundationRules, componentRules, variables,
- *   fonts, keyframes, inaccessible.crossOriginStylesheets
- *
- * Principles applied: none directly (capture-time discovery feeds P1-P3 later).
+ * fonts, keyframes, inaccessible.crossOriginStylesheets
  *
  * Why this exists: a snipped element's appearance comes from rules scattered
  * across every sheet on the page, <style> blocks, linked css, injected sheets.
- * this module flattens all of them into a single CssRule[] (section 19.1),
+ * This module flattens all of them into a single CssRule[],
  * preserving each rule's grouping context (@media/@container/@layer/@supports) so
- * later phases can decide what survives serialization. it splits broadly-scoped
+ * later phases can decide what survives serialization. It splits broadly-scoped
  * "foundation" rules (html/body/:root/*) from element-scoped "component" rules;
- * reconcile/match.ts (commit 6) refines the component set by actually matching
- * against captured elements. cross-origin sheets that throw on .cssRules are
- * recorded as inaccessible here and recovered via cdp/background fetch in commit
- * 4. shadow + adoptedStyleSheets discovery lands with the shadow handler.
+ * reconcile/match.ts refines the component set by actually matching
+ * against captured elements. Cross-origin sheets that throw on .cssRules are
+ * recorded as inaccessible here and recovered via cdp/background fetch later.
+ * Shadow + adoptedStyleSheets discovery lands with the shadow handler.
  */
 import type { CssRule, CssVariable, FontFace, Keyframes, Stylesheet } from '../types';
 
-/** everything sheets discovery contributes to Captured, returned for the orchestrator to assign. */
+/** Everything sheets discovery contributes to Captured, returned for the orchestrator to assign. */
 export interface SheetDiscovery {
 	stylesheets: Stylesheet[];
 	foundationRules: CssRule[];
@@ -33,7 +30,7 @@ export interface SheetDiscovery {
 	crossOriginStylesheets: string[];
 }
 
-/** grouping context threaded down through nested @media/@supports/@layer/@container. */
+/** Grouping context threaded down through nested @media/@supports/@layer/@container. */
 interface RuleContext {
 	mediaQuery?: string;
 	supports?: string;
@@ -42,9 +39,9 @@ interface RuleContext {
 }
 
 /**
- * walks every accessible stylesheet in the document and flattens it.
+ * Walks every accessible stylesheet in the document and flattens it.
  *
- * cross-origin sheets raise a SecurityError when their .cssRules is read; we
+ * Cross-origin sheets raise a SecurityError when their .cssRules is read; we
  * catch that and record the href for later background fetch rather than failing.
  *
  * @returns the discovered rules, variables, fonts, keyframes, and sheet metadata
@@ -64,10 +61,10 @@ export function discoverStylesheets(): SheetDiscovery {
 		const origin = sheetOrigin(sheet);
 		let rules: CSSRuleList | null = null;
 		try {
-			rules = sheet.cssRules; // throws SecurityError on cross-origin
+			rules = sheet.cssRules; // Throws SecurityError on cross-origin
 		} catch {
-			// cannot read this sheet from the content script; remember its href so
-			// commit 4 can re-fetch it through the privileged background worker.
+			// Cannot read this sheet from the content script; remember its href so
+			// the background worker can re-fetch it later through privileged access.
 			if (sheet.href) out.crossOriginStylesheets.push(sheet.href);
 			out.stylesheets.push({ href: sheet.href, origin: 'cross-origin', ruleCount: 0 });
 			continue;
@@ -82,10 +79,10 @@ export function discoverStylesheets(): SheetDiscovery {
 }
 
 /**
- * parses a raw css string into the same discovery shape, for cross-origin sheets
- * recovered through the background worker (commit 4, capture/cdp.ts).
+ * Parses a raw css string into the same discovery shape, for cross-origin sheets
+ * recovered through the background worker.
  *
- * uses a constructable stylesheet so parsing never touches the live page. the
+ * Uses a constructable stylesheet so parsing never touches the live page. The
  * resulting rules carry the caller's `source` tag so downstream phases can tell
  * recovered rules from cssom-read ones.
  *
@@ -109,7 +106,7 @@ export async function parseCssText(cssText: string, source: CssRule['source'] = 
 	return out;
 }
 
-/** classify a sheet's origin from its owner node and href. */
+/** Classify a sheet's origin from its owner node and href. */
 function sheetOrigin(sheet: CSSStyleSheet): Stylesheet['origin'] {
 	if (sheet.ownerNode instanceof HTMLStyleElement) return 'inline';
 	if (!sheet.href) return 'inline';
@@ -121,8 +118,8 @@ function sheetOrigin(sheet: CSSStyleSheet): Stylesheet['origin'] {
 }
 
 /**
- * recursively flattens a rule list, threading grouping context down into nested
- * blocks. style rules become CssRule entries; @font-face and @keyframes are
+ * Recursively flattens a rule list, threading grouping context down into nested
+ * blocks. Style rules become CssRule entries; @font-face and @keyframes are
  * lifted into their own collections; custom properties are harvested as
  * CssVariable definitions.
  */
@@ -144,8 +141,8 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery, so
 					.join('\n'),
 			});
 		} else if (isGroupingRule(rule)) {
-			// @layer { ... } and @container ... { ... }. these are recent rule
-			// types not always present in the dom lib; detect structurally and read
+			// @layer {... } and @container... {... }. these are recent rule
+			// Types not always present in the dom lib; detect structurally and read
 			// their identifying field defensively (the layers/units handlers refine
 			// this later, here we just preserve the context).
 			const layer = readField(rule, 'name');
@@ -157,11 +154,11 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery, so
 			}, out, source);
 		}
 		// CSSImportRule and others are ignored here; @import resolution for
-		// cross-origin sheets is handled at fetch time (commit 4).
+		// cross-origin sheets is handled at fetch time.
 	}
 }
 
-/** turn a CSSStyleRule into a CssRule, harvesting any custom-property defs. */
+/** Turn a CSSStyleRule into a CssRule, harvesting any custom-property defs. */
 function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscovery, source: CssRule['source']): void {
 	const properties = new Map<string, string>();
 	const style = rule.style;
@@ -174,7 +171,7 @@ function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscov
 			out.variables.push({
 				name: prop,
 				value,
-				resolved: false, // P3 resolves later (resolve/vars.ts)
+				resolved: false, // resolved later (resolve/vars.ts)
 				scope: isRootScope(rule.selectorText) ? 'root' : 'element',
 			});
 		}
@@ -193,7 +190,7 @@ function collectStyleRule(rule: CSSStyleRule, ctx: RuleContext, out: SheetDiscov
 	else out.componentRules.push(entry);
 }
 
-/** lift an @font-face into a FontFace record with all descriptors. */
+/** Lift an @font-face into a FontFace record with all descriptors. */
 function collectFontFace(rule: CSSFontFaceRule, out: SheetDiscovery): void {
 	const style = rule.style;
 	const descriptors: Record<string, string> = {};
@@ -210,7 +207,7 @@ function collectFontFace(rule: CSSFontFaceRule, out: SheetDiscovery): void {
 	out.fonts.push({ family, src, descriptors });
 }
 
-/** broadly-scoped selectors (html/body/:root/*) seed the foundation layer. */
+/** Broadly-scoped selectors (html/body/:root/*) seed the foundation layer. */
 function isFoundationSelector(selector: string): boolean {
 	return selector
 		.split(',')
@@ -222,27 +219,27 @@ function isRootScope(selector: string): boolean {
 	return /(^|,)\s*(:root|html)\s*(,|$)/.test(selector);
 }
 
-/** structural check for grouping rules (@layer/@container) without relying on their lib types. */
+/** Structural check for grouping rules (@layer/@container) without relying on their lib types. */
 function isGroupingRule(rule: CSSRule): rule is CSSRule & { cssRules: CSSRuleList } {
 	return 'cssRules' in rule && (rule as { cssRules?: unknown }).cssRules instanceof CSSRuleList;
 }
 
-/** read an optional string field off a rule object, '' if absent. */
+/** Read an optional string field off a rule object, '' if absent. */
 function readField(rule: CSSRule, field: string): string {
 	const value = (rule as unknown as Record<string, unknown>)[field];
 	return typeof value === 'string' ? value : '';
 }
 
 /**
- * computes selector specificity as a*10000 + b*100 + c (section 19.1).
+ * Computes selector specificity as a*10000 + b*100 + c.
  *
- * a = id count, b = class/attribute/pseudo-class count, c = element/
- * pseudo-element count. this is the classic three-tuple flattened to one number;
- * good enough for cascade ordering in the reconcile phase. pseudo-elements
+ * A = id count, b = class/attribute/pseudo-class count, c = element/
+ * pseudo-element count. This is the classic three-tuple flattened to one number;
+ * good enough for cascade ordering in the reconcile phase. Pseudo-elements
  * (::before) count toward c, pseudo-classes (:hover) toward b.
  */
 export function specificityOf(selector: string): number {
-	// score the most specific comma-branch (querySelector semantics).
+	// Score the most specific comma-branch (querySelector semantics).
 	let best = 0;
 	for (const branch of selector.split(',')) {
 		const s = branch.trim();

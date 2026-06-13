@@ -1,18 +1,17 @@
 /**
  * assistive/emit.ts: assistive json build + delivery
  *
- * Phase: j (assistive mode), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1, capture (assistive runs phase 1, then emits)
+ * Pipeline position: capture (assistive runs the capture phase, then emits)
  * Reads from Captured: page, capturedAt, element, screenshot, stylesheets, root
  * Writes to Captured: n/a (returns + delivers the json)
  *
  * Principles applied: none (serialization + io).
  *
- * Why this exists: assistive mode (mode 2) produces the section-9 json document a
+ * Why this exists: assistive mode produces the json document a
  * coding agent can act on, page url, both selectors, bounding box, and the asset
- * manifest, instead of code. this builds that document verbatim to the section-9
+ * manifest, instead of code. This builds that document verbatim to the assistive
  * schema and delivers it by the user's chosen channels (clipboard / file /
- * webhook, section 10). delivery failures never throw; each channel is attempted
+ * webhook). Delivery failures never throw; each channel is attempted
  * independently.
  */
 import type { Captured, UserPreferences } from '../types';
@@ -20,7 +19,7 @@ import { describeElement } from './selectors';
 import { extractFonts } from './fonts';
 import { extractAssets } from './assets';
 
-/** the section-9 assistive document shape. */
+/** The assistive document shape. */
 export interface AssistiveDoc {
 	version: '1.0';
 	capturedAt: string;
@@ -32,9 +31,9 @@ export interface AssistiveDoc {
 }
 
 /**
- * builds the assistive json document verbatim to the section-9 schema.
+ * Builds the assistive json document verbatim to the assistive schema.
  *
- * @param captured - the phase-1 capture
+ * @param captured - the capture-phase output
  */
 export function buildAssistiveJson(captured: Captured): AssistiveDoc {
 	const assets = extractAssets(captured.root);
@@ -50,7 +49,7 @@ export function buildAssistiveJson(captured: Captured): AssistiveDoc {
 }
 
 /**
- * delivers the document over each channel the user enabled (section 10). each
+ * Delivers the document over each channel the user enabled. Each
  * channel is independent and best-effort; a failure is recorded, never thrown.
  *
  * @param doc - the assistive document
@@ -73,7 +72,7 @@ export async function deliver(doc: AssistiveDoc, prefs: UserPreferences): Promis
 	return warnings;
 }
 
-/** trigger a browser download of the json via an object-url anchor. */
+/** Trigger a browser download of the json via an object-url anchor. */
 function downloadJson(json: string): void {
 	const blob = new Blob([json], { type: 'application/json' });
 	const url = URL.createObjectURL(blob);
@@ -83,11 +82,11 @@ function downloadJson(json: string): void {
 	document.body.appendChild(a);
 	a.click();
 	a.remove();
-	// release the object url on the next tick so the download has started.
+	// Release the object url on the next tick so the download has started.
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** post the json to the configured webhook (best-effort; page csp may block). */
+/** Post the json to the configured webhook (best-effort; page csp may block). */
 async function postWebhook(webhookUrl: string | null, json: string): Promise<void> {
 	if (!webhookUrl) throw new Error('no webhook url configured');
 	await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json });

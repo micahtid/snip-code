@@ -1,32 +1,29 @@
 /**
  * capture/dom.ts: dom clone + element metadata extraction
  *
- * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1, capture
+ * Pipeline position: capture
  * Reads from Captured: root (the live element)
  * Writes to Captured: clone, element (metadata block)
  *
- * Principles applied: none (capture-time normalization, not the decision layer).
- *
  * Why this exists: the pipeline mutates a detached copy of the picked subtree so
- * the live page is never touched. this module produces that copy and the element
+ * the live page is never touched. This module produces that copy and the element
  * metadata block (selectors, xpath, bounding box, ancestors) that both snip and
- * assistive modes consume (section 9). it also promotes lazy-loaded image
+ * assistive modes consume. It also promotes lazy-loaded image
  * sources at clone time so images render when the snip is pasted elsewhere
- * (ported from v1 extraction-pipeline cloneElement). shadow piercing is added in
- * commit 4 (cdp); this is the cssom/light-dom baseline.
+ * (ported from v1 extraction-pipeline cloneElement). Shadow piercing is added
+ * later (cdp); this is the cssom/light-dom baseline.
  */
 import type { Captured } from '../types';
 
 /**
- * common lazy-loading attribute names, in priority order. not a banned tag/role/
- * css Set (forbidden pattern #1), these are html attribute names for a
- * universal lazy-img convention, normalized at capture so output is portable.
+ * Common lazy-loading attribute names, in priority order. These are html
+ * attribute names for a universal lazy-img convention, normalized at capture so
+ * output is portable.
  */
 const LAZY_SRC_ATTRS = ['data-src', 'data-lazy-src', 'data-original', 'data-srcset'] as const;
 
 /**
- * deep-clones the picked subtree into a detached node and promotes lazy images.
+ * Deep-clones the picked subtree into a detached node and promotes lazy images.
  *
  * cloneNode(true) already copies every attribute and child; the extra work here
  * is replacing placeholder `src`s (1x1 gifs, data-uri spacers) with the real url
@@ -52,16 +49,16 @@ export function cloneElement(root: Element): Element {
 	return clone;
 }
 
-/** true for the empty/spacer srcs lazy-loaders use before swapping in the real one. */
+/** True for the empty/spacer srcs lazy-loaders use before swapping in the real one. */
 function isPlaceholderSrc(src: string): boolean {
 	return !src || src.startsWith('data:image') || src.includes('1x1') || src.includes('placeholder');
 }
 
 /**
- * builds the element metadata block (section 19.1 `Captured.element`).
+ * Builds the element metadata block.
  *
- * both modes need this: snip uses the tag/box, assistive emits the whole block
- * as json (section 9). emits two selectors, `selector` (shortest unique) and
+ * Both modes need this: snip uses the tag/box, assistive emits the whole block
+ * as json. Emits two selectors, `selector` (shortest unique) and
  * `robustSelector` (prefers stable data-attributes or ids over class hashes) so a
  * downstream agent can re-find the element even if class hashes churn.
  *
@@ -90,17 +87,17 @@ export function buildElementMetadata(root: Element): Captured['element'] {
 	};
 }
 
-/** serializes the (already reconciled) clone to an html string. */
+/** Serializes the (already reconciled) clone to an html string. */
 export function serializeRaw(clone: Element): string {
 	return clone.outerHTML;
 }
 
 /**
- * shortest css selector that uniquely identifies `el` in its document.
+ * Shortest css selector that uniquely identifies `el` in its document.
  *
- * tries cheapest-first: a unique id, then a unique single-class, then walks up
+ * Tries cheapest-first: a unique id, then a unique single-class, then walks up
  * building a descendant path with :nth-of-type segments until querySelectorAll
- * returns exactly this element. uniqueness is verified against the live document
+ * returns exactly this element. Uniqueness is verified against the live document
  * rather than assumed, so the emitted selector is always correct.
  */
 function shortestSelector(el: Element): string {
@@ -109,7 +106,7 @@ function shortestSelector(el: Element): string {
 		const sel = `${el.tagName.toLowerCase()}.${cssEscape(cls)}`;
 		if (isUnique(sel, el)) return sel;
 	}
-	// build a path from the nearest id-anchored or document root down to el.
+	// Build a path from the nearest id-anchored or document root down to el.
 	const parts: string[] = [];
 	let node: Element | null = el;
 	while (node && node.nodeType === Node.ELEMENT_NODE) {
@@ -128,14 +125,13 @@ function shortestSelector(el: Element): string {
 }
 
 /**
- * a selector that survives class-hash churn: prefers a stable data-* attribute,
+ * A selector that survives class-hash churn: prefers a stable data-* attribute,
  * then a non-generated-looking id, before falling back to the shortest selector.
- * (section 9 `robustSelector`.)
  */
 function robustSelector(el: Element): string {
 	const tag = el.tagName.toLowerCase();
 	for (const attr of el.getAttributeNames()) {
-		// stable hooks are usually data-testid / data-section-id / data-id etc.
+		// Stable hooks are usually data-testid / data-section-id / data-id etc.
 		if (attr.startsWith('data-') && /id|test|section|name|component/.test(attr)) {
 			const val = el.getAttribute(attr);
 			if (val) {
@@ -144,14 +140,14 @@ function robustSelector(el: Element): string {
 			}
 		}
 	}
-	// an id without a long hex/hash tail reads as author-stable, not generated.
+	// An id without a long hex/hash tail reads as author-stable, not generated.
 	if (el.id && !/[0-9a-f]{6,}/i.test(el.id) && isUnique(`#${cssEscape(el.id)}`, el)) {
 		return `#${cssEscape(el.id)}`;
 	}
 	return shortestSelector(el);
 }
 
-/** absolute xpath with positional indices (section 9 `xpath`). */
+/** Absolute xpath with positional indices. */
 function xpathOf(el: Element): string {
 	const parts: string[] = [];
 	let node: Element | null = el;
@@ -163,7 +159,7 @@ function xpathOf(el: Element): string {
 	return `/${parts.join('/')}`;
 }
 
-/** the ancestor chain up to <body>, each with its own shortest selector + role. */
+/** The ancestor chain up to <body>, each with its own shortest selector + role. */
 function ancestorsOf(el: Element): Array<{ tagName: string; selector: string; role?: string }> {
 	const out: Array<{ tagName: string; selector: string; role?: string }> = [];
 	let node = el.parentElement;
@@ -172,7 +168,7 @@ function ancestorsOf(el: Element): Array<{ tagName: string; selector: string; ro
 		out.push({
 			tagName: node.tagName.toLowerCase(),
 			selector: shortestSelector(node),
-			// omit the key entirely when absent (exactOptionalPropertyTypes).
+			// Omit the key entirely when absent (exactOptionalPropertyTypes).
 			...(role ? { role } : {}),
 		});
 		node = node.parentElement;
@@ -189,7 +185,7 @@ function indexAmongType(el: Element): number {
 	return sameTag.indexOf(el) + 1;
 }
 
-/** true when `selector` matches exactly `el` and nothing else in the document. */
+/** True when `selector` matches exactly `el` and nothing else in the document. */
 function isUnique(selector: string, el: Element): boolean {
 	try {
 		const found = document.querySelectorAll(selector);
@@ -199,13 +195,13 @@ function isUnique(selector: string, el: Element): boolean {
 	}
 }
 
-/** escape a class/id token for use in a css selector. */
+/** Escape a class/id token for use in a css selector. */
 function cssEscape(value: string): string {
 	// CSS.escape is standard in mv3 browsers; guard anyway for headless contexts.
 	return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/([^\w-])/g, '\\$1');
 }
 
-/** escape an attribute value for an [attr="..."] selector. */
+/** Escape an attribute value for an [attr="..."] selector. */
 function cssEscapeAttr(value: string): string {
 	return value.replace(/"/g, '\\"');
 }

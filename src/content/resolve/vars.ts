@@ -1,23 +1,22 @@
 /**
- * resolve/vars.ts: css custom property resolution (P3, single pass)
+ * resolve/vars.ts: css custom property resolution
  *
- * Phase: d (resolve), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 3, resolve
+ * Pipeline position: resolve
  * Reads from Captured: root, clone, bakedStyles, variables
  * Writes to Captured: bakedStyles + clone (resolves var() refs; emits root vars)
  *
- * Principles applied: P3 (variables travel with definitions, or resolve to literals).
+ * Variables travel with their definitions, or resolve to literals.
  *
- * Why this exists: P1 deliberately preserved authored var() references on the
- * baked elements. but a var() only renders if its definition survives into the
- * emitted snip. a definition survives when it lives on :root (re-emitted onto the
+ * Why this exists: earlier baking deliberately preserved authored var() references
+ * on the baked elements. But a var() only renders if its definition survives into the
+ * emitted snip. A definition survives when it lives on :root (re-emitted onto the
  * snip root here) or on an element inside the snip subtree (already inline on
- * that clone node). a definition on an ancestor *outside* the subtree does not
+ * that clone node). A definition on an ancestor *outside* the subtree does not
  * survive serialization, so its references are resolved to the computed literal
  * (read from the live element, which already resolved them in-page).
  *
- * single pass (forbidden pattern #9): every reference is decided in one sweep.
- * the only loop is computing the dependency closure of the root vars we keep , 
+ * Single pass: every reference is decided in one sweep.
+ * The only loop is computing the dependency closure of the root vars we keep,
  * that is resolving a definition's own var() deps, not a second orphan-recovery
  * pass over the output.
  */
@@ -27,7 +26,8 @@ import { pairedSubtrees } from '../reconcile/match';
 const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 
 /**
- * resolves every var() reference in the baked styles per P3.
+ * Resolves every var() reference in the baked styles: a reference is kept if its
+ * definition lives inside the snip, otherwise resolved to its computed literal.
  *
  * @param captured - clone + bakedStyles are mutated in place
  */
@@ -41,7 +41,7 @@ export function resolveVariables(captured: Captured): void {
 	for (const v of captured.variables) {
 		if (v.scope === 'root') rootVars.set(v.name, v.value);
 	}
-	// definitions declared on some element inside the snip subtree already travel
+	// Definitions declared on some element inside the snip subtree already travel
 	// with that clone node (they were baked as inline custom properties).
 	const subtreeDefs = collectSubtreeDefs(captured);
 
@@ -54,15 +54,15 @@ export function resolveVariables(captured: Captured): void {
 			const names = referencedVars(value);
 			let mustResolveToLiteral = false;
 			for (const name of names) {
-				if (subtreeDefs.has(name)) continue; // survives in subtree
+				if (subtreeDefs.has(name)) continue; // Survives in subtree
 				if (rootVars.has(name)) {
-					neededRootVars.add(name); // survives once re-emitted on the root
+					neededRootVars.add(name); // Survives once re-emitted on the root
 					continue;
 				}
-				mustResolveToLiteral = true; // defined outside the snip; cannot survive
+				mustResolveToLiteral = true; // Defined outside the snip; cannot survive
 			}
 			if (mustResolveToLiteral && original) {
-				// the live element already resolved the var to its used value; that
+				// The live element already resolved the var to its used value; that
 				// computed literal is the faithful replacement (locks the pixel).
 				const literal = getComputedStyle(original).getPropertyValue(prop);
 				if (literal) {
@@ -76,7 +76,7 @@ export function resolveVariables(captured: Captured): void {
 	emitRootVars(captured, rootVars, closeOver(neededRootVars, rootVars));
 }
 
-/** re-emit the surviving :root custom properties onto the snip root clone. */
+/** Re-emit the surviving :root custom properties onto the snip root clone. */
 function emitRootVars(captured: Captured, rootVars: Map<string, string>, needed: Set<string>): void {
 	const rootClone = captured.clone;
 	const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
@@ -85,15 +85,15 @@ function emitRootVars(captured: Captured, rootVars: Map<string, string>, needed:
 		if (value === undefined || baked.has(name)) continue;
 		baked.set(name, value);
 		setInline(rootClone, name, value);
-		// flip the source-of-truth flag for transparency/emit.
+		// Flip the source-of-truth flag for transparency/emit.
 		for (const v of captured.variables) if (v.name === name && v.scope === 'root') v.resolved = true;
 	}
 	captured.bakedStyles.set(rootClone, baked);
 }
 
 /**
- * expands a set of needed root vars to include the vars their own values
- * reference (a root var may be defined in terms of another). this is a
+ * Expands a set of needed root vars to include the vars their own values
+ * reference (a root var may be defined in terms of another). This is a
  * dependency closure within the definitions, not a second pass over the output.
  */
 function closeOver(initial: Set<string>, rootVars: Map<string, string>): Set<string> {
@@ -112,7 +112,7 @@ function closeOver(initial: Set<string>, rootVars: Map<string, string>): Set<str
 	return needed;
 }
 
-/** every --name referenced by var() in a value string. */
+/** Every --name referenced by var() in a value string. */
 function referencedVars(value: string): string[] {
 	const names: string[] = [];
 	let m: RegExpExecArray | null;
@@ -123,7 +123,7 @@ function referencedVars(value: string): string[] {
 	return names;
 }
 
-/** all custom-property names defined on any element inside the snip subtree. */
+/** All custom-property names defined on any element inside the snip subtree. */
 function collectSubtreeDefs(captured: Captured): Set<string> {
 	const defs = new Set<string>();
 	for (const [, baked] of captured.bakedStyles) {
@@ -134,11 +134,11 @@ function collectSubtreeDefs(captured: Captured): Set<string> {
 	return defs;
 }
 
-/** safely set a property on a clone element's inline style. */
+/** Safely set a property on a clone element's inline style. */
 function setInline(clone: Element, prop: string, value: string): void {
 	try {
 		(clone as HTMLElement).style.setProperty(prop, value);
 	} catch {
-		// invalid declaration for this element; ignore.
+		// Invalid declaration for this element; ignore.
 	}
 }

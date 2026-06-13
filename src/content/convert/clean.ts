@@ -1,26 +1,25 @@
 /**
- * convert/clean.ts: dead-code elimination (P5)
+ * convert/clean.ts: dead-code elimination
  *
- * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4, convert
+ * Pipeline position: convert
  * Reads from Captured: clone (to test selector/usage)
  * Writes to Captured: nothing (operates on the emitted css string)
  *
- * Principles applied: P5 (cleanup is dead-code elimination, not aesthetic surgery).
+ * Cleanup is dead-code elimination, not aesthetic surgery.
  *
  * Why this exists: the emitted stylesheet can carry rules and at-rules that
- * nothing in the snip references. P5 removes EXACTLY four kinds of dead code and
+ * nothing in the snip references. This removes EXACTLY four kinds of dead code and
  * nothing else:
- *   1. style rules whose selector matches no element in the snip
- *   2. css custom properties that nothing references
- *   3. @font-face whose family is never used
- *   4. @keyframes whose name is never referenced by an animation
+ * 1. Style rules whose selector matches no element in the snip
+ * 2. Css custom properties that nothing references
+ * 3. @font-face whose family is never used
+ * 4. @keyframes whose name is never referenced by an animation
  *
  * this is the antithesis of v1's 2,477-line cleaner.ts: no hand-curated property
  * Sets, no is<X> predicates, no "shading-critical" / "vertical text spacing"
- * heuristics (forbidden pattern #4). usage is measured against ground truth, the
+ * heuristics. Usage is measured against ground truth, the
  * actual clone subtree and the actual declarations, so the cleaner can never
- * remove something the output depends on. it is reused by every format emitter
+ * remove something the output depends on. It is reused by every format emitter
  * (html inline, bem/tailwind/scss class rules), so it must be format-agnostic.
  */
 import type { Captured } from '../types';
@@ -30,7 +29,7 @@ const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 const DROP = '';
 
 /**
- * removes dead code from an emitted stylesheet per P5.
+ * Removes dead code from an emitted stylesheet.
  *
  * @param css - the stylesheet text to prune
  * @param captured - the snip; usage is measured against captured.clone + the css
@@ -42,7 +41,7 @@ export function cleanCss(css: string, captured: Captured): string {
 	try {
 		sheet.replaceSync(css);
 	} catch {
-		// unparseable css (rare): return as-is rather than risk dropping content.
+		// Unparseable css (rare): return as-is rather than risk dropping content.
 		return css;
 	}
 
@@ -55,34 +54,34 @@ export function cleanCss(css: string, captured: Captured): string {
 	return kept.join('\n\n');
 }
 
-/** what the snip actually references, gathered from the clone + the css itself. */
+/** What the snip actually references, gathered from the clone + the css itself. */
 interface Usage {
-	families: Set<string>; // lowercased font-family names in use
-	animations: Set<string>; // animation-name tokens in use
+	families: Set<string>; // Lowercased font-family names in use
+	animations: Set<string>; // Animation-name tokens in use
 	vars: Set<string>; // --names referenced by var()
 }
 
 /**
- * decides whether a single top-level rule survives. returns its serialized text
- * to keep, or '' to drop. recurses into grouping rules (@media/@supports) and
+ * Decides whether a single top-level rule survives. Returns its serialized text
+ * to keep, or '' to drop. Recurses into grouping rules (@media/@supports) and
  * drops them if they end up empty.
  */
 function keepRule(rule: CSSRule, captured: Captured, usage: Usage): string {
 	if (rule instanceof CSSStyleRule) {
-		// keep custom-property-only :root rules pruned to referenced vars (P5 #2);
-		// keep element rules only if some clone element matches them (P5 #1).
+		// Keep custom-property-only :root rules pruned to referenced vars;
+		// keep element rules only if some clone element matches them.
 		if (isRootVarRule(rule)) return pruneVarRule(rule, usage);
 		return selectorMatchesSubtree(rule.selectorText, captured.clone) ? rule.cssText : DROP;
 	}
 	if (rule instanceof CSSFontFaceRule) {
 		const family = (rule.style.getPropertyValue('font-family') || '').replace(/^["']|["']$/g, '').toLowerCase();
-		return usage.families.has(family) ? rule.cssText : DROP; // P5 #3
+		return usage.families.has(family) ? rule.cssText : DROP; // An unused @font-face family
 	}
 	if (rule instanceof CSSKeyframesRule) {
-		return usage.animations.has(rule.name) ? rule.cssText : DROP; // P5 #4
+		return usage.animations.has(rule.name) ? rule.cssText : DROP; // An unreferenced @keyframes
 	}
 	if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule) {
-		// recurse; keep the wrapper only if it still has live inner rules.
+		// Recurse; keep the wrapper only if it still has live inner rules.
 		const inner: string[] = [];
 		for (const child of Array.from(rule.cssRules)) {
 			const text = keepRule(child, captured, usage);
@@ -92,11 +91,11 @@ function keepRule(rule: CSSRule, captured: Captured, usage: Usage): string {
 		const cond = rule instanceof CSSMediaRule ? `@media ${rule.conditionText}` : `@supports ${rule.conditionText}`;
 		return `${cond} {\n${inner.join('\n')}\n}`;
 	}
-	// unknown rule type (e.g. @layer/@property): keep verbatim, do not guess.
+	// Unknown rule type (e.g. @layer/@property): keep verbatim, do not guess.
 	return rule.cssText;
 }
 
-/** true when a selector matches the snip root or any descendant. */
+/** True when a selector matches the snip root or any descendant. */
 function selectorMatchesSubtree(selector: string, root: Element): boolean {
 	for (const branch of selector.split(',')) {
 		const s = branch.trim();
@@ -104,7 +103,7 @@ function selectorMatchesSubtree(selector: string, root: Element): boolean {
 		try {
 			if (root.matches(s) || root.querySelector(s)) return true;
 		} catch {
-			// unsupported selector (e.g. ::selection pseudo): keep it, do not drop
+			// Unsupported selector (e.g. ::selection pseudo): keep it, do not drop
 			// something we cannot evaluate.
 			return true;
 		}
@@ -112,7 +111,7 @@ function selectorMatchesSubtree(selector: string, root: Element): boolean {
 	return false;
 }
 
-/** a :root / html rule that only defines custom properties. */
+/** A :root / html rule that only defines custom properties. */
 function isRootVarRule(rule: CSSStyleRule): boolean {
 	if (!/(^|,)\s*(:root|html)\s*(,|$)/.test(rule.selectorText)) return false;
 	for (let i = 0; i < rule.style.length; i++) {
@@ -122,7 +121,7 @@ function isRootVarRule(rule: CSSStyleRule): boolean {
 	return true;
 }
 
-/** drop unreferenced custom properties from a :root var rule (P5 #2). */
+/** Drop unreferenced custom properties from a :root var rule. */
 function pruneVarRule(rule: CSSStyleRule, usage: Usage): string {
 	const kept: string[] = [];
 	for (let i = 0; i < rule.style.length; i++) {
@@ -135,7 +134,7 @@ function pruneVarRule(rule: CSSStyleRule, usage: Usage): string {
 }
 
 /**
- * gathers all font-family, animation-name, and var() usage from both the clone
+ * Gathers all font-family, animation-name, and var() usage from both the clone
  * subtree (inline styles) and the css text (class-based rules), so the cleaner
  * works for inline html and class-based formats alike.
  */
@@ -144,7 +143,7 @@ function collectUsage(captured: Captured, css: string): Usage {
 	const animations = new Set<string>();
 	const vars = new Set<string>();
 
-	// from the clone subtree's inline styles.
+	// From the clone subtree's inline styles.
 	for (const [, baked] of captured.bakedStyles) {
 		addFamilies(baked.get('font-family'), families);
 		addFamilies(baked.get('font'), families);
@@ -152,7 +151,7 @@ function collectUsage(captured: Captured, css: string): Usage {
 		addAnimations(baked.get('animation-name'), animations);
 		for (const value of baked.values()) addVars(value, vars);
 	}
-	// from the css text (covers class-based rules and any @media bodies).
+	// From the css text (covers class-based rules and any @media bodies).
 	addFamilies(matchAll(css, /font-family\s*:\s*([^;}{]+)/gi), families);
 	addAnimations(matchAll(css, /animation(?:-name)?\s*:\s*([^;}{]+)/gi), animations);
 	addVars(css, vars);
@@ -160,7 +159,7 @@ function collectUsage(captured: Captured, css: string): Usage {
 	return { families, animations, vars };
 }
 
-/** split a font-family value list into lowercased family names. */
+/** Split a font-family value list into lowercased family names. */
 function addFamilies(value: string | string[] | undefined, into: Set<string>): void {
 	if (!value) return;
 	const values = Array.isArray(value) ? value : [value];
@@ -172,7 +171,7 @@ function addFamilies(value: string | string[] | undefined, into: Set<string>): v
 	}
 }
 
-/** collect animation-name tokens (a name can never collide with a duration token). */
+/** Collect animation-name tokens (a name can never collide with a duration token). */
 function addAnimations(value: string | string[] | undefined, into: Set<string>): void {
 	if (!value) return;
 	const values = Array.isArray(value) ? value : [value];
@@ -186,7 +185,7 @@ function addAnimations(value: string | string[] | undefined, into: Set<string>):
 	}
 }
 
-/** collect --names referenced by var() in a string. */
+/** Collect --names referenced by var() in a string. */
 function addVars(value: string | undefined, into: Set<string>): void {
 	if (!value) return;
 	let m: RegExpExecArray | null;
@@ -196,7 +195,7 @@ function addVars(value: string | undefined, into: Set<string>): void {
 	}
 }
 
-/** run a capture-group regex over text and return all group-1 matches. */
+/** Run a capture-group regex over text and return all group-1 matches. */
 function matchAll(text: string, re: RegExp): string[] {
 	const out: string[] = [];
 	let m: RegExpExecArray | null;

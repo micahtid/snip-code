@@ -1,117 +1,181 @@
 /**
  * App.tsx: side-panel root + sidebar shell
  *
- * Phase: a (scaffold), see SNIPCODE-REWRITE-PLAN.md section 12
  * Pipeline position: n/a (ui host, not a pipeline phase)
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
  * Principles applied: none (ui).
  *
- * Why this exists: chrome opens this document in the side panel. it is the only
- * react root in the extension. it owns top-level navigation between the three
- * sidebar views (capture / saved / settings) and hosts the picker control. the
- * panels it renders (ResultPanel, SnippetList, SettingsView) are empty stubs at
- * this scaffold stage and gain real behavior in later phases (e: result panel,
- * i: settings, k: snippet list).
+ * Why this exists: chrome opens this document in the side panel. It is the only
+ * react root in the extension. It owns top-level navigation between the three
+ * sidebar views (capture / saved / settings), hosts the picker control, and is
+ * the panel-side terminus of two content-script signals:
+ * - It listens for SNIP_RESULT and renders the emitted code in ResultPanel.
+ * - While a pick is in flight it owns the "picking" state and a window-level esc
+ * handler that cancels the overlay even when keyboard focus is in the panel
+ * (the picker's own esc handler only fires when the page holds focus).
+ * It injects the global stylesheet once and paints the cloud backdrop behind a
+ * frosted-glass shell, reproducing v1's look (theme.ts / global-css.ts).
  *
- * this module self-mounts at the bottom of the file so the build needs no
- * separate main.tsx entry (keeps the repo tree exactly as section 2 declares).
+ * This module self-mounts at the bottom of the file so the build needs no separate
+ * main.tsx entry (keeps the repo tree tidy).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Scissors } from 'lucide-react';
 import { Picker } from './components/Picker';
-import { ResultPanel } from './components/ResultPanel';
+import { ResultPanel, type SnipResult } from './components/ResultPanel';
 import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
+import { CloudBackdrop } from './components/CloudBackdrop';
+import { injectGlobalCss } from './global-css';
+import { COLORS, FONT_UI, SURFACE } from './theme';
 
-/** the three top-level sidebar views the nav switches between. */
+/** The three top-level sidebar views the nav switches between. */
 type View = 'capture' | 'saved' | 'settings';
 
 /**
- * the two capture modes (section 9). snip runs all 5 pipeline phases and emits
- * code; assistive runs phase 1 and emits a json document. the toggle lives in
- * the capture view and is passed down to the picker.
+ * The two capture modes. Snip runs the whole pipeline and emits
+ * code; assistive runs capture and emits a json document. The toggle lives in the
+ * capture view and is passed down to the picker.
  */
 type Mode = 'snip' | 'assistive';
 
+/** Content-script signals (mirror the ui-local consts in content/index.ts). */
+const SNIP_RESULT = 'SNIP_RESULT';
+const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
+
 const styles = {
-	app: {
+	shell: {
+		position: 'relative',
+		zIndex: 1,
 		display: 'flex',
 		flexDirection: 'column',
 		height: '100vh',
 		margin: 0,
-		fontFamily: 'system-ui, -apple-system, sans-serif',
+		fontFamily: FONT_UI,
 		fontSize: '13px',
-		color: '#1a1a1a',
-		background: '#fff',
+		color: COLORS.slate800,
+		background: SURFACE.glass,
+		backdropFilter: 'blur(20px)',
+		WebkitBackdropFilter: 'blur(20px)',
 	},
 	header: {
 		display: 'flex',
 		alignItems: 'center',
 		gap: '8px',
-		padding: '10px 12px',
-		borderBottom: '1px solid #eee',
-		fontWeight: 600,
+		padding: '12px 14px',
+		borderBottom: `1px solid ${SURFACE.border}`,
+		fontWeight: 700,
+		fontSize: '15px',
+		color: COLORS.slate900,
 	},
-	nav: { display: 'flex', borderBottom: '1px solid #eee' },
-	navButton: (active: boolean) => ({
-		flex: 1,
-		padding: '8px',
-		border: 'none',
-		borderBottom: active ? '2px solid #4f6ef6' : '2px solid transparent',
-		background: 'transparent',
-		color: active ? '#4f6ef6' : '#666',
-		fontWeight: active ? 600 : 400,
-		cursor: 'pointer',
-	}),
-	body: { flex: 1, overflow: 'auto', padding: '12px' },
+	nav: { display: 'flex', borderBottom: `1px solid ${SURFACE.border}` },
+	body: { flex: 1, overflow: 'auto', padding: '14px' },
 } satisfies Record<string, unknown>;
 
+/** Sends the cancel-picker signal to the active tab's content script. */
+async function cancelPicker(): Promise<void> {
+	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+	if (!tab?.id) return;
+	try {
+		await chrome.tabs.sendMessage(tab.id, { type: CANCEL_PICKER });
+	} catch {
+		// The overlay may already be gone (page navigated, tab closed). Harmless.
+	}
+}
+
 /**
- * the sidebar shell: header, view nav, and the active view's body.
+ * The sidebar shell: header, view nav, and the active view's body.
  *
- * holds the two pieces of cross-view ui state, which view is showing and the
- * current capture mode, and threads the mode into the picker so a snip carries
- * the user's chosen mode into the pipeline.
+ * Holds the cross-view ui state (current view, capture mode, in-flight pick, and
+ * the latest snip result) and wires the two content-script signals described in
+ * the file header.
  */
 function App() {
 	const [view, setView] = useState<View>('capture');
 	const [mode, setMode] = useState<Mode>('snip');
+	const [picking, setPicking] = useState(false);
+	const [result, setResult] = useState<SnipResult | null>(null);
+
+	// Inject the global stylesheet once (fonts, cloud geometry, control states).
+	useEffect(() => injectGlobalCss(), []);
+
+	// Listen for the content script's snip output; render it and leave select mode.
+	useEffect(() => {
+		const onMessage = (message: unknown): undefined => {
+			const type =
+				typeof message === 'object' && message !== null && 'type' in message
+					? (message as { type: unknown }).type
+					: null;
+			if (type === SNIP_RESULT) {
+				setResult((message as { payload?: SnipResult }).payload ?? null);
+				setView('capture');
+				setPicking(false);
+			}
+			return undefined; // No async response; do not hold the channel open.
+		};
+		chrome.runtime.onMessage.addListener(onMessage);
+		return () => chrome.runtime.onMessage.removeListener(onMessage);
+	}, []);
+
+	// While picking, esc in the panel cancels the overlay (focus-independent path).
+	useEffect(() => {
+		if (!picking) return;
+		const onKey = (e: KeyboardEvent): void => {
+			if (e.key === 'Escape') {
+				void cancelPicker();
+				setPicking(false);
+			}
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, [picking]);
+
+	/** enter/leave the in-flight pick state; a new pick clears the previous result. */
+	const onPickingChange = (next: boolean): void => {
+		setPicking(next);
+		if (next) setResult(null);
+	};
+
+	const tab = (id: View, label: string) => (
+		<button className={`sc-nav${view === id ? ' sc-nav-active' : ''}`} onClick={() => setView(id)}>
+			{label}
+		</button>
+	);
 
 	return (
-		<div style={styles.app as React.CSSProperties}>
-			<div style={styles.header as React.CSSProperties}>
-				<span style={{ color: '#4f6ef6' }}>◧</span> SnipCode
-			</div>
+		<>
+			<CloudBackdrop />
+			<div style={styles.shell as React.CSSProperties}>
+				<div style={styles.header as React.CSSProperties}>
+					<Scissors size={18} color={COLORS.slate900} />
+					SnipCode
+				</div>
 
-			<nav style={styles.nav as React.CSSProperties}>
-				<button style={styles.navButton(view === 'capture')} onClick={() => setView('capture')}>
-					Capture
-				</button>
-				<button style={styles.navButton(view === 'saved')} onClick={() => setView('saved')}>
-					Saved
-				</button>
-				<button style={styles.navButton(view === 'settings')} onClick={() => setView('settings')}>
-					Settings
-				</button>
-			</nav>
+				<nav style={styles.nav as React.CSSProperties}>
+					{tab('capture', 'Capture')}
+					{tab('saved', 'Saved')}
+					{tab('settings', 'Settings')}
+				</nav>
 
-			<div style={styles.body as React.CSSProperties}>
-				{view === 'capture' && (
-					<>
-						<Picker mode={mode} onModeChange={setMode} />
-						<ResultPanel />
-					</>
-				)}
-				{view === 'saved' && <SnippetList />}
-				{view === 'settings' && <SettingsView />}
+				<div style={styles.body as React.CSSProperties}>
+					{view === 'capture' && (
+						<>
+							<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />
+							<ResultPanel result={result} />
+						</>
+					)}
+					{view === 'saved' && <SnippetList />}
+					{view === 'settings' && <SettingsView />}
+				</div>
 			</div>
-		</div>
+		</>
 	);
 }
 
-// self-mount. the side panel document (index.html) provides #root.
+// Self-mount. The side panel document (index.html) provides #root.
 const container = document.getElementById('root');
 if (container) {
 	createRoot(container).render(<App />);

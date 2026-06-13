@@ -1,58 +1,54 @@
 /**
  * capture/gate.ts: website-builder gate
  *
- * Phase: b (capture), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 1, capture (final step; refuses unsupported pages)
+ * Pipeline position: capture (final step; refuses unsupported pages)
  * Reads from Captured: root (runs before Captured exists, on the live element)
  * Writes to Captured: n/a (gates the pipeline before it builds Captured)
  *
- * Principles applied: none (a locked product gate, decision 5).
- *
  * Why this exists: framer / wix / webflow / elementor / readymag render runtime-
  * dependent, non-portable markup (scale-to-fit transforms, hashed class soups,
- * sprite refs to document-root <symbol>s). snipping them produces broken output,
+ * sprite refs to document-root <symbol>s). Snipping them produces broken output,
  * so v2 refuses with a static "unsupported" message instead of degrading
- * silently (decision 5, no fallback). detection is purely structural: data-*
+ * silently. Detection is purely structural: data-*
  * rendering-chrome attributes and class-name fingerprints, sampled from a
- * bounded subtree walk. ported (rewritten) from v1 vision/builder-detection.ts;
+ * bounded subtree walk. Ported (rewritten) from v1 vision/builder-detection.ts;
  * the v1 version routed to a vision model, v2 drops that path and blocks.
  *
- * note: the runtime Set in collectSampleClassNames dedups sampled class names; it
- * is not a hardcoded tag/role/property enumeration, so it does not fall under
- * forbidden pattern #1.
+ * Note: the runtime Set in collectSampleClassNames dedups sampled class names; it
+ * is not a hardcoded tag/role/property enumeration.
  */
 
-/** the builders v2 refuses, plus the not-a-builder sentinel. */
+/** The builders v2 refuses, plus the not-a-builder sentinel. */
 export type BuilderName = 'framer' | 'wix' | 'webflow' | 'elementor' | 'readymag' | 'unknown';
 
-/** one weighted fingerprint hit, kept for diagnostics. */
+/** One weighted fingerprint hit, kept for diagnostics. */
 interface GateSignal {
 	id: string;
 	description: string;
 	weight: number;
 }
 
-/** the gate verdict the orchestrator acts on. */
+/** The gate verdict the orchestrator acts on. */
 export interface GateResult {
-	/** true when the page is an unsupported builder and the snip must be refused. */
+	/** True when the page is an unsupported builder and the snip must be refused. */
 	blocked: boolean;
 	builder: BuilderName;
 	confidence: number; // [0..1]
-	/** the static user-facing refusal, present only when blocked. */
+	/** The static user-facing refusal, present only when blocked. */
 	message?: string;
 }
 
-// a single strong rendering-chrome signal (weight 0.4-0.5) clears this, so one
-// unambiguous fingerprint is enough to block. mirrors v1's routing threshold.
+// A single strong rendering-chrome signal (weight 0.4-0.5) clears this, so one
+// unambiguous fingerprint is enough to block. Mirrors v1's routing threshold.
 const BLOCK_THRESHOLD = 0.4;
-// the dominant builder must own at least this much weight to be named (vs noise).
+// The dominant builder must own at least this much weight to be named (vs noise).
 const NAME_THRESHOLD = 0.3;
 
 /**
- * classifies the picked element's page and decides whether to refuse the snip.
+ * Classifies the picked element's page and decides whether to refuse the snip.
  *
- * sums weighted fingerprints per builder, takes the dominant family, and blocks
- * when its confidence clears BLOCK_THRESHOLD. cheap enough (one bounded dom walk)
+ * Sums weighted fingerprints per builder, takes the dominant family, and blocks
+ * when its confidence clears BLOCK_THRESHOLD. Cheap enough (one bounded dom walk)
  * to run unconditionally on every snip.
  *
  * @param root - the live picked element
@@ -78,7 +74,7 @@ export function detectBuilder(root: Element): GateResult {
 	}
 
 	const confidence = Math.min(1, top);
-	// only name a builder when its signal is meaningful, not incidental noise.
+	// Only name a builder when its signal is meaningful, not incidental noise.
 	if (builder !== 'unknown' && top < NAME_THRESHOLD) builder = 'unknown';
 	const blocked = builder !== 'unknown' && confidence >= BLOCK_THRESHOLD;
 
@@ -87,7 +83,7 @@ export function detectBuilder(root: Element): GateResult {
 		: { blocked: false, builder, confidence };
 }
 
-/** the static refusal text (decision 5: no fallback, just an honest message). */
+/** The static refusal text. */
 function unsupportedMessage(builder: BuilderName): string {
 	const label = builder.charAt(0).toUpperCase() + builder.slice(1);
 	return (
@@ -98,7 +94,7 @@ function unsupportedMessage(builder: BuilderName): string {
 	);
 }
 
-/** framer: data-framer-* rendering chrome + framer-* class prefixes. */
+/** Framer: data-framer-* rendering chrome + framer-* class prefixes. */
 function detectFramer(root: Element, classes: string[]): GateSignal[] {
 	const signals: GateSignal[] = [];
 	if (root.hasAttribute('data-framer-name') || root.querySelector('[data-framer-name]')) {
@@ -116,7 +112,7 @@ function detectFramer(root: Element, classes: string[]): GateSignal[] {
 	return signals;
 }
 
-/** wix: _wix-/_Capitalized_ class soups, data-mesh-id, comp-* prefixes. */
+/** Wix: _wix-/_Capitalized_ class soups, data-mesh-id, comp-* prefixes. */
 function detectWix(root: Element, classes: string[]): GateSignal[] {
 	const signals: GateSignal[] = [];
 	if (classes.some((c) => /^_wix-/.test(c) || /^_[A-Z][a-zA-Z0-9]+_/.test(c))) {
@@ -131,7 +127,7 @@ function detectWix(root: Element, classes: string[]): GateSignal[] {
 	return signals;
 }
 
-/** webflow: data-w-id + w-{button|nav|container|row|col|tab} utility classes. */
+/** Webflow: data-w-id + w-{button|nav|container|row|col|tab} utility classes. */
 function detectWebflow(root: Element, classes: string[]): GateSignal[] {
 	const signals: GateSignal[] = [];
 	if (root.hasAttribute('data-w-id') || root.querySelector('[data-w-id]')) {
@@ -143,7 +139,7 @@ function detectWebflow(root: Element, classes: string[]): GateSignal[] {
 	return signals;
 }
 
-/** elementor: data-elementor-type + elementor-* class prefix. */
+/** Elementor: data-elementor-type + elementor-* class prefix. */
 function detectElementor(root: Element, classes: string[]): GateSignal[] {
 	const signals: GateSignal[] = [];
 	if (root.hasAttribute('data-elementor-type') || root.querySelector('[data-elementor-type]')) {
@@ -155,7 +151,7 @@ function detectElementor(root: Element, classes: string[]): GateSignal[] {
 	return signals;
 }
 
-/** readymag: rmgs-/rmgr- class prefixes (readymag-only convention). */
+/** Readymag: rmgs-/rmgr- class prefixes (readymag-only convention). */
 function detectReadymag(classes: string[]): GateSignal[] {
 	if (classes.some((c) => /^rmgs-/.test(c) || /^rmgr-/.test(c))) {
 		return [{ id: 'readymag-class-prefix', description: 'rmgs-/rmgr- class prefix', weight: 0.5 }];
@@ -163,16 +159,16 @@ function detectReadymag(classes: string[]): GateSignal[] {
 	return [];
 }
 
-/** sum the weights of a builder's signals. */
+/** Sum the weights of a builder's signals. */
 function sum(signals: GateSignal[]): number {
 	return signals.reduce((acc, s) => acc + s.weight, 0);
 }
 
 /**
- * collects up to `cap` distinct class names from a bounded subtree walk.
+ * Collects up to `cap` distinct class names from a bounded subtree walk.
  *
- * caps both the result set and the traversal stack so detection stays cheap on
- * enormous pages. all fingerprint regexes test against this bounded sample.
+ * Caps both the result set and the traversal stack so detection stays cheap on
+ * enormous pages. All fingerprint regexes test against this bounded sample.
  *
  * @param root - subtree to sample
  * @param cap - max distinct class names to collect

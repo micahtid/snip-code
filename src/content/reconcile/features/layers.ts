@@ -1,35 +1,33 @@
 /**
  * features/layers.ts: @layer / @property / @scope
  *
- * Phase: h (tier 2 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2, reconcile
+ * Pipeline position: reconcile
  * Reads from Captured: clone, bakedStyles, variables (used custom props)
  * Writes to Captured: clone (appends an @property <style>), warnings
  *
- * Principles applied: none directly; a feature handler for the cascade-layering
- * and registered-property mechanisms.
+ * A feature handler for the cascade-layering and registered-property mechanisms.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@property
  * Detection criterion: a registered @property in the document whose name is a
- *   custom property the snip uses. early-returns when none match.
+ * custom property the snip uses. Early-returns when none match.
  * Transform contract: appends a <style> of the matching @property rules to the
- *   clone. reads document.styleSheets (in-memory cssom). clone only.
- * Test bundle: TODO, add in Stage 5 (animated @property gradient angle).
+ * clone. Reads document.styleSheets (in-memory cssom). Clone only.
+ * Test bundle: TODO, add later (animated @property gradient angle).
  *
  * Why this exists: @layer order and @scope are already resolved into the baked
- * inline styles, match.ts builds the cascade and bake.ts's P1 probe validates
+ * inline styles, match.ts builds the cascade and bake.ts's probe validates
  * every value against the computed result, which the browser produced with layer
- * and scope precedence applied. so they need no separate handling. @property is
+ * and scope precedence applied. So they need no separate handling. @property is
  * the part that does not survive: a registered custom property carries a syntax,
  * inherits flag, and initial-value that govern how it falls back and interpolates
- * (e.g. an animated --angle gradient). re-emitting the @property registration
- * keeps that behavior. (only the syntax registration is re-emitted, not a
+ * (e.g. an animated --angle gradient). Re-emitting the @property registration
+ * keeps that behavior. (Only the syntax registration is re-emitted, not a
  * synthetic layer order.)
  */
 import type { Captured } from '../../types';
 
 /**
- * re-emits @property registrations for custom properties the snip uses.
+ * Re-emits @property registrations for custom properties the snip uses.
  *
  * @param captured - clone is mutated in place
  */
@@ -43,7 +41,7 @@ export function apply(captured: Captured): Captured {
 		try {
 			cssRules = sheet.cssRules;
 		} catch {
-			continue; // cross-origin sheet; cannot read.
+			continue; // Cross-origin sheet; cannot read.
 		}
 		collectPropertyRules(cssRules, used, rules);
 	}
@@ -55,7 +53,7 @@ export function apply(captured: Captured): Captured {
 	return captured;
 }
 
-/** every custom-property name the snip references or defines. */
+/** Every custom-property name the snip references or defines. */
 function usedCustomProps(captured: Captured): Set<string> {
 	const names = new Set<string>();
 	for (const v of captured.variables) names.add(v.name);
@@ -70,7 +68,7 @@ function usedCustomProps(captured: Captured): Set<string> {
 	return names;
 }
 
-/** find @property rules (CSSPropertyRule) whose name is used and serialize them. */
+/** Find @property rules (CSSPropertyRule) whose name is used and serialize them. */
 function collectPropertyRules(rules: CSSRuleList, used: Set<string>, out: string[]): void {
 	for (const rule of Array.from(rules)) {
 		// CSSPropertyRule is not in all dom lib versions; detect structurally.
@@ -83,7 +81,7 @@ function collectPropertyRules(rules: CSSRuleList, used: Set<string>, out: string
 	}
 }
 
-/** fallback serializer for an @property rule when cssText is unavailable. */
+/** Fallback serializer for an @property rule when cssText is unavailable. */
 function serializeProperty(r: { name?: unknown; syntax?: unknown; inherits?: unknown; initialValue?: unknown }): string {
 	const initial = typeof r.initialValue === 'string' && r.initialValue ? `\n\tinitial-value: ${r.initialValue};` : '';
 	return `@property ${String(r.name)} {\n\tsyntax: ${String(r.syntax)};\n\tinherits: ${String(r.inherits)};${initial}\n}`;

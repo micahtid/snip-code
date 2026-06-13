@@ -1,27 +1,26 @@
 /**
  * convert/tw-palette.ts: tailwind color palette matcher
  *
- * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4, convert
+ * Pipeline position: convert
  * Reads from Captured: nothing (operates on color strings)
  * Writes to Captured: nothing (pure color matcher)
  *
- * Principles applied: none directly; a lookup feeding the tailwind converter.
+ * A lookup feeding the tailwind converter.
  *
  * Why this exists: tailwind expresses colors as palette tokens (bg-slate-700).
- * to emit clean tailwind, an arbitrary captured color must map to the nearest
+ * To emit clean tailwind, an arbitrary captured color must map to the nearest
  * palette entry, but only when the match is perceptually faithful, else the
  * converter must fall back to an arbitrary value (bg-[#4287f5]) so brand colors
- * are not silently drifted. matching uses ciede2000 (perceptual color distance),
+ * are not silently drifted. Matching uses ciede2000 (perceptual color distance),
  * with tight thresholds: <1 is exact, 1-2 is an acceptable nudge, >=2 forces an
- * arbitrary value. ported (rewritten) from v1 tailwind-palette.ts, full module.
+ * arbitrary value. Ported (rewritten) from v1 tailwind-palette.ts, full module.
  *
- * the palette table below is the tailwind v3 vocabulary (a finite output-format
- * data table, not a decision-layer property/tag Set, forbidden pattern #1 does
- * not apply to format vocabularies).
+ * The palette table below is the tailwind v3 vocabulary (a finite output-format
+ * data table, not a hardcoded list of styling properties or tags, so the
+ * no-hardcoded-list rule does not apply to format vocabularies).
  */
 
-/** tailwind v3 palette: "family-shade" -> hex. */
+/** Tailwind v3 palette: "family-shade" -> hex. */
 const TAILWIND_COLORS: Record<string, string> = {
 	white: '#ffffff', black: '#000000',
 	'slate-50': '#f8fafc', 'slate-100': '#f1f5f9', 'slate-200': '#e2e8f0', 'slate-300': '#cbd5e1', 'slate-400': '#94a3b8', 'slate-500': '#64748b', 'slate-600': '#475569', 'slate-700': '#334155', 'slate-800': '#1e293b', 'slate-900': '#0f172a', 'slate-950': '#020617',
@@ -48,22 +47,22 @@ const TAILWIND_COLORS: Record<string, string> = {
 	'rose-50': '#fff1f2', 'rose-100': '#ffe4e6', 'rose-200': '#fecdd3', 'rose-300': '#fda4af', 'rose-400': '#fb7185', 'rose-500': '#f43f5e', 'rose-600': '#e11d48', 'rose-700': '#be123c', 'rose-800': '#9f1239', 'rose-900': '#881337', 'rose-950': '#4c0519',
 };
 
-// tightened from v1's earlier 3.0: above ~2.0 brand colors drift visibly, so we
+// Tightened from v1's earlier 3.0: above ~2.0 brand colors drift visibly, so we
 // force an arbitrary value (bg-[#hex]) instead of an approximate palette token.
 const DELTA_E_EXACT = 1;
 const DELTA_E_CLOSE = 2;
 
-/** lazily-computed lab values for every palette entry (perf: compute once). */
+/** Lazily-computed lab values for every palette entry (perf: compute once). */
 let labCache: Array<{ name: string; lab: [number, number, number] }> | null = null;
 
-/** the matched palette token plus whether it is perceptually exact. */
+/** The matched palette token plus whether it is perceptually exact. */
 export interface PaletteMatch {
-	name: string; // "slate-700" (caller prefixes bg-/text-/border-)
+	name: string; // "Slate-700" (caller prefixes bg-/text-/border-)
 	exact: boolean;
 }
 
 /**
- * finds the nearest tailwind palette token to a css color, or null if no token
+ * Finds the nearest tailwind palette token to a css color, or null if no token
  * is within perceptual tolerance (caller should emit an arbitrary value).
  *
  * @param colorValue - any css color string (hex/rgb/hsl; oklch returns null)
@@ -72,7 +71,7 @@ export function matchColor(colorValue: string): PaletteMatch | null {
 	const hex = parseColor(colorValue);
 	if (!hex) return null;
 
-	// exact hex hit wins immediately.
+	// Exact hex hit wins immediately.
 	for (const [name, palHex] of Object.entries(TAILWIND_COLORS)) {
 		if (palHex === hex) return { name, exact: true };
 	}
@@ -89,8 +88,8 @@ export function matchColor(colorValue: string): PaletteMatch | null {
 }
 
 /**
- * parses a css color to a 6-digit #hex, or null for colors we cannot/should not
- * match (transparent, currentcolor, oklch/oklab, keywords). alpha is dropped , 
+ * Parses a css color to a 6-digit #hex, or null for colors we cannot/should not
+ * match (transparent, currentcolor, oklch/oklab, keywords). Alpha is dropped, 
  * the caller preserves opacity separately.
  *
  * @param value - the css color string
@@ -116,20 +115,20 @@ export function parseColor(value: string): string | null {
 	return null;
 }
 
-/** parse #rrggbb into [r,g,b] 0-255. */
+/** Parse #rrggbb into [r,g,b] 0-255. */
 export function hexToRgb(hex: string): [number, number, number] {
 	const n = parseInt(hex.slice(1), 16);
 	return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** [r,g,b] 0-255 -> CIELAB (D65). */
+/** [R,g,b] 0-255 -> CIELAB (D65). */
 export function rgbToLab(r: number, g: number, b: number): [number, number, number] {
 	// sRGB -> linear.
 	const lin = [r, g, b].map((c) => {
 		const cs = c / 255;
 		return cs <= 0.04045 ? cs / 12.92 : Math.pow((cs + 0.055) / 1.055, 2.4);
 	}) as [number, number, number];
-	// linear -> XYZ (D65).
+	// Linear -> XYZ (D65).
 	const x = (lin[0] * 0.4124 + lin[1] * 0.3576 + lin[2] * 0.1805) / 0.95047;
 	const y = lin[0] * 0.2126 + lin[1] * 0.7152 + lin[2] * 0.0722;
 	const z = (lin[0] * 0.0193 + lin[1] * 0.1192 + lin[2] * 0.9505) / 1.08883;
@@ -191,7 +190,7 @@ export function deltaE2000(lab1: [number, number, number], lab2: [number, number
 	);
 }
 
-/** build (and cache) the lab value for every palette entry. */
+/** Build (and cache) the lab value for every palette entry. */
 function paletteLab(): Array<{ name: string; lab: [number, number, number] }> {
 	if (labCache) return labCache;
 	labCache = Object.entries(TAILWIND_COLORS).map(([name, hex]) => {
@@ -201,12 +200,12 @@ function paletteLab(): Array<{ name: string; lab: [number, number, number] }> {
 	return labCache;
 }
 
-/** clamp + format three channels to #rrggbb. */
+/** Clamp + format three channels to #rrggbb. */
 function toHex(r: number, g: number, b: number): string {
 	return `#${[r, g, b].map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** hsl (0-1 each) -> [r,g,b] 0-255. */
+/** Hsl (0-1 each) -> [r,g,b] 0-255. */
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 	const hue = (p: number, q: number, t: number): number => {
 		if (t < 0) t += 1;

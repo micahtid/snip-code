@@ -1,35 +1,34 @@
 /**
  * components/SettingsView.tsx: byok + preferences settings tab
  *
- * Phase: i (byok), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: n/a (configures pipeline phase 5 + assistive delivery)
+ * Pipeline position: n/a (configures polish + assistive delivery)
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
  * Principles applied: none (ui).
  *
- * Why this exists: section 10's settings tab, provider dropdown, password-masked
+ * Why this exists: the settings tab, provider dropdown, password-masked
  * api key, model override, test-key button, default output format, assistive
- * delivery, webhook url. everything persists to chrome.storage.local via
- * utils/storage (never sync). the key is validated against the live provider
- * (utils/byok) and never logged. if no key is configured, phase 5 silently
- * no-ops and phases 1-4 still produce output.
+ * delivery, webhook url. Everything persists to chrome.storage.local via
+ * utils/storage (never sync). The key is validated against the live provider
+ * (utils/byok) and never logged. If no key is configured, polish silently
+ * no-ops and the rest of the pipeline still produces output.
  */
 import { useEffect, useState } from 'react';
 import type { OutputFormat, Provider, UserPreferences } from '../content/types';
 import { DEFAULT_MODELS, PROVIDER_LABELS, validateKey, type ValidationResult } from '../utils/byok';
 import { getKey, getPrefs, setKey, setPrefs } from '../utils/storage';
+import { COLORS, FONT_UI } from '../theme';
 
 const PROVIDERS: Provider[] = ['openrouter', 'anthropic', 'openai', 'google'];
 const FORMATS: OutputFormat[] = ['html', 'tailwind', 'bem-css', 'bem-scss', 'jsx-tailwind', 'jsx-css', 'vue'];
 const DELIVERY: Array<'clipboard' | 'file' | 'webhook'> = ['clipboard', 'file', 'webhook'];
 
 const s = {
-	field: { marginBottom: '14px' } as React.CSSProperties,
-	label: { display: 'block', fontWeight: 600, marginBottom: '4px', fontSize: '12px' } as React.CSSProperties,
-	input: { width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' } as React.CSSProperties,
-	row: { display: 'flex', gap: '6px', alignItems: 'center' } as React.CSSProperties,
-	btn: { padding: '6px 10px', border: 'none', borderRadius: '6px', background: '#4f6ef6', color: '#fff', cursor: 'pointer' } as React.CSSProperties,
+	field: { marginBottom: '16px' } as React.CSSProperties,
+	label: { display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '12px', color: COLORS.slate700 } as React.CSSProperties,
+	row: { display: 'flex', gap: '10px', alignItems: 'center' } as React.CSSProperties,
+	check: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: COLORS.slate700, marginBottom: '4px' } as React.CSSProperties,
 };
 
 export function SettingsView() {
@@ -38,7 +37,7 @@ export function SettingsView() {
 	const [result, setResult] = useState<ValidationResult | null>(null);
 	const [testing, setTesting] = useState(false);
 
-	// load prefs + the active provider's key on mount.
+	// Load prefs + the active provider's key on mount.
 	useEffect(() => {
 		void (async () => {
 			const p = await getPrefs();
@@ -47,27 +46,27 @@ export function SettingsView() {
 		})();
 	}, []);
 
-	if (!prefs) return <div style={{ color: '#999' }}>loading…</div>;
+	if (!prefs) return <div style={{ color: COLORS.slate500 }}>Loading…</div>;
 
-	/** persist a preferences patch and update local state. */
+	/** Persist a preferences patch and update local state. */
 	const update = (patch: Partial<UserPreferences>): void => {
 		const next = { ...prefs, ...patch };
 		setPrefsState(next);
 		void setPrefs(patch);
 	};
 
-	/** switch provider: persist and load that provider's stored key. */
+	/** Switch provider: persist and load that provider's stored key. */
 	const onProvider = (provider: Provider): void => {
 		update({ activeProvider: provider });
 		setResult(null);
 		void getKey(provider).then(setKeyState);
 	};
 
-	/** validate the entered key against the live provider. */
+	/** Validate the entered key against the live provider. */
 	const onTest = async (): Promise<void> => {
 		setTesting(true);
 		setResult(null);
-		await setKey(prefs.activeProvider, key); // persist before testing
+		await setKey(prefs.activeProvider, key); // Persist before testing
 		const r = await validateKey(prefs.activeProvider, key, prefs.modelOverrides[prefs.activeProvider] ?? undefined);
 		setResult(r);
 		setTesting(false);
@@ -81,8 +80,8 @@ export function SettingsView() {
 	return (
 		<div>
 			<div style={s.field}>
-				<label style={s.label}>provider</label>
-				<select style={s.input} value={prefs.activeProvider} onChange={(e) => onProvider(e.target.value as Provider)}>
+				<label style={s.label}>Provider</label>
+				<select className="sc-input" value={prefs.activeProvider} onChange={(e) => onProvider(e.target.value as Provider)}>
 					{PROVIDERS.map((p) => (
 						<option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
 					))}
@@ -90,21 +89,21 @@ export function SettingsView() {
 			</div>
 
 			<div style={s.field}>
-				<label style={s.label}>api key (stored locally only)</label>
+				<label style={s.label}>API key (stored locally only)</label>
 				<input
-					style={s.input}
+					className="sc-input"
 					type="password"
 					value={key}
-					placeholder="paste key"
+					placeholder="Paste key"
 					onChange={(e) => setKeyState(e.target.value)}
 					onBlur={() => void setKey(prefs.activeProvider, key)}
 				/>
 			</div>
 
 			<div style={s.field}>
-				<label style={s.label}>model override</label>
+				<label style={s.label}>Model override</label>
 				<input
-					style={s.input}
+					className="sc-input"
 					type="text"
 					value={prefs.modelOverrides[prefs.activeProvider] ?? ''}
 					placeholder={DEFAULT_MODELS[prefs.activeProvider]}
@@ -116,20 +115,20 @@ export function SettingsView() {
 
 			<div style={s.field}>
 				<div style={s.row}>
-					<button style={s.btn} disabled={testing} onClick={() => void onTest()}>
-						{testing ? 'testing…' : 'test key'}
+					<button className="sc-btn sc-btn-secondary sc-btn-sm" style={{ fontFamily: FONT_UI }} disabled={testing} onClick={() => void onTest()}>
+						{testing ? 'Testing…' : 'Test Key'}
 					</button>
 					{result && (
 						<span style={{ color: result.valid ? '#2e7d32' : '#c62828', fontSize: '12px' }}>
-							{result.valid ? `valid (${result.modelEcho})` : `invalid: ${result.error}`}
+							{result.valid ? `Valid (${result.modelEcho})` : `Invalid: ${result.error}`}
 						</span>
 					)}
 				</div>
 			</div>
 
 			<div style={s.field}>
-				<label style={s.label}>default output format</label>
-				<select style={s.input} value={prefs.defaultOutput} onChange={(e) => update({ defaultOutput: e.target.value as OutputFormat })}>
+				<label style={s.label}>Default output format</label>
+				<select className="sc-input" value={prefs.defaultOutput} onChange={(e) => update({ defaultOutput: e.target.value as OutputFormat })}>
 					{FORMATS.map((f) => (
 						<option key={f} value={f}>{f}</option>
 					))}
@@ -137,14 +136,14 @@ export function SettingsView() {
 			</div>
 
 			<div style={s.field}>
-				<label style={s.label}>assistive delivery</label>
+				<label style={s.label}>Assistive delivery</label>
 				{DELIVERY.map((d) => (
-					<label key={d} style={{ display: 'block', fontSize: '12px' }}>
+					<label key={d} style={s.check}>
 						<input
 							type="checkbox"
 							checked={prefs.assistiveDelivery.includes(d)}
 							onChange={() => toggleDelivery(d)}
-						/>{' '}
+						/>
 						{d}
 					</label>
 				))}
@@ -152,9 +151,9 @@ export function SettingsView() {
 
 			{prefs.assistiveDelivery.includes('webhook') && (
 				<div style={s.field}>
-					<label style={s.label}>webhook url</label>
+					<label style={s.label}>Webhook URL</label>
 					<input
-						style={s.input}
+						className="sc-input"
 						type="url"
 						value={prefs.webhookUrl ?? ''}
 						placeholder="https://…"

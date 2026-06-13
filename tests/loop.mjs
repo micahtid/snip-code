@@ -1,14 +1,14 @@
-// grader orchestrator. wraps render-diff with run history and a few flags:
+// Grader orchestrator. Wraps render-diff with run history and a few flags:
 //
-//   --target <file>  which file in each bundle to score (default output.html).
-//   --cached         no-op: we score files already on disk (kept for forward compat).
-//   --bisect         compare per-case scores between the last two scores.jsonl
-//                    entries with the same target; print regressions.
-//   --note <text>    free-form label saved on the history entry (e.g. "v2 baseline").
+// --target <file> which file in each bundle to score (default output.html).
+// --cached no-op: we score files already on disk (kept for forward compat).
+// --bisect compare per-case scores between the last two scores.jsonl
+// entries with the same target; print regressions.
+// --note <text> free-form label saved on the history entry (e.g. "v2 baseline").
 //
-// default invocation runs the grader, prints results, and appends one json line
-// to scores.jsonl (append-only, one line per run). per-commit grading from
-// commit 18 onward uses `node tests/loop.mjs --note "<commit>"`.
+// Default invocation runs the grader, prints results, and appends one json line
+// to scores.jsonl (append-only, one line per run). Per-commit grading uses
+// `node tests/loop.mjs --note "<commit>"`.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -31,7 +31,7 @@ function parseFlags(argv) {
 	return flags;
 }
 
-/** normalize the target field (string or array) into a stable comparison key. */
+/** Normalize the target field (string or array) into a stable comparison key. */
 function targetKey(entry) {
 	if (!entry?.target) return 'default';
 	return Array.isArray(entry.target) ? entry.target.join(',') : String(entry.target);
@@ -51,7 +51,7 @@ async function appendHistory(entry) {
 	await fs.appendFile(SCORES_PATH, JSON.stringify(entry) + '\n');
 }
 
-// compare the last two runs with the same target; report cases whose pixel or
+// Compare the last two runs with the same target; report cases whose pixel or
 // ssim dropped by more than the threshold, plus new/dropped cases.
 async function bisect(targetOverride) {
 	const history = await readHistory();

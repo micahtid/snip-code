@@ -1,22 +1,20 @@
 /**
- * background.js: mv3 service worker
+ * background.js: mv3 service worker. This is a privileged broker, not a
+ * pipeline phase.
  *
- * phase: a (scaffold). pipeline position: n/a (privileged broker, not a phase).
- *
- * this is the extension's only privileged context. it exists so the content
+ * This is the extension's only privileged context. It exists so the content
  * script (sandboxed, same-origin-limited) can reach things it cannot touch
  * directly: cross-origin stylesheet fetches, tab screenshots, and byok llm
- * provider calls. it routes the message protocol in section 19.2.
+ * provider calls. It routes the extension's message protocol.
  *
- * at this scaffold stage it only wires the toolbar icon to open the side panel.
- * the fetch / screenshot / llm / storage handlers land in later phases
- * (b: stylesheet + screenshot, i: llm, k: snippet storage + export).
+ * It wires the toolbar icon to open the side panel and routes the fetch,
+ * screenshot, llm, and storage handlers.
  *
- * security: this worker reads byok keys from chrome.storage.local to attach
+ * Security: this worker reads byok keys from chrome.storage.local to attach
  * auth headers, but never logs them and never persists them anywhere else.
  */
 
-// open the side panel when the toolbar icon is clicked. requires the
+// Open the side panel when the toolbar icon is clicked. Requires the
 // "sidePanel" permission and a side_panel entry in the manifest.
 chrome.runtime.onInstalled.addListener(() => {
 	if (chrome.sidePanel) {
@@ -27,21 +25,17 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 /**
- * message router (section 19.2). the content script reaches privileged apis
- * only through here. handlers reply via the Response envelope
- * { requestId, ok, result?, error? }. returning true keeps the channel open for
+ * Message router. The content script reaches privileged apis
+ * only through here. Handlers reply via the Response envelope
+ * { requestId, ok, result?, error? }. Returning true keeps the channel open for
  * the async sendResponse.
- *
- * at commit 3 only CAPTURE_SCREENSHOT is wired (the picker needs it to crop a
- * thumbnail). FETCH_STYLESHEET lands in commit 4, the llm + storage handlers in
- * later phases.
  */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (!message || typeof message !== 'object') return false;
 
 	switch (message.type) {
 		case 'CAPTURE_SCREENSHOT': {
-			// content scripts cannot call captureVisibleTab; the worker can. it
+			// Content scripts cannot call captureVisibleTab; the worker can. It
 			// returns the whole viewport at device resolution and the content-side
 			// picker crops to the element rect (it knows the dpr + scroll offsets).
 			chrome.tabs
@@ -54,13 +48,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 						error: { code: 'MALFORMED_REQUEST', message: String(err) },
 					}),
 				);
-			return true; // async response
+			return true; // Async response
 		}
 
 		case 'CDP_INHERITED': {
-			// read the authored inherited cascade via the devtools protocol. only
-			// the background can attach the debugger. capture-internal message (not
-			// in the section-19.2 union); see capture/cdp.ts for the rationale.
+			// Read the authored inherited cascade via the devtools protocol. Only
+			// the background can attach the debugger. This is a capture-internal
+			// message; see capture/cdp.ts for the rationale.
 			const tabId = _sender.tab && _sender.tab.id;
 			cdpInheritedChain(tabId, message.payload && message.payload.selector)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
@@ -75,9 +69,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'LLM_REQUEST': {
-			// byok phase-5 polish. the worker reads the key from storage (never
+			// Byok polish. The worker reads the key from storage (never
 			// logs it), calls the provider, and returns the parsed { renameMap,
-			// hoverRules } (section 19.2). content scripts cannot reach provider
+			// hoverRules }. Content scripts cannot reach provider
 			// hosts (page csp), so all llm traffic goes through here.
 			const p = message.payload || {};
 			llmRequest(p.provider, p.model, p.prompt)
@@ -91,8 +85,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'FETCH_STYLESHEET': {
-			// background fetch bypasses cors via the <all_urls> host permission so
-			// the content script can recover cross-origin stylesheets (section 19.2).
+			// Background fetch bypasses cors via the <all_urls> host permission so
+			// the content script can recover cross-origin stylesheets.
 			fetchStylesheet(message.payload && message.payload.href)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
 				.catch((err) =>
@@ -111,14 +105,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
- * reads the authored inherited cascade for one node via the chrome devtools
+ * Reads the authored inherited cascade for one node via the chrome devtools
  * protocol, with closed shadow roots pierced.
  *
- * flow: attach debugger -> enable DOM+CSS -> DOM.getDocument({pierce:true}) ->
+ * Flow: attach debugger -> enable DOM+CSS -> DOM.getDocument({pierce:true}) ->
  * DOM.querySelector(root, selector) -> CSS.getMatchedStylesForNode(nodeId).
- * the response's `inherited[]` is the ancestor cascade devtools shows under
- * "inherited from"; we strip user-agent + implicit rules at source. detaches in
- * finally. throws on attach contention (devtools already attached) so the caller
+ * The response's `inherited[]` is the ancestor cascade devtools shows under
+ * "inherited from"; we strip user-agent + implicit rules at source. Detaches in
+ * finally. Throws on attach contention (devtools already attached) so the caller
  * can soft-fail to cssom-only capture.
  */
 async function cdpInheritedChain(tabId, selector) {
@@ -131,7 +125,7 @@ async function cdpInheritedChain(tabId, selector) {
 		attached = true;
 		await chrome.debugger.sendCommand(target, 'DOM.enable');
 		await chrome.debugger.sendCommand(target, 'CSS.enable');
-		// pierce:true so the tree (and the inherited chain) crosses closed shadow
+		// Pierce:true so the tree (and the inherited chain) crosses closed shadow
 		// roots, the v2 addition over v1's pierce:false.
 		const doc = await chrome.debugger.sendCommand(target, 'DOM.getDocument', { depth: -1, pierce: true });
 		const closedShadowRoots = countClosedShadowRoots(doc.root);
@@ -156,13 +150,13 @@ async function cdpInheritedChain(tabId, selector) {
 			try {
 				await chrome.debugger.detach(target);
 			} catch (e) {
-				// already detached or tab gone; nothing to recover.
+				// Already detached or tab gone; nothing to recover.
 			}
 		}
 	}
 }
 
-/** recursively count author-closed shadow roots in a cdp DOM.Node tree. */
+/** Recursively count author-closed shadow roots in a cdp DOM.Node tree. */
 function countClosedShadowRoots(node) {
 	let count = 0;
 	if (node.shadowRoots) {
@@ -178,9 +172,9 @@ function countClosedShadowRoots(node) {
 }
 
 /**
- * normalizes one cdp RuleMatch into { selector, properties, media? }, dropping
+ * Normalizes one cdp RuleMatch into { selector, properties, media? }, dropping
  * user-agent and implicit/disabled declarations (we synthesize our own
- * defaults, and ua rules would bloat the output). returns null if nothing usable.
+ * defaults, and ua rules would bloat the output). Returns null if nothing usable.
  */
 function stripCdpRule(rm) {
 	const rule = rm && rule_of(rm);
@@ -201,15 +195,15 @@ function stripCdpRule(rm) {
 	return out;
 }
 
-/** unwrap the rule object from a cdp RuleMatch. */
+/** Unwrap the rule object from a cdp RuleMatch. */
 function rule_of(rm) {
 	return rm.rule || null;
 }
 
 /**
- * runs a byok llm polish request: reads the provider key from storage, calls the
- * provider, and parses a strict-json reply into { renameMap, hoverRules }. throws
- * NO_KEY_CONFIGURED when no key is stored (caller skips phase 5). the key is read
+ * Runs a byok llm polish request: reads the provider key from storage, calls the
+ * provider, and parses a strict-json reply into { renameMap, hoverRules }. Throws
+ * NO_KEY_CONFIGURED when no key is stored (caller skips the polish step). The key is read
  * here and attached to the request only; it is never logged or persisted elsewhere.
  */
 async function llmRequest(provider, model, prompt) {
@@ -224,7 +218,7 @@ async function llmRequest(provider, model, prompt) {
 	return parseReply(text);
 }
 
-/** build a chat/generation request per provider (mirrors utils/byok.ts shapes). */
+/** Build a chat/generation request per provider (mirrors utils/byok.ts shapes). */
 function buildGenerationRequest(provider, key, model, prompt) {
 	const json = 'application/json';
 	const MAX = 2000;
@@ -261,7 +255,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 	}
 }
 
-/** extract the first json object from the model's text and parse it leniently. */
+/** Extract the first json object from the model's text and parse it leniently. */
 function parseReply(text) {
 	const match = text.match(/\{[\s\S]*\}/);
 	if (!match) return { renameMap: {}, hoverRules: [] };
@@ -277,8 +271,8 @@ function parseReply(text) {
 }
 
 /**
- * fetches a cross-origin stylesheet from the background context. validates the
- * url scheme, returns { text, mimeType } (section 19.2). throws on non-2xx so the
+ * Fetches a cross-origin stylesheet from the background context. Validates the
+ * url scheme, returns { text, mimeType }. Throws on non-2xx so the
  * caller records the href as still-inaccessible.
  */
 async function fetchStylesheet(href) {

@@ -1,22 +1,21 @@
 /**
  * convert/jsx.ts: html -> jsx (react)
  *
- * Phase: e (convert), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 4, convert
+ * Pipeline position: convert
  * Reads from Captured: clone (via the tailwind/bem emitters)
  * Writes to Captured: nothing
  *
- * Principles applied: none directly; a format transform of the baked result.
+ * A format transform of the baked result.
  *
- * Why this exists: the jsx-tailwind and jsx-css formats (decision 10) emit a
- * react component. jsx is not html: attributes rename (class -> className, for ->
+ * Why this exists: the jsx-tailwind and jsx-css formats emit a
+ * react component. Jsx is not html: attributes rename (class -> className, for ->
  * htmlFor, hyphenated svg attrs camelCase), void elements self-close, and inline
- * style strings become style objects. this builds on the tailwind emitter
+ * style strings become style objects. This builds on the tailwind emitter
  * (jsx-tailwind) or the bem-css emitter (jsx-css), then rewrites their html into
- * jsx and wraps it in a component. ported (rewritten) from v1 html-to-jsx.ts
- * (full attribute transform table). jsx lets any childless element self-close,
- * so there is no need to enumerate html void elements (which also avoids a tag
- * Set, forbidden pattern #1).
+ * jsx and wraps it in a component. Ported (rewritten) from v1 html-to-jsx.ts
+ * (full attribute transform table). Jsx lets any childless element self-close,
+ * so there is no need to enumerate html void elements (which also avoids
+ * hardcoding a tag list).
  */
 import type { Captured } from '../types';
 import { emitTailwind } from './tailwind';
@@ -24,9 +23,9 @@ import { emitBem } from './bem';
 import type { HtmlOutput } from './html';
 
 /**
- * the html attributes that rename to a non-camelCase react prop. this is the
- * react dom attribute vocabulary (a finite output-format table), not a decision-
- * layer property Set. hyphenated svg attrs are handled algorithmically (camelCase).
+ * The html attributes that rename to a non-camelCase react prop. This is the
+ * react dom attribute vocabulary (a finite output-format table), not a hardcoded
+ * list of styling properties. Hyphenated svg attrs are handled algorithmically (camelCase).
  */
 const REACT_ATTR: Record<string, string> = {
 	class: 'className',
@@ -50,7 +49,7 @@ const REACT_ATTR: Record<string, string> = {
 };
 
 /**
- * emits the snip as a react component plus its stylesheet.
+ * Emits the snip as a react component plus its stylesheet.
  *
  * @param captured - read-only
  * @param variant - 'tailwind' (className utilities) or 'css' (bem classes + css)
@@ -64,19 +63,19 @@ export function emitJsx(captured: Captured, variant: 'tailwind' | 'css'): HtmlOu
 	return { html: component, css: base.css };
 }
 
-/** recursively serialize an element (and its children) as indented jsx. */
+/** Recursively serialize an element (and its children) as indented jsx. */
 function elementToJsx(el: Element, depth: number): string {
 	const pad = '\t'.repeat(depth);
 	const tag = el.tagName.toLowerCase();
 	const attrs = attrsToJsx(el);
 	const children = childrenToJsx(el, depth + 1);
 
-	// jsx allows self-closing any childless element, void or not.
+	// Jsx allows self-closing any childless element, void or not.
 	if (children === '') return `${pad}<${tag}${attrs} />`;
 	return `${pad}<${tag}${attrs}>\n${children}\n${pad}</${tag}>`;
 }
 
-/** serialize child element + text nodes as jsx, dropping empty whitespace. */
+/** Serialize child element + text nodes as jsx, dropping empty whitespace. */
 function childrenToJsx(el: Element, depth: number): string {
 	const pad = '\t'.repeat(depth);
 	const out: string[] = [];
@@ -91,7 +90,7 @@ function childrenToJsx(el: Element, depth: number): string {
 	return out.join('\n');
 }
 
-/** build the jsx attribute string for an element. */
+/** Build the jsx attribute string for an element. */
 function attrsToJsx(el: Element): string {
 	const parts: string[] = [];
 	for (const attr of Array.from(el.attributes)) {
@@ -105,16 +104,16 @@ function attrsToJsx(el: Element): string {
 	return parts.length ? ' ' + parts.join(' ') : '';
 }
 
-/** map an html attribute name to its react prop name. */
+/** Map an html attribute name to its react prop name. */
 function jsxAttrName(name: string): string {
-	if (name.startsWith('data-') || name.startsWith('aria-')) return name; // kept verbatim in react
+	if (name.startsWith('data-') || name.startsWith('aria-')) return name; // Kept verbatim in react
 	const renamed = REACT_ATTR[name];
 	if (renamed) return renamed;
-	if (name.includes('-')) return camelCase(name); // svg attrs: stroke-width -> strokeWidth
+	if (name.includes('-')) return camelCase(name); // Svg attrs: stroke-width -> strokeWidth
 	return name;
 }
 
-/** convert an inline style string to react style-object entries. */
+/** Convert an inline style string to react style-object entries. */
 function styleToObject(style: string): string {
 	const entries: string[] = [];
 	for (const decl of style.split(';')) {
@@ -123,24 +122,24 @@ function styleToObject(style: string): string {
 		const prop = decl.slice(0, idx).trim();
 		const value = decl.slice(idx + 1).trim();
 		if (!prop) continue;
-		// custom properties keep their literal name and must be quoted as a key.
+		// Custom properties keep their literal name and must be quoted as a key.
 		const key = prop.startsWith('--') ? `'${prop}'` : camelCase(prop);
 		entries.push(`${key}: '${value.replace(/'/g, "\\'")}'`);
 	}
 	return entries.join(', ');
 }
 
-/** hyphenated -> camelCase (stroke-width -> strokeWidth). */
+/** Hyphenated -> camelCase (stroke-width -> strokeWidth). */
 function camelCase(name: string): string {
 	return name.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
 }
 
-/** escape a jsx attribute value (double-quoted). */
+/** Escape a jsx attribute value (double-quoted). */
 function escapeAttr(value: string): string {
 	return value.replace(/"/g, '&quot;');
 }
 
-/** escape jsx text so braces are not read as expressions. */
+/** Escape jsx text so braces are not read as expressions. */
 function escapeJsxText(text: string): string {
 	return text.replace(/[{}]/g, (c) => `{'${c}'}`);
 }

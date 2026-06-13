@@ -1,28 +1,27 @@
 /**
  * polish/prompts.ts: llm polish prompt template
  *
- * Phase: i (ai polish), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 5, polish
+ * Pipeline position: polish
  * Reads from Captured: n/a (operates on the vaulted code string)
  * Writes to Captured: n/a
  *
  * Principles applied: none (text generation).
  *
- * Why this exists: phase 5 is text-only and bills per token, so the prompt is
+ * Why this exists: the polish phase is text-only and bills per token, so the prompt is
  * deliberately minimal, it asks the model for two cheap, high-value edits and a
  * strict json reply, nothing that could corrupt the deterministic markup (which
- * is already pixel-correct from phases 1-4). token-heavy values are vaulted
+ * is already pixel-correct from the earlier phases). Token-heavy values are vaulted
  * behind @@V*@@ placeholders before the model sees them, so it never touches
- * svgs/gradients/base64. ported (rewritten) from marketing-website
+ * svgs/gradients/base64. Ported (rewritten) from marketing-website
  * generation-prompts.ts (the post-stage-3-exp-14 text-only template).
  */
 
 /**
- * builds the polish prompt for a vaulted code string.
+ * Builds the polish prompt for a vaulted code string.
  *
- * the model is asked ONLY to (1) propose semantic class renames and (2) add
+ * The model is asked ONLY to (1) propose semantic class renames and (2) add
  * hover/focus interaction rules, both purely additive, and to return strict
- * json so the result is machine-applicable. it must not rewrite the markup,
+ * json so the result is machine-applicable. It must not rewrite the markup,
  * touch @@V*@@ placeholders, or change any geometry.
  *
  * @param vaultedCode - the html+css with fragile values replaced by placeholders

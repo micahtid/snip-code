@@ -1,9 +1,9 @@
-// snapshot-bundles: for each bundle in training-data/, navigate to the captured
+// Snapshot-bundles: for each bundle in training-data/, navigate to the captured
 // url at the captured viewport, locate the element by the captured css selector,
-// and screenshot just that element (tight crop). saves as original.jpg next to
+// and screenshot just that element (tight crop). Saves as original.jpg next to
 // source.json (was 0-screenshot.jpg in v1).
 //
-// run once after capturing a fresh set of source.json files; the grader then has
+// Run once after capturing a fresh set of source.json files; the grader then has
 // a clean ground truth.
 
 import { chromium } from 'playwright';
@@ -14,9 +14,9 @@ import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Downloads', 'training-data');
-const SETTLE_MS = 400; // beat after fonts.ready for heavy layout/animation libs.
+const SETTLE_MS = 400; // Beat after fonts.ready for heavy layout/animation libs.
 
-/** read source.json supporting both the flat bundle schema and the nested assistive schema. */
+/** Read source.json supporting both the flat bundle schema and the nested assistive schema. */
 function readSource(source) {
 	return {
 		url: source.url ?? source.page?.url,
@@ -40,7 +40,7 @@ async function findBundles(dataDir) {
 				if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
 				bundles.push({ tier: tier.name, name: c.name, dir: path.join(tierDir, c.name), source: JSON.parse(raw) });
 			} catch {
-				// skip
+				// Skip
 			}
 		}
 	}
@@ -67,7 +67,7 @@ async function snapshotBundle(browser, bundle) {
 		await locator.scrollIntoViewIfNeeded({ timeout: 5000 });
 		const pngBuf = await locator.screenshot({ type: 'png', omitBackground: false });
 
-		// re-encode to jpg (matches the original.jpg convention; q92 keeps edges crisp).
+		// Re-encode to jpg (matches the original.jpg convention; q92 keeps edges crisp).
 		const jpgBuf = await sharp(pngBuf).jpeg({ quality: 92 }).toBuffer();
 		await fs.writeFile(path.join(bundle.dir, 'original.jpg'), jpgBuf);
 		const meta = await sharp(jpgBuf).metadata();

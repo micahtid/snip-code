@@ -1,29 +1,28 @@
 /**
  * utils/byok.ts: bring-your-own-key provider config + validation
  *
- * Phase: i (byok), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: n/a (configures pipeline phase 5)
+ * Pipeline position: n/a (configures the polish phase)
  *
- * Why this exists: snipcode never ships a key and never proxies requests
- * (decision 8). this module holds the four supported providers' default models
- * (decisions 9a-9d) and endpoints, and the "test key" validation (section 19.5).
- * validation fetches the provider directly from the sidebar, the manifest CSP
- * (section 19.8) whitelists all four hosts for extension pages, so no background
- * round-trip is needed and the key never leaves the user's machine. the actual
+ * Why this exists: snipcode never ships a key and never proxies requests. This
+ * module holds the four supported providers' default models
+ * and endpoints, and the "test key" validation.
+ * Validation fetches the provider directly from the sidebar, the manifest CSP
+ * whitelists all four hosts for extension pages, so no background
+ * round-trip is needed and the key never leaves the user's machine. The actual
  * llm polish runs in the background (content scripts are bound by the page's csp),
- * see polish/llm.ts + background.js (commit 36).
+ * see polish/llm.ts + background.js.
  */
 import type { Provider } from '../content/types';
 
-/** the default model per provider (decisions 9a-9d). user overrides in settings. */
+/** The default model per provider. User overrides in settings. */
 export const DEFAULT_MODELS: Record<Provider, string> = {
-	openrouter: 'google/gemini-3.0-flash',
+	openrouter: 'google/gemini-2.5-flash',
 	anthropic: 'claude-haiku-4-5-20251001',
 	openai: 'gpt-5-mini',
 	google: 'gemini-3.0-flash',
 };
 
-/** human-readable provider labels for the settings dropdown. */
+/** Human-readable provider labels for the settings dropdown. */
 export const PROVIDER_LABELS: Record<Provider, string> = {
 	openrouter: 'OpenRouter',
 	anthropic: 'Anthropic',
@@ -31,7 +30,7 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
 	google: 'Google',
 };
 
-/** the outcome of a "test key" request. */
+/** The outcome of a "test key" request. */
 export interface ValidationResult {
 	valid: boolean;
 	modelEcho?: string;
@@ -39,10 +38,10 @@ export interface ValidationResult {
 }
 
 /**
- * validates a byok key against the live provider (section 19.5).
+ * Validates a byok key against the live provider.
  *
- * succeeds iff http 200 AND the body parses as json AND contains the provider's
- * success indicator. a minimal 1-token request keeps cost negligible.
+ * Succeeds iff http 200 AND the body parses as json AND contains the provider's
+ * success indicator. A minimal 1-token request keeps cost negligible.
  *
  * @param provider - which provider to test
  * @param key - the api key to validate (never logged)
@@ -62,7 +61,7 @@ export async function validateKey(provider: Provider, key: string, model?: strin
 	}
 }
 
-/** request shape per provider for both validation and (mirrored in background) polish. */
+/** Request shape per provider for both validation and (mirrored in background) polish. */
 interface ProviderRequest {
 	url: string;
 	headers: Record<string, string>;
@@ -70,7 +69,7 @@ interface ProviderRequest {
 	check: (json: unknown) => boolean;
 }
 
-/** build the minimal validation request for a provider (section 19.5). */
+/** Build the minimal validation request for a provider. */
 function buildValidationRequest(provider: Provider, key: string, model: string): ProviderRequest {
 	const json = 'application/json';
 	switch (provider) {
@@ -87,7 +86,7 @@ function buildValidationRequest(provider: Provider, key: string, model: string):
 				headers: {
 					'x-api-key': key,
 					'anthropic-version': '2023-06-01',
-					// required for direct browser/extension-page calls (cors).
+					// Required for direct browser/extension-page calls (cors).
 					'anthropic-dangerous-direct-browser-access': 'true',
 					'Content-Type': json,
 				},
@@ -111,7 +110,7 @@ function buildValidationRequest(provider: Provider, key: string, model: string):
 	}
 }
 
-/** true when a nested path exists and is non-empty in a parsed json value. */
+/** True when a nested path exists and is non-empty in a parsed json value. */
 function hasPath(value: unknown, path: Array<string | number>): boolean {
 	let cur: unknown = value;
 	for (const key of path) {

@@ -1,24 +1,22 @@
 /**
  * polish/restore.ts: vault restore, hover-rule merge, orphan prune
  *
- * Phase: i (ai polish), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 5, polish
+ * Pipeline position: polish
  * Reads from Captured: n/a (operates on html + css strings)
  * Writes to Captured: n/a
  *
- * Principles applied: P5-aligned (orphan prune is dead-code elimination, not
- * aesthetic surgery).
+ * The orphan prune is dead-code elimination, not aesthetic surgery.
  *
  * Why this exists: the final polish step folds the llm's additive output back in.
- * any @@V*@@ placeholders the model echoed into its hover rules are restored to
+ * Any @@V*@@ placeholders the model echoed into its hover rules are restored to
  * their original values (vault.restore), the validated hover rules are appended to
  * the css, and selectors whose class tokens no longer appear in the markup (after
- * renaming) are pruned. it never removes anything the markup still references.
+ * renaming) are pruned. It never removes anything the markup still references.
  */
 import type { VerbatimVault } from '../convert/vault';
 
 /**
- * finalizes the polished output: restores vaulted values in the hover rules,
+ * Finalizes the polished output: restores vaulted values in the hover rules,
  * appends them, and prunes orphan css rules.
  *
  * @param html - the (renamed) markup
@@ -33,26 +31,26 @@ export function finalize(html: string, css: string, hoverRules: string[], vault:
 	return { html, css: pruneOrphans(merged, html) };
 }
 
-/** a minimal sanity check that a string is a css rule, not prose. */
+/** A minimal sanity check that a string is a css rule, not prose. */
 function looksLikeRule(rule: string): boolean {
 	return /\{[^}]*\}/.test(rule) && !rule.includes('@@V');
 }
 
 /**
- * drops css rules whose every class-selector token is absent from the markup.
- * conservative: a rule is removed only when none of its `.class` tokens appear as
+ * Drops css rules whose every class-selector token is absent from the markup.
+ * Conservative: a rule is removed only when none of its `.class` tokens appear as
  * a class in the html, so element/pseudo/attribute rules are always kept.
  */
 function pruneOrphans(css: string, html: string): string {
 	const present = htmlClassTokens(html);
 	return css.replace(/([^{}]+)\{[^}]*\}/g, (block, selector: string) => {
 		const classes = (selector.match(/\.[A-Za-z_][\w-]*/g) ?? []).map((c) => c.slice(1));
-		if (classes.length === 0) return block; // not class-targeted; keep.
+		if (classes.length === 0) return block; // Not class-targeted; keep.
 		return classes.some((c) => present.has(c)) ? block : '';
 	});
 }
 
-/** the set of class tokens used by any element in the html. */
+/** The set of class tokens used by any element in the html. */
 function htmlClassTokens(html: string): Set<string> {
 	const tokens = new Set<string>();
 	const re = /\bclass="([^"]*)"/g;

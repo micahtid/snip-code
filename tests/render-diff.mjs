@@ -1,9 +1,9 @@
-// grader: render each bundle's output.html in headless chromium at the matching
+// Grader: render each bundle's output.html in headless chromium at the matching
 // original.jpg dimensions, then score the rendered png against the screenshot
 // with pixelmatch (raw pixel diff) and ssim (structural similarity).
 //
 // v2 filenames: original.jpg (ground truth, from snapshot-bundles.mjs) and
-// output.html (pipeline output, from run-pipeline.mjs). was 0-screenshot.jpg /
+// output.html (pipeline output, from run-pipeline.mjs). Was 0-screenshot.jpg /
 // 4-final-ai.html in v1.
 
 import { chromium } from 'playwright';
@@ -24,8 +24,8 @@ function resolveTargetCandidates(target) {
 	return Array.isArray(target) ? target : [target];
 }
 
-// walk the data dir and return every leaf folder holding original.jpg and at
-// least one target candidate. tier is the first path segment under the root.
+// Walk the data dir and return every leaf folder holding original.jpg and at
+// least one target candidate. Tier is the first path segment under the root.
 async function findBundles(dataDir, targetCandidates) {
 	const bundles = [];
 	const tiers = await fs.readdir(dataDir, { withFileTypes: true });
@@ -50,7 +50,7 @@ async function findBundles(dataDir, targetCandidates) {
 					chosen = { file: cand, path: p };
 					break;
 				} catch {
-					// try next
+					// Try next
 				}
 			}
 			if (!chosen) continue;
@@ -61,7 +61,7 @@ async function findBundles(dataDir, targetCandidates) {
 	return bundles;
 }
 
-// render the target html sized to (width, height); reducedMotion freezes css
+// Render the target html sized to (width, height); reducedMotion freezes css
 // animations at frame 0 for determinism, fonts.ready replaces a brittle timer.
 async function renderTarget(browser, htmlPath, width, height) {
 	const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
@@ -73,7 +73,7 @@ async function renderTarget(browser, htmlPath, width, height) {
 	return png;
 }
 
-// decode any image buffer to raw rgba at exactly (width, height) so pixelmatch
+// Decode any image buffer to raw rgba at exactly (width, height) so pixelmatch
 // and ssim see equivalent inputs (screenshot is jpg, render is png).
 async function toRawRGBA(buffer, width, height) {
 	const { data } = await sharp(buffer).resize(width, height, { fit: 'fill' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });

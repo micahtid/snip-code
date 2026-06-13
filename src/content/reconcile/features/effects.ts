@@ -1,28 +1,27 @@
 /**
  * features/effects.ts: filters, masks, clip-path, blend, shadow
  *
- * Phase: g (tier 1 feature handlers), see SNIPCODE-REWRITE-PLAN.md section 12
- * Pipeline position: 2, reconcile
+ * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone (bakes non-default effect properties)
  *
- * Principles applied: extends P1's "ship what renders" to visual-effect
+ * Principles applied: extends the "ship what renders" rule to visual-effect
  * properties the authored cascade often omits.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/filter
- *   (also backdrop-filter, clip-path, mask, mix-blend-mode, box-shadow)
+ * (also backdrop-filter, clip-path, mask, mix-blend-mode, box-shadow)
  * Detection criterion: an element with a non-default value for one of the effect
- *   properties. per-element early-return otherwise.
+ * properties. Per-element early-return otherwise.
  * Transform contract: bakes those computed values onto the matching clone
- *   element, absolutizing any url() (mask-image, clip-path: url(#...)). mutates
- *   bakedStyles + clone inline styles only.
- * Test bundle: TODO, add in Stage 5 (glassmorphism backdrop, clip-path hero).
+ * element, absolutizing any url() (mask-image, clip-path: url(#...)). Mutates
+ * bakedStyles + clone inline styles only.
+ * Test bundle: TODO, add later (glassmorphism backdrop, clip-path hero).
  *
  * Why this exists: filter/backdrop-filter/clip-path/mask/mix-blend-mode and
  * multi-layer/inset box-shadow are central to a component's look but frequently
  * applied via a class that does not survive, so without baking the snip loses its
- * blur, glass, or clipped shape. these properties are per-frame stable, so baking
- * the computed value is pixel-safe. tier 1 #10.
+ * blur, glass, or clipped shape. These properties are per-frame stable, so baking
+ * the computed value is pixel-safe.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
@@ -30,9 +29,9 @@ import { pairedSubtrees } from '../match';
 const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /**
- * the visual-effect properties this handler preserves, the bounded css-spec
+ * The visual-effect properties this handler preserves, the bounded css-spec
  * surface for filters/masking/compositing (a feature-handler spec set, not a
- * decision-layer property Set; section 6). vendor-prefixed forms are included
+ * hardcoded property list). Vendor-prefixed forms are included
  * because chrome still computes some masks/clips under -webkit-.
  */
 const EFFECT_PROPS = [
@@ -42,14 +41,14 @@ const EFFECT_PROPS = [
 	'mix-blend-mode', 'background-blend-mode', 'box-shadow',
 ];
 
-/** computed values that mean "default" and need no baking. */
+/** Computed values that mean "default" and need no baking. */
 function isDefault(value: string): boolean {
 	const v = value.trim();
 	return v === '' || v === 'none' || v === 'normal';
 }
 
 /**
- * bakes non-default visual-effect properties onto each element.
+ * Bakes non-default visual-effect properties onto each element.
  *
  * @param captured - bakedStyles + clone are mutated in place
  */
@@ -67,7 +66,7 @@ export function apply(captured: Captured): Captured {
 			try {
 				(clone as HTMLElement).style.setProperty(prop, value);
 			} catch {
-				// invalid for this element; skip.
+				// Invalid for this element; skip.
 			}
 		}
 		captured.bakedStyles.set(clone, baked);
@@ -75,7 +74,7 @@ export function apply(captured: Captured): Captured {
 	return captured;
 }
 
-/** rewrite relative url()s to absolute; keep fragment refs (clip-path: url(#x)) and data/blob. */
+/** Rewrite relative url()s to absolute; keep fragment refs (clip-path: url(#x)) and data/blob. */
 function absolutizeUrls(value: string, base: string): string {
 	return value.replace(URL_IN_VALUE, (match, quote: string, url: string) => {
 		if (/^(data:|blob:|https?:|#)/i.test(url)) return match;
