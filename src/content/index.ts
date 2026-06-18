@@ -24,6 +24,7 @@ import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
+import { denoise } from './reconcile/denoise';
 import { apply as applyIcons } from './reconcile/features/icons';
 import { apply as applyFonts } from './reconcile/features/fonts';
 import { apply as applyQueries } from './reconcile/features/queries';
@@ -48,6 +49,7 @@ import { emitBem } from './convert/bem';
 import { emitJsx } from './convert/jsx';
 import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
+import { assembleHtmlDocument, isHtmlShaped } from './convert/format';
 import { polish } from './polish/llm';
 import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
@@ -185,10 +187,12 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// Reconcile phase. Authored and inherited styles bake onto the clone, then the
-	// feature handlers run over the result (isolated failures).
+	// Reconcile phase. Authored and inherited styles bake onto the clone, the feature
+	// handlers run over the result (isolated failures), then de-noise drops the inert
+	// declarations they bake so every output format ships the smaller result.
 	reconcile(captured);
 	runFeatures(captured);
+	denoise(captured);
 
 	// Resolve phase. Var resolution (single pass), @font-face absolutization,
 	// @keyframes pairing. Order: vars first (may rewrite values), then
@@ -202,7 +206,12 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const prefs = await getPrefs();
 	const format: OutputFormat = prefs.defaultOutput;
 	const { html, css } = emitFormat(captured, format);
-	let cleanedCss = cleanCss(css, captured);
+	// The bem emitters (now including the html format) put their generated classes on a
+	// private copy, so the cleaner must match selectors against the emitted markup, not
+	// the inline-styled clone (which carries none of those classes). The tailwind/jsx/vue
+	// paths keep matching against the clone, their established, render-verified behavior.
+	const classMarkup = format === 'html' || format === 'bem-css' || format === 'bem-scss' ? html : undefined;
+	let cleanedCss = cleanCss(css, captured, classMarkup);
 	let finalHtml = html;
 
 	// Polish phase (byok, optional). Additive class renames + hover rules from the
@@ -213,9 +222,24 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		const polished = await polish(finalHtml, cleanedCss, prefs.activeProvider, model);
 		finalHtml = polished.html;
 		cleanedCss = polished.css;
+		// A configured-key polish failure surfaces as a warning (a missing key is a
+		// silent skip and returns none), so the sidebar reports why no edits landed.
+		if (polished.warning) captured.warnings.push(polished.warning);
 	}
 
-	const output = composeDocument(finalHtml, cleanedCss);
+	// Format phase. For html-shaped formats, lift the injected pseudo <style> into the
+	// single head stylesheet and pretty-print both markup and css (jsx/vue self-indent
+	// and keep composeDocument). Runs after polish so the formatting reflects exactly what
+	// ships, including any renamed classes.
+	let output: string;
+	if (isHtmlShaped(format)) {
+		const assembled = assembleHtmlDocument(finalHtml, cleanedCss, captured.warnings);
+		finalHtml = assembled.html;
+		cleanedCss = assembled.css;
+		output = assembled.document;
+	} else {
+		output = composeDocument(finalHtml, cleanedCss);
+	}
 	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, warnings: captured.warnings });
 
 	// Persist the snippet (fifo, capped at 50). Best-effort; a storage failure
@@ -243,7 +267,11 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 	switch (format) {
 		case 'tailwind':
 			return emitTailwind(captured);
+		case 'html':
 		case 'bem-css':
+			// The html format ships a self-contained document with semantic bem classes
+			// and a stylesheet (not inline styles), the most readable single-file output.
+			// The legacy bem-css value resolves here too, so older snippets still emit.
 			return emitBem(captured, false);
 		case 'bem-scss':
 			return emitBem(captured, true);
@@ -253,8 +281,9 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 			return emitJsx(captured, 'css');
 		case 'vue':
 			return emitVue(captured);
-		case 'html':
 		default:
+			// Inline-styled html: no longer user-selectable (the html format emits bem
+			// above), kept as the fallback and as the grader's render-parity reference.
 			return emitHtml(captured);
 	}
 }
@@ -344,12 +373,34 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 
 		reconcile(captured);
 		runFeatures(captured);
+		denoise(captured);
 		resolveVariables(captured);
 		resolveFonts(captured);
 		resolveAnimations(captured);
-		const { html, css } = emitFormat(captured, 'html');
-		const cleanedCss = cleanCss(css, captured);
-		return { ok: true, status: 'ok', html: composeDocument(html, cleanedCss), warnings: captured.warnings };
+		// Inline-styled emitter directly (not emitFormat, whose html case now emits bem):
+		// this stays the grader's inline render-parity reference, scored as output.html
+		// alongside the bem variant below.
+		const inline = emitHtml(captured);
+		const cleanedCss = cleanCss(inline.css, captured);
+		// Assemble the deterministic graded output the same way the sidebar ships it (lift
+		// pseudo styles into one stylesheet, pretty-print markup + css, compose); the byok
+		// polish phase stays out so the output remains reproducible.
+		const inlineDoc = assembleHtmlDocument(inline.html, cleanedCss, captured.warnings);
+
+		// Also emit a bem variant so the grader can score the class-based path separately.
+		// No polish runs, so the classes are the generated block__tag-n names, which is
+		// irrelevant to rendering. The grader writes this to output-bem.html and scores it.
+		const bem = emitFormat(captured, 'bem-css');
+		const cleanedBemCss = cleanCss(bem.css, captured, bem.html);
+		const bemDoc = assembleHtmlDocument(bem.html, cleanedBemCss, captured.warnings);
+
+		return {
+			ok: true,
+			status: 'ok',
+			html: inlineDoc.document,
+			htmlBem: bemDoc.document,
+			warnings: captured.warnings,
+		};
 	} catch (err) {
 		return { ok: false, error: (err as Error).message };
 	}

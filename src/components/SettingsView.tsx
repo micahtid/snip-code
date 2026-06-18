@@ -21,7 +21,9 @@ import { getKey, getPrefs, setKey, setPrefs } from '../utils/storage';
 import { COLORS, FONT_UI } from '../theme';
 
 const PROVIDERS: Provider[] = ['openrouter', 'anthropic', 'openai', 'google'];
-const FORMATS: OutputFormat[] = ['html', 'tailwind', 'bem-css', 'bem-scss', 'jsx-tailwind', 'jsx-css', 'vue'];
+// The html format emits self-contained markup with semantic bem classes and a
+// stylesheet (see emitFormat), so a separate bem-css option would be a duplicate.
+const FORMATS: OutputFormat[] = ['html', 'tailwind', 'bem-scss', 'jsx-tailwind', 'jsx-css', 'vue'];
 const DELIVERY: Array<'clipboard' | 'file' | 'webhook'> = ['clipboard', 'file', 'webhook'];
 
 const s = {

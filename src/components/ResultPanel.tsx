@@ -9,8 +9,9 @@
  *
  * Why this exists: after a snip completes the content script ships the generated
  * code to the side panel (App listens; see App.tsx). This renders it as v1's
- * code block, a gradient header with the format eyebrow and copy action over a
- * monospace, scrollable code surface. Snip mode auto-persists the snippet in the
+ * code block, a gradient header with the format eyebrow, a copy action, and (for
+ * the self-contained html-shaped formats) a preview action that opens the rendered output in a new tab,
+ * over a monospace, scrollable code surface. Snip mode auto-persists the snippet in the
  * content script (storeSnippet), so the bookmark here is a "saved"
  * indicator, not a second write. Assistive mode shows the emitted json; a
  * builder-gated page shows the static unsupported message.
@@ -21,7 +22,7 @@
  * renders whichever format the pipeline produced (settings -> default output).
  */
 import { useState } from 'react';
-import { Bookmark, Check, Copy } from 'lucide-react';
+import { Bookmark, Check, Copy, Eye } from 'lucide-react';
 import type { OutputFormat } from '../content/types';
 import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
@@ -65,6 +66,13 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
 	const eyebrow = result.mode === 'assistive' ? 'Assistive JSON' : (result.format ?? 'html').toUpperCase();
 
+	// Preview makes sense for the html-shaped formats, whose output is a self-contained
+	// document (markup plus an inline stylesheet) that renders on its own: the html
+	// format (semantic bem classes + css) and the bem-scss/legacy bem-css variants.
+	// Tailwind/jsx/vue need a build step or a framework, so they would not render standalone.
+	const PREVIEWABLE: ReadonlySet<string> = new Set(['html', 'bem-css', 'bem-scss']);
+	const canPreview = result.mode === 'snip' && PREVIEWABLE.has(result.format ?? '') && code.length > 0;
+
 	const onCopy = async (): Promise<void> => {
 		try {
 			await navigator.clipboard.writeText(code);
@@ -75,6 +83,15 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		}
 	};
 
+	const onPreview = (): void => {
+		// Open the generated html in a new tab. A blob url is used because data: urls
+		// are blocked for top-level navigation; the url is revoked once the new tab
+		// has had time to load it.
+		const url = URL.createObjectURL(new Blob([code], { type: 'text/html' }));
+		window.open(url, '_blank', 'noopener');
+		setTimeout(() => URL.revokeObjectURL(url), 30000);
+	};
+
 	return (
 		<div style={container}>
 			<div style={header}>
@@ -83,6 +100,11 @@ export function ResultPanel({ result }: ResultPanelProps) {
 					<button className="sc-icon-btn" title={copied ? 'Copied' : 'Copy'} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
 					</button>
+					{canPreview && (
+						<button className="sc-icon-btn" title="Preview in new tab" onClick={onPreview}>
+							<Eye size={16} />
+						</button>
+					)}
 					{result.mode === 'snip' && (
 						<span className="sc-icon-btn sc-icon-btn-saved" title="Saved to your snippets" aria-label="Saved">
 							<Bookmark size={15} fill="currentColor" />

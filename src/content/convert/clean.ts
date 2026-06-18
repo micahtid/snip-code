@@ -21,6 +21,13 @@
  * actual clone subtree and the actual declarations, so the cleaner can never
  * remove something the output depends on. It is reused by every format emitter
  * (html inline, bem/tailwind/scss class rules), so it must be format-agnostic.
+ *
+ * Selector usage is measured against whatever markup the caller passes: the bem
+ * emitters generate their class names on a private copy and leave captured.clone
+ * inline-styled, so a generated `.block__el` selector matched against the clone would
+ * find nothing and wrongly drop a live rule; those callers pass the emitted markup.
+ * The html path passes no markup and keeps matching against the clone (its
+ * established behavior; it ships only inline styles plus at-rules, no class rules).
  */
 import type { Captured } from '../types';
 
@@ -32,10 +39,13 @@ const DROP = '';
  * Removes dead code from an emitted stylesheet.
  *
  * @param css - the stylesheet text to prune
- * @param captured - the snip; usage is measured against captured.clone + the css
+ * @param captured - the snip; font/animation/var usage is read from its baked styles
+ * @param markup - the emitted markup selectors are matched against; falls back to the
+ *   inline-styled clone when absent (the html path passes none and matches the clone,
+ *   its established behavior, since it ships only inline styles plus at-rules)
  * @returns the cleaned stylesheet text
  */
-export function cleanCss(css: string, captured: Captured): string {
+export function cleanCss(css: string, captured: Captured, markup?: string): string {
 	if (!css.trim()) return css;
 	const sheet = new CSSStyleSheet();
 	try {
@@ -45,13 +55,30 @@ export function cleanCss(css: string, captured: Captured): string {
 		return css;
 	}
 
+	const matchRoot = parseMatchRoot(markup) ?? captured.clone;
 	const usage = collectUsage(captured, css);
 	const kept: string[] = [];
 	for (const rule of Array.from(sheet.cssRules)) {
-		const text = keepRule(rule, captured, usage);
+		const text = keepRule(rule, matchRoot, usage);
 		if (text) kept.push(text);
 	}
 	return kept.join('\n\n');
+}
+
+/**
+ * Parses emitted markup into a container element for selector matching, returning
+ * null on absent or unparseable markup so the caller falls back to the clone.
+ *
+ * @param markup - the emitted markup string, or undefined
+ * @returns the parsed body element (its descendants are the snip), or null
+ */
+function parseMatchRoot(markup: string | undefined): Element | null {
+	if (!markup) return null;
+	try {
+		return new DOMParser().parseFromString(markup, 'text/html').body;
+	} catch {
+		return null;
+	}
 }
 
 /** What the snip actually references, gathered from the clone + the css itself. */
@@ -66,12 +93,12 @@ interface Usage {
  * to keep, or '' to drop. Recurses into grouping rules (@media/@supports) and
  * drops them if they end up empty.
  */
-function keepRule(rule: CSSRule, captured: Captured, usage: Usage): string {
+function keepRule(rule: CSSRule, matchRoot: Element, usage: Usage): string {
 	if (rule instanceof CSSStyleRule) {
 		// Keep custom-property-only :root rules pruned to referenced vars;
-		// keep element rules only if some clone element matches them.
+		// keep element rules only if some element in the markup matches them.
 		if (isRootVarRule(rule)) return pruneVarRule(rule, usage);
-		return selectorMatchesSubtree(rule.selectorText, captured.clone) ? rule.cssText : DROP;
+		return selectorMatchesSubtree(rule.selectorText, matchRoot) ? rule.cssText : DROP;
 	}
 	if (rule instanceof CSSFontFaceRule) {
 		const family = (rule.style.getPropertyValue('font-family') || '').replace(/^["']|["']$/g, '').toLowerCase();
@@ -84,7 +111,7 @@ function keepRule(rule: CSSRule, captured: Captured, usage: Usage): string {
 		// Recurse; keep the wrapper only if it still has live inner rules.
 		const inner: string[] = [];
 		for (const child of Array.from(rule.cssRules)) {
-			const text = keepRule(child, captured, usage);
+			const text = keepRule(child, matchRoot, usage);
 			if (text) inner.push(text);
 		}
 		if (inner.length === 0) return DROP;

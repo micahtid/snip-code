@@ -215,6 +215,11 @@ async function llmRequest(provider, model, prompt) {
 	const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) });
 	if (!res.ok) throw new Error('PROVIDER_ERROR_' + res.status);
 	const text = req.extract(await res.json());
+	// A 200 with no usable text (e.g. a reasoning model that spent its token
+	// budget thinking) or with no json object means the reply yields no edits.
+	// Throw so the caller surfaces the cause instead of returning silent empties.
+	if (!text || !text.trim()) throw new Error('EMPTY_COMPLETION');
+	if (!text.includes('{')) throw new Error('NON_JSON_REPLY');
 	return parseReply(text);
 }
 

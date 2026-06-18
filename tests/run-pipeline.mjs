@@ -91,7 +91,7 @@ async function snipOne(context, bundle) {
 
 		if (!result?.ok) throw new Error(result?.error || 'unknown failure');
 		if (result.status === 'unsupported') throw new Error(`builder gate: unsupported (${(result.warnings || []).join(',')})`);
-		return { html: result.html, warnings: result.warnings || [] };
+		return { html: result.html, htmlBem: result.htmlBem, warnings: result.warnings || [] };
 	} finally {
 		await page.close();
 	}
@@ -129,8 +129,11 @@ export async function runAll(opts = {}) {
 			for (const bundle of group) {
 				process.stdout.write(`pipeline ${bundle.tier}/${bundle.name} ... `);
 				try {
-					const { html, warnings } = await snipOne(context, bundle);
+					const { html, htmlBem, warnings } = await snipOne(context, bundle);
 					await fs.writeFile(path.join(bundle.dir, 'output.html'), html, 'utf8');
+					// The bem variant grades the formatter's class-display reflow path, which
+					// the inline-styled html output never exercises (see render-diff --target).
+					if (htmlBem) await fs.writeFile(path.join(bundle.dir, 'output-bem.html'), htmlBem, 'utf8');
 					console.log(`${(html.length / 1024).toFixed(1)} KB` + (warnings.length ? ` (${warnings.length} warn)` : ''));
 					results.push({ ok: true, tier: bundle.tier, name: bundle.name, bytes: html.length });
 				} catch (err) {

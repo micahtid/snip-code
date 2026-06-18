@@ -12,8 +12,8 @@
  * Detection criterion: ::before/::after with computed content other than `none`;
  * ::marker on display:list-item elements; ::placeholder on elements with a
  * placeholder attribute; ::file-selector-button on file inputs.
- * Transform contract: tags the matching clone element with a data-snip-ps marker
- * and appends one <style> to the clone carrying `[data-snip-ps="n"]::x {... }`
+ * Transform contract: tags the matching clone element with a data-snip-pseudo marker
+ * and appends one <style> to the clone carrying `[data-snip-pseudo="n"]::x {... }`
  * rules snapshotted from the live pseudo's computed style. Clone only.
  * Test bundle: TODO, add later (icon-via-::before, custom list markers).
  *
@@ -24,9 +24,10 @@
  * so it survives the tailwind/bem emitters, which rewrite class but keep data-*.
  */
 import type { Captured } from '../../types';
-import { pairedSubtrees } from '../match';
+import { pairedSubtrees, isRedundantDecl, transformContext, inheritsProperty } from '../match';
+import { pseudoDefaults, effectiveInherited, resolveCssWideKeyword } from '../denoise';
 
-const MARKER = 'data-snip-ps';
+const MARKER = 'data-snip-pseudo';
 
 /**
  * The visual properties snapshotted for a pseudo-element, the bounded css-spec
@@ -54,7 +55,7 @@ export function apply(captured: Captured): Captured {
 		const pseudos = pseudosFor(original);
 		const elementRules: string[] = [];
 		for (const pseudo of pseudos) {
-			const rule = ruleFor(original, pseudo, counter);
+			const rule = ruleFor(original, clone, pseudo, counter, captured);
 			if (rule) elementRules.push(rule);
 		}
 		if (elementRules.length > 0) {
@@ -95,15 +96,45 @@ function hasContent(el: Element, pseudo: string): boolean {
 	return content !== '' && content !== 'none' && content !== 'normal';
 }
 
-/** Build one `[data-snip-ps="n"]pseudo {... }` rule from the live pseudo's computed style. */
-function ruleFor(el: Element, pseudo: string, id: number): string | null {
+/** Build one `[data-snip-pseudo="n"]pseudo {... }` rule from the live pseudo's computed style. */
+function ruleFor(el: Element, clone: Element, pseudo: string, id: number, captured: Captured): string | null {
 	const computed = getComputedStyle(el, pseudo);
+	// Every pseudo is de-noised against the same ground truth the element pass uses: the
+	// ua default for this pseudo on this element (read from a clean iframe probe, so the
+	// page's author rules are stripped) is the baseline a non-inherited value falls back
+	// to, and the originating element's effective snip value (effectiveInherited, never
+	// the live page) is what an inherited value falls back to. This drops the inert pseudo
+	// noise (list-style-type: disc, vertical-align: baseline, content: normal on a
+	// placeholder) while keeping the real ::placeholder/::marker appearance.
+	const defaults = pseudoDefaults(el, pseudo);
+	const { hasTransform, hasPerspective } = transformContext(computed);
+	// Generated content is load-bearing for the box-generating pseudos and always kept;
+	// for ::placeholder/::file-selector-button content is just `normal` noise, so it
+	// falls through to the inert-keyword check below and drops.
+	const keepContent = pseudo === '::before' || pseudo === '::after' || pseudo === '::marker';
+
 	const decls: string[] = [];
 	for (const prop of PSEUDO_PROPS) {
 		const value = computed.getPropertyValue(prop);
-		if (value && value !== 'normal' && value !== 'auto' && value !== 'none' || prop === 'content') {
-			if (value) decls.push(`\t${prop}: ${value};`);
+		if (!value) continue;
+		if (prop === 'content' && keepContent) {
+			decls.push(`\t${prop}: ${value};`);
+			continue;
 		}
+		// The universally-inert keywords carry no box, spacing, or decoration.
+		if (value === 'normal' || value === 'auto' || value === 'none') continue;
+		const inherits = inheritsProperty(prop);
+		// Resolve a css-wide keyword to the value it produces first, so the same
+		// redundancy test sheds keyword-form defaults from the pseudo too.
+		const resolved = resolveCssWideKeyword(captured, clone, prop, value) ?? value;
+		const redundant = isRedundantDecl(prop, resolved, {
+			defaultValue: defaults.get(prop),
+			inheritedValue: inherits ? effectiveInherited(captured, clone, prop) : undefined,
+			inherits,
+			hasTransform,
+			hasPerspective,
+		});
+		if (!redundant) decls.push(`\t${prop}: ${value};`);
 	}
 	if (decls.length === 0) return null;
 	return `[${MARKER}="${id}"]${pseudo} {\n${decls.join('\n')}\n}`;
