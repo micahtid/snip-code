@@ -21,9 +21,9 @@
  * shipped back to re-emit, and polish only applies to html/bem; the panel
  * renders whichever format the pipeline produced (settings -> default output).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bookmark, Check, Copy, Eye } from 'lucide-react';
-import type { OutputFormat } from '../content/types';
+import type { AssetFile, OutputFormat } from '../content/types';
 import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
 /** The snip output the content script ships to the panel (shipResult payload). */
@@ -32,8 +32,10 @@ export interface SnipResult {
 	format?: OutputFormat;
 	html?: string;
 	css?: string;
-	/** Self-contained html document (snip mode); preferred for display + copy. */
+	/** Self-contained html document (snip mode); kept for preview + storage. */
 	output?: string;
+	/** Output split into referenced files (index.html + svgs/images); html-shaped snips only. */
+	files?: AssetFile[];
 	/** Emitted assistive json (assistive mode). */
 	json?: string;
 	warnings?: string[];
@@ -49,6 +51,9 @@ interface ResultPanelProps {
 
 export function ResultPanel({ result }: ResultPanelProps) {
 	const [copied, setCopied] = useState(false);
+	const [active, setActive] = useState(0);
+	// A new snip resets the viewer to its first file (the index document).
+	useEffect(() => setActive(0), [result]);
 
 	if (!result) {
 		return <div style={hint}>Pick an element to snip it. Output appears here.</div>;
@@ -66,16 +71,27 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
 	const eyebrow = result.mode === 'assistive' ? 'Assistive JSON' : (result.format ?? 'html').toUpperCase();
 
+	// The output as switchable files: the pipeline's split (index.html plus the lifted
+	// svg/image files) for html-shaped snips, else one synthetic file for json/other formats.
+	const files: AssetFile[] = result.files?.length
+		? result.files
+		: [{ name: result.mode === 'assistive' ? 'output.json' : 'output.html', language: result.mode === 'assistive' ? 'json' : 'html', text: code }];
+	const activeFile = files[Math.min(active, files.length - 1)]!; // files is never empty (fallback above)
+	const copyText = activeFile.text ?? activeFile.dataUrl ?? '';
+
 	// Preview makes sense for the html-shaped formats, whose output is a self-contained
 	// document (markup plus an inline stylesheet) that renders on its own: the html
 	// format (semantic bem classes + css) and the bem-scss/legacy bem-css variants.
 	// Tailwind/jsx/vue need a build step or a framework, so they would not render standalone.
 	const PREVIEWABLE: ReadonlySet<string> = new Set(['html', 'bem-css', 'bem-scss']);
-	const canPreview = result.mode === 'snip' && PREVIEWABLE.has(result.format ?? '') && code.length > 0;
+	// Preview renders the inlined self-contained document, so it works even though the
+	// displayed index.html references the lifted files by name.
+	const previewSource = result.output ?? result.html ?? '';
+	const canPreview = result.mode === 'snip' && PREVIEWABLE.has(result.format ?? '') && previewSource.length > 0;
 
 	const onCopy = async (): Promise<void> => {
 		try {
-			await navigator.clipboard.writeText(code);
+			await navigator.clipboard.writeText(copyText);
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1400);
 		} catch (err) {
@@ -87,7 +103,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		// Open the generated html in a new tab. A blob url is used because data: urls
 		// are blocked for top-level navigation; the url is revoked once the new tab
 		// has had time to load it.
-		const url = URL.createObjectURL(new Blob([code], { type: 'text/html' }));
+		const url = URL.createObjectURL(new Blob([previewSource], { type: 'text/html' }));
 		window.open(url, '_blank', 'noopener');
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	};
@@ -97,7 +113,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 			<div style={header}>
 				<span style={eyebrowStyle}>{eyebrow}</span>
 				<div style={actions}>
-					<button className="sc-icon-btn" title={copied ? 'Copied' : 'Copy'} onClick={() => void onCopy()}>
+					<button className="sc-icon-btn" title={copied ? 'Copied' : `Copy ${activeFile.name}`} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
 					</button>
 					{canPreview && (
@@ -112,9 +128,30 @@ export function ResultPanel({ result }: ResultPanelProps) {
 					)}
 				</div>
 			</div>
-			<pre className="sc-scroll" style={display}>
-				<code>{code}</code>
-			</pre>
+			{files.length > 1 && (
+				<div className="sc-scroll" style={tabBar} role="tablist">
+					{files.map((file, i) => (
+						<button
+							key={file.name}
+							role="tab"
+							aria-selected={file === activeFile}
+							className={`sc-tab${file === activeFile ? ' sc-tab-active' : ''}`}
+							onClick={() => setActive(i)}
+						>
+							{file.name}
+						</button>
+					))}
+				</div>
+			)}
+			{activeFile.language === 'image' ? (
+				<div className="sc-scroll" style={imageWrap}>
+					<img src={activeFile.dataUrl} alt={activeFile.name} style={imagePreview} />
+				</div>
+			) : (
+				<pre className="sc-scroll" style={display}>
+					<code>{activeFile.text}</code>
+				</pre>
+			)}
 			{result.warnings && result.warnings.length > 0 && (
 				<div style={warn}>{result.warnings.length} warning{result.warnings.length > 1 ? 's' : ''} during capture</div>
 			)}
@@ -133,9 +170,21 @@ const header: React.CSSProperties = {
 };
 const eyebrowStyle: React.CSSProperties = { fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: COLORS.slate500 };
 const actions: React.CSSProperties = { display: 'flex', gap: '2px', alignItems: 'center' };
+const tabBar: React.CSSProperties = {
+	display: 'flex', gap: '2px', padding: '0 8px', overflowX: 'auto',
+	background: COLORS.white, borderBottom: `1px solid ${SURFACE.border}`,
+};
+const imageWrap: React.CSSProperties = {
+	display: 'flex', alignItems: 'center', justifyContent: 'center',
+	padding: '16px', maxHeight: '380px', overflow: 'auto', background: COLORS.slate50,
+};
+const imagePreview: React.CSSProperties = { maxWidth: '100%', maxHeight: '348px', objectFit: 'contain' };
 const display: React.CSSProperties = {
+	// Code never wraps: long lines scroll horizontally (overflow: auto) so the markup
+	// reads as emitted rather than reflowing mid-attribute. tabSize narrows the
+	// tab-indented output from the browser default of 8 columns so more fits per line.
 	margin: 0, padding: '14px 16px', maxHeight: '380px', overflow: 'auto', background: COLORS.white,
-	fontFamily: FONT_CODE, fontSize: '12px', lineHeight: 1.7, color: COLORS.slate800, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+	fontFamily: FONT_CODE, fontSize: '12px', lineHeight: 1.7, color: COLORS.slate800, whiteSpace: 'pre', tabSize: 2,
 };
 const warn: React.CSSProperties = { padding: '8px 12px', fontSize: '11px', color: COLORS.slate500, borderTop: `1px solid ${SURFACE.border}` };
 const unsupported: React.CSSProperties = {

@@ -50,6 +50,7 @@ import { emitJsx } from './convert/jsx';
 import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
 import { assembleHtmlDocument, isHtmlShaped } from './convert/format';
+import { splitAssets } from './convert/assets';
 import { polish } from './polish/llm';
 import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
@@ -240,7 +241,12 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	} else {
 		output = composeDocument(finalHtml, cleanedCss);
 	}
-	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, warnings: captured.warnings });
+
+	// Delivery split: for the self-contained html-shaped output, lift the inline svgs
+	// and data-uri images into their own referenced files so the panel can show them as
+	// switchable tabs. `output` (the inlined document) is kept for preview and storage.
+	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
+	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings });
 
 	// Persist the snippet (fifo, capped at 50). Best-effort; a storage failure
 	// never fails the snip.
@@ -283,7 +289,7 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 			return emitVue(captured);
 		default:
 			// Inline-styled html: no longer user-selectable (the html format emits bem
-			// above), kept as the fallback and as the grader's render-parity reference.
+			// above) and no longer graded separately, kept as the safe fallback emitter.
 			return emitHtml(captured);
 	}
 }
@@ -377,28 +383,20 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		resolveVariables(captured);
 		resolveFonts(captured);
 		resolveAnimations(captured);
-		// Inline-styled emitter directly (not emitFormat, whose html case now emits bem):
-		// this stays the grader's inline render-parity reference, scored as output.html
-		// alongside the bem variant below.
-		const inline = emitHtml(captured);
-		const cleanedCss = cleanCss(inline.css, captured);
-		// Assemble the deterministic graded output the same way the sidebar ships it (lift
-		// pseudo styles into one stylesheet, pretty-print markup + css, compose); the byok
-		// polish phase stays out so the output remains reproducible.
-		const inlineDoc = assembleHtmlDocument(inline.html, cleanedCss, captured.warnings);
-
-		// Also emit a bem variant so the grader can score the class-based path separately.
-		// No polish runs, so the classes are the generated block__tag-n names, which is
-		// irrelevant to rendering. The grader writes this to output-bem.html and scores it.
+		// Emit the bem (class-based) output the default html format ships, deterministically:
+		// the byok polish phase stays out, so the classes are the generated block__tag-n names
+		// (irrelevant to rendering). Assemble it the same way the sidebar does (lift pseudo
+		// styles into one stylesheet, pretty-print markup + css, compose), then the grader
+		// scores it as output.html. The inline-styled emitter rendered identically once the
+		// css cleaner landed, so it is no longer emitted as a separate reference.
 		const bem = emitFormat(captured, 'bem-css');
-		const cleanedBemCss = cleanCss(bem.css, captured, bem.html);
-		const bemDoc = assembleHtmlDocument(bem.html, cleanedBemCss, captured.warnings);
+		const cleanedCss = cleanCss(bem.css, captured, bem.html);
+		const doc = assembleHtmlDocument(bem.html, cleanedCss, captured.warnings);
 
 		return {
 			ok: true,
 			status: 'ok',
-			html: inlineDoc.document,
-			htmlBem: bemDoc.document,
+			html: doc.document,
 			warnings: captured.warnings,
 		};
 	} catch (err) {

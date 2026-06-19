@@ -171,6 +171,19 @@ export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google';
 /** The 7 output formats. */
 export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' | 'jsx-css' | 'vue' | 'html';
 
+/**
+ * One file in a split snip result: the index.html document plus the inline svgs
+ * and data-uri images lifted out into their own referenced files (convert/assets.ts).
+ * Text files (html/svg/json) carry `text`; image files carry the original `dataUrl`
+ * so the panel can render them.
+ */
+export interface AssetFile {
+	name: string; // 'index.html', 'icon-1.svg', 'image-1.png'
+	language: 'html' | 'svg' | 'image' | 'json';
+	text?: string; // Source for text files
+	dataUrl?: string; // Original data: url for image files
+}
+
 /** One stored snippet (last 50, fifo). */
 export interface SnippetRecord {
 	id: string; // Uuid v4

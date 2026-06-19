@@ -19,7 +19,7 @@
  * keeping index.html bare ("the bundle owns all markup"). Values come from
  * theme.ts so inline styles and these rules never drift.
  */
-import { COLORS, FONT_UI, RADIUS, STATE, SURFACE, EASE_UI } from './theme';
+import { COLORS, FONT_CODE, FONT_UI, RADIUS, STATE, SURFACE, EASE_UI } from './theme';
 
 /** The id of the single injected <style> element (idempotency guard). */
 const STYLE_ID = 'snipcode-global-css';
@@ -150,6 +150,23 @@ body {
 }
 .sc-nav:hover { color: ${COLORS.slate700}; }
 .sc-nav-active { color: ${COLORS.slate900}; border-bottom-color: ${COLORS.slate900}; }
+
+/* ---- file tabs (index.html / icon-1.svg / image-1.png) ---- */
+.sc-tab {
+	padding: 6px 10px;
+	border: none;
+	background: transparent;
+	font-family: ${FONT_CODE};
+	font-size: 11px;
+	font-weight: 500;
+	color: ${COLORS.slate500};
+	cursor: pointer;
+	white-space: nowrap;
+	border-bottom: 2px solid transparent;
+	transition: color 0.15s ${EASE_UI}, border-color 0.15s ${EASE_UI};
+}
+.sc-tab:hover { color: ${COLORS.slate700}; }
+.sc-tab-active { color: ${COLORS.slate900}; border-bottom-color: ${COLORS.slate900}; }
 
 /* ---- icon buttons (copy / save / more / overflow) ---- */
 .sc-icon-btn {
