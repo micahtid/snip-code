@@ -22,7 +22,7 @@
  * border widths are a px-native css mechanism.
  */
 
-const PX_LEN = /(-?\d*\.?\d+)px\b/g;
+const PX_LEN = /(-?\d*\.?\d+(?:e[+-]?\d+)?)px\b/gi;
 const RGB_FN = /rgba?\(([^)]+)\)/gi;
 const ROOT_FONT_SIZE = 16; // Px; tailwind/browser default root.
 
@@ -33,9 +33,11 @@ export interface SnapResult {
 }
 
 /**
- * Normalizes one declaration's value: px lengths to rem (or rounded px for
- * px-native properties), and opaque rgb() to hex. Multi-token values (e.g.
- * "10px 20px") snap each length independently.
+ * Normalizes one declaration's value for cleaner output: opaque rgb() to hex, and px
+ * lengths to rem (a px-native property such as a border width keeps its exact px, never
+ * rounded). Multi-token values (e.g. "10px 20px") snap each length independently. A
+ * custom property, or any value carrying a css function, passes through untouched, since
+ * rewriting it could change what it means once substituted (see the body).
  *
  * @param property - the css property (decides px-vs-rem treatment)
  * @param value - the declaration value
@@ -43,16 +45,37 @@ export interface SnapResult {
 export function snapValue(property: string, value: string): SnapResult {
 	let result = value;
 
-	// Colors first: opaque rgb()/rgba() -> hex, regardless of property.
+	// Custom properties are opaque substitution tokens: their value is dropped verbatim
+	// into every consumer, whose context is unknown here. Normalizing it can change
+	// meaning, e.g. snapping `0px` to unitless `0` makes a consumer's `max(22px, var(--x))`
+	// mix a length with a number, which is invalid and drops the whole declaration. So a
+	// custom property passes through untouched.
+	if (property.startsWith('--')) {
+		return { value, snapped: false };
+	}
+
+	// A value carrying a css function is left untouched: the RGB_FN/PX_LEN regexes match
+	// a single level of parentheses, so a nested function (the modern
+	// `rgb(R G B / var(--opacity))` color form, or `calc()` inside a length) would be
+	// truncated at the inner `)` and rewritten into an invalid value the css parser then
+	// silently drops. The exact computed value renders identically to its snapped form, so
+	// skipping it costs only readability, never a pixel, and never a dropped declaration.
+	if (/\bvar\(|\bcalc\(|\bclamp\(|\bmin\(|\bmax\(/.test(value)) {
+		return { value, snapped: false };
+	}
+
+	// Colors: opaque rgb()/rgba() -> hex, regardless of property.
 	result = result.replace(RGB_FN, (match, body: string) => rgbToHex(match, body));
 
-	// Lengths: skip values that carry css functions we must not rewrite blindly.
-	if (!/\bvar\(|\bcalc\(|\bclamp\(|\bmin\(|\bmax\(/.test(result)) {
-		if (pixelNative(property)) {
-			result = result.replace(PX_LEN, (_m, n: string) => `${Math.round(parseFloat(n))}px`);
-		} else {
-			result = result.replace(PX_LEN, (_m, n: string) => pxToRem(parseFloat(n)));
-		}
+	// Lengths: a px-native property (border/outline width, shadow, spacing) keeps its
+	// exact px, which reads well and is render-identical to the baked value. It is
+	// deliberately NOT rounded to an integer: rounding changes the rendered value
+	// (letter-spacing -0.374px -> 0px loses the tracking, a shadow blur 1.899px -> 2px
+	// shifts the shadow), which breaks render-equivalence with the inline clone. Every
+	// other length converts to rem, which is exactly ÷16 against the artifact's 16px root
+	// so it reproduces the same px.
+	if (!pixelNative(property)) {
+		result = result.replace(PX_LEN, (_m, n: string) => pxToRem(parseFloat(n)));
 	}
 
 	return { value: result, snapped: result !== value };
@@ -78,8 +101,11 @@ function pixelNative(property: string): boolean {
 function pxToRem(px: number): string {
 	if (px === 0) return '0';
 	const rem = px / ROOT_FONT_SIZE;
-	// Up to 4 decimals, no trailing zeros.
-	return `${parseFloat(rem.toFixed(4))}rem`;
+	// Up to 6 decimals, no trailing zeros. Six (not four) so the rem reproduces the
+	// source px within getComputedStyle's own quantization: at 4 decimals the ÷16/×16
+	// round-trip drifts up to ~0.0008px, which a per-element computed-style diff reads as
+	// a divergence (e.g. line-height 21.0012px -> 21.0016px) even though it is invisible.
+	return `${parseFloat(rem.toFixed(6))}rem`;
 }
 
 /** Convert an opaque rgb()/rgba() to #hex; preserve rgba() when it carries alpha. */

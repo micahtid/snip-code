@@ -6,7 +6,7 @@ dist/
 .tsbuild/
 *.tsbuildinfo
 
-# secrets — byok keys live in chrome.storage.local, never in the repo
+# secrets: byok keys live in chrome.storage.local, never in the repo
 .env
 .env.*
 !.env.example
@@ -15,3 +15,10 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# generated fixture artifacts (references + snip outputs); the fixture html is tracked
+tests/fixtures/.out/
+tests/fixtures/tile.png
+
+# planning docs: working notes, never committed
+FIDELITY-PLAN*.md

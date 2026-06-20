@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* Page-level tokens, defined OUTSIDE the snipped element. These resolve on the
+	   live page but dangle once the .card is pasted standalone, unless the closing
+	   reconciliation bakes the resolved values. */
+	:root {
+		--brand: #3b1d82;
+		--ink: #f4f1fb;
+		--pad: 24px;
+		--radius: 14px;
+	}
+	body {
+		margin: 0;
+		background: #ffffff;
+		font-family: Arial, sans-serif;
+	}
+	.outer {
+		padding: 40px;
+	}
+	.card {
+		background: var(--brand);
+		color: var(--ink);
+		padding: var(--pad);
+		border-radius: var(--radius);
+		width: 320px;
+		font-size: 18px;
+	}
+	.card h2 {
+		margin: 0 0 8px;
+		font-size: 24px;
+	}
+	.card p {
+		margin: 0;
+		opacity: 0.85;
+	}
+</style>
+</head>
+<body>
+	<div class="outer">
+		<div class="card">
+			<h2>Token card</h2>
+			<p>Background and padding come from :root custom properties.</p>
+		</div>
+	</div>
+</body>
+</html>

@@ -9,8 +9,9 @@
  *
  * Why this exists: after a snip completes the content script ships the generated
  * code to the side panel (App listens; see App.tsx). This renders it as v1's
- * code block, a gradient header with the format eyebrow, a copy action, and (for
- * the self-contained html-shaped formats) a preview action that opens the rendered output in a new tab,
+ * code block, a gradient header with the format eyebrow, a copy action, a download
+ * action that saves the file(s) to disk, and (for the self-contained html-shaped
+ * formats) a preview action that opens the rendered output in a new tab,
  * over a monospace, scrollable code surface. Snip mode auto-persists the snippet in the
  * content script (storeSnippet), so the bookmark here is a "saved"
  * indicator, not a second write. Assistive mode shows the emitted json; a
@@ -22,7 +23,7 @@
  * renders whichever format the pipeline produced (settings -> default output).
  */
 import { useEffect, useState } from 'react';
-import { Bookmark, Check, Copy, Eye } from 'lucide-react';
+import { Bookmark, Check, Copy, Download, Eye } from 'lucide-react';
 import type { AssetFile, OutputFormat } from '../content/types';
 import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
@@ -108,6 +109,26 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	};
 
+	// Save a single file to disk. Image files carry a data: url that downloads
+	// directly; text files (html/svg/json) become a blob whose object url is revoked
+	// once the browser has read it.
+	const downloadFile = (file: AssetFile): void => {
+		if (file.language === 'image' && file.dataUrl) {
+			triggerDownload(file.dataUrl, file.name);
+			return;
+		}
+		const url = URL.createObjectURL(new Blob([file.text ?? ''], { type: mimeFor(file.language) }));
+		triggerDownload(url, file.name);
+		setTimeout(() => URL.revokeObjectURL(url), 30000);
+	};
+
+	// Download every file of a split snip (so index.html lands next to the svg/image
+	// files it references and renders standalone), or the single file otherwise.
+	const onDownload = (): void => {
+		if (files.length > 1) files.forEach(downloadFile);
+		else downloadFile(activeFile);
+	};
+
 	return (
 		<div style={container}>
 			<div style={header}>
@@ -115,6 +136,13 @@ export function ResultPanel({ result }: ResultPanelProps) {
 				<div style={actions}>
 					<button className="sc-icon-btn" title={copied ? 'Copied' : `Copy ${activeFile.name}`} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
+					</button>
+					<button
+						className="sc-icon-btn"
+						title={files.length > 1 ? 'Download all files' : `Download ${activeFile.name}`}
+						onClick={onDownload}
+					>
+						<Download size={16} />
 					</button>
 					{canPreview && (
 						<button className="sc-icon-btn" title="Preview in new tab" onClick={onPreview}>
@@ -157,6 +185,24 @@ export function ResultPanel({ result }: ResultPanelProps) {
 			)}
 		</div>
 	);
+}
+
+/** The download mime type for a text file's language (image files use their data: url). */
+function mimeFor(language: AssetFile['language']): string {
+	if (language === 'svg') return 'image/svg+xml';
+	if (language === 'json') return 'application/json';
+	return 'text/html';
+}
+
+/** Trigger a browser download of `href` saved as `name`, via a transient anchor click. */
+function triggerDownload(href: string, name: string): void {
+	const a = document.createElement('a');
+	a.href = href;
+	a.download = name;
+	a.rel = 'noopener';
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
 }
 
 const hint: React.CSSProperties = { color: COLORS.slate500, fontSize: '12px', lineHeight: 1.5 };

@@ -99,6 +99,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			return true;
 		}
 
+		case 'FETCH_BINARY': {
+			// Background fetch a binary resource (font/image) and return it as a base64
+			// data uri. The <all_urls> host permission and privileged origin reach
+			// hotlink-protected fonts the page's own context cannot, so the snip can be
+			// made fully self-contained.
+			fetchBinary(message.payload && message.payload.url)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({
+						requestId: message.requestId,
+						ok: false,
+						error: { code: 'CORS_BLOCKED', message: String(err && err.message ? err.message : err) },
+					}),
+				);
+			return true;
+		}
+
 		default:
 			return false;
 	}
@@ -273,6 +290,53 @@ function parseReply(text) {
 	} catch (e) {
 		return { renameMap: {}, hoverRules: [] };
 	}
+}
+
+/** A resource larger than this is left as a url reference rather than inlined (cap bloat). */
+const MAX_INLINE_BYTES = 3 * 1024 * 1024;
+
+/**
+ * Fetches a binary resource (font, image) and returns it as a base64 data uri
+ * { dataUrl }. Validates the scheme, caps the size, and derives the mime type from the
+ * response (falling back to the url extension). Throws on non-2xx, an unsupported
+ * scheme, or an oversize body so the caller keeps the url reference instead.
+ */
+async function fetchBinary(url) {
+	if (!url) throw new Error('no url');
+	let u;
+	try {
+		u = new URL(url);
+	} catch {
+		throw new Error('invalid url');
+	}
+	if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('unsupported scheme');
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('http ' + res.status);
+	const buf = await res.arrayBuffer();
+	if (buf.byteLength > MAX_INLINE_BYTES) throw new Error('too large');
+	const mime = (res.headers.get('content-type') || mimeFromUrl(u.pathname) || 'application/octet-stream').split(';')[0].trim();
+	return { dataUrl: 'data:' + mime + ';base64,' + base64FromBuffer(buf) };
+}
+
+/** Base64-encode an ArrayBuffer in chunks (avoids the apply() arg-count limit on big buffers). */
+function base64FromBuffer(buf) {
+	const bytes = new Uint8Array(buf);
+	let binary = '';
+	const CHUNK = 0x8000;
+	for (let i = 0; i < bytes.length; i += CHUNK) {
+		binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+	}
+	return btoa(binary);
+}
+
+/** Best-effort mime type from a url path extension, for responses with no content-type. */
+function mimeFromUrl(pathname) {
+	const ext = (pathname.split('.').pop() || '').toLowerCase();
+	const map = {
+		woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf', eot: 'application/vnd.ms-fontobject',
+		png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif', svg: 'image/svg+xml',
+	};
+	return map[ext] || null;
 }
 
 /**

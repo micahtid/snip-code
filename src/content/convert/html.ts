@@ -46,14 +46,26 @@ export function atRulesCss(captured: Captured): string {
 }
 
 /**
- * Composes a single self-contained html document string from the markup and its
- * stylesheet. This is what renders standalone (and what the grader screenshots).
+ * The standalone document's base reset. Only the document-edge margin a user-agent
+ * adds to <body> (8px) is zeroed, so the snip sits flush at the origin the way a
+ * pasted component should, rather than shoved in by phantom margin it never authored.
+ * Deliberately minimal: no box-sizing or typography reset, which would change how the
+ * baked styles render. The snip's own margins/padding are baked inline and untouched.
+ */
+const BASE_RESET = 'html, body { margin: 0; padding: 0; }';
+
+/**
+ * Composes a single self-contained html document from the markup and its stylesheet.
+ * Emits a valid standalone document (doctype, charset, head/body) so the artifact does
+ * not depend on the origin and renders identically wherever it is pasted. This is what
+ * renders standalone (and what the grader screenshots).
  *
  * @param html - the inline-styled markup
  * @param css - the accompanying @font-face / @keyframes block (may be empty)
  */
 export function composeDocument(html: string, css: string): string {
-	return css.trim() ? `<style>\n${css}\n</style>\n${html}` : html;
+	const sheet = [BASE_RESET, css.trim()].filter(Boolean).join('\n\n');
+	return `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<style>\n${sheet}\n</style>\n</head>\n<body>\n${html}\n</body>\n</html>`;
 }
 
 /** Serialize one @font-face with its family, src, and all descriptors. */

@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body {
+		margin: 0;
+		font-family: Arial, sans-serif;
+		background: #ffffff;
+	}
+	.stage {
+		padding: 40px;
+	}
+	/* A relative background-image url. It loads on the live page, but the relative ref
+	   404s once the snip is pasted elsewhere unless it is absolutized and inlined. The
+	   hero text is white, so if the background is lost the text vanishes on white. */
+	.hero {
+		width: 480px;
+		height: 260px;
+		background-image: url("./tile.png");
+		background-size: cover;
+		border-radius: 18px;
+		display: flex;
+		align-items: flex-end;
+		padding: 28px;
+		box-sizing: border-box;
+	}
+	.hero h2 {
+		margin: 0;
+		color: #ffffff;
+		font-size: 30px;
+		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+	}
+</style>
+</head>
+<body>
+	<div class="stage">
+		<div class="hero">
+			<h2>Background hero</h2>
+		</div>
+	</div>
+</body>
+</html>

@@ -23,6 +23,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXT_DIR = path.resolve(HERE, '..', 'dist');
 const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Downloads', 'training-data');
 const RUNNER_TIMEOUT_MS = 60_000;
+const SETTLE_MS = 400; // Post-load / post-scroll wait for layout and reveal animations to settle.
 
 /** Read source.json supporting both the flat bundle schema and the nested assistive schema. */
 function readSource(source) {
@@ -64,12 +65,21 @@ async function snipOne(context, bundle) {
 	try {
 		await page.goto(src.url, { waitUntil: 'load', timeout: 30000 });
 		await page.evaluate(() => document.fonts.ready);
-		await page.waitForTimeout(400); // Settle post-load layout (animation libs, etc.)
+		await page.waitForTimeout(SETTLE_MS); // Settle post-load layout (animation libs, etc.)
 
 		const injected = await page.evaluate(
 			() => document.documentElement.getAttribute('data-snip-injected') === '1',
 		);
 		if (!injected) throw new Error('extension content script did not inject');
+
+		// Scroll the target into view before snipping, the same as snapshot-bundles and
+		// corpus-fair do: a reveal-on-scroll animation only fires once its element enters
+		// the viewport, so snipping a still-off-screen element captures its pre-reveal
+		// state (opacity 0, translated) and the output renders blank. Non-fatal: an
+		// element that never settles is still snipped, just without the extra wait.
+		const locator = page.locator(src.selector).first();
+		await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+		await page.waitForTimeout(SETTLE_MS);
 
 		const result = await page.evaluate(
 			({ selector, timeoutMs }) =>
@@ -91,7 +101,7 @@ async function snipOne(context, bundle) {
 
 		if (!result?.ok) throw new Error(result?.error || 'unknown failure');
 		if (result.status === 'unsupported') throw new Error(`builder gate: unsupported (${(result.warnings || []).join(',')})`);
-		return { html: result.html, warnings: result.warnings || [] };
+		return { html: result.html, warnings: result.warnings || [], probe: result.probe, emittedProbe: result.emittedProbe };
 	} finally {
 		await page.close();
 	}
@@ -99,8 +109,11 @@ async function snipOne(context, bundle) {
 
 export async function runAll(opts = {}) {
 	const dataDir = opts.dataDir ?? DEFAULT_DATA_DIR;
-	const bundles = await findBundles(dataDir);
-	if (bundles.length === 0) throw new Error(`no bundles with source.json found under ${dataDir}`);
+	let bundles = await findBundles(dataDir);
+	// --only <substring>: restrict to bundles whose "tier/name" contains the substring,
+	// so a single cluster can be re-snipped cheaply during the measurement loop.
+	if (opts.only) bundles = bundles.filter((b) => `${b.tier}/${b.name}`.includes(opts.only));
+	if (bundles.length === 0) throw new Error(`no bundles with source.json found under ${dataDir}` + (opts.only ? ` matching "${opts.only}"` : ''));
 	try {
 		await fs.access(path.join(EXT_DIR, 'manifest.json'));
 	} catch {
@@ -129,9 +142,24 @@ export async function runAll(opts = {}) {
 			for (const bundle of group) {
 				process.stdout.write(`pipeline ${bundle.tier}/${bundle.name} ... `);
 				try {
-					const { html, warnings } = await snipOne(context, bundle);
+					const { html, warnings, probe, emittedProbe } = await snipOne(context, bundle);
 					await fs.writeFile(path.join(bundle.dir, 'output.html'), html, 'utf8');
-					console.log(`${(html.length / 1024).toFixed(1)} KB` + (warnings.length ? ` (${warnings.length} warn)` : ''));
+					// Sidecar: the completeness-probe counts the grader folds in (drift-free).
+					if (probe) {
+						await fs.writeFile(
+							path.join(bundle.dir, 'probe.json'),
+							JSON.stringify({ droppedProps: probe.droppedProps, droppedEls: probe.droppedEls, topProps: probe.topProps, samples: probe.samples }, null, 2),
+							'utf8',
+						);
+					}
+					// Sidecar: the emitted-artifact probe, diffing the shipped BEM artifact vs
+					// live (delta A) and vs the inline clone (delta B), aggregated by classify.mjs.
+					if (emittedProbe) {
+						await fs.writeFile(path.join(bundle.dir, 'emitted-probe.json'), JSON.stringify(emittedProbe, null, 2), 'utf8');
+					}
+					const probeNote = probe ? ` [drop ${probe.droppedProps}p/${probe.droppedEls}e]` : '';
+					const emitNote = emittedProbe ? ` [emit A${emittedProbe.deltaA.droppedProps}/B${emittedProbe.deltaB.droppedProps}/abs${emittedProbe.absentProps}]` : '';
+					console.log(`${(html.length / 1024).toFixed(1)} KB` + (warnings.length ? ` (${warnings.length} warn)` : '') + probeNote + emitNote);
 					results.push({ ok: true, tier: bundle.tier, name: bundle.name, bytes: html.length });
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
@@ -149,7 +177,10 @@ export async function runAll(opts = {}) {
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-	const results = await runAll();
+	const argv = process.argv.slice(2);
+	let only;
+	for (let i = 0; i < argv.length; i++) if (argv[i] === '--only') only = argv[++i];
+	const results = await runAll({ only });
 	const ok = results.filter((r) => r.ok).length;
 	console.log(`\ndone. ${ok} ok, ${results.length - ok} failed.`);
 	if (results.length - ok > 0) process.exit(1);

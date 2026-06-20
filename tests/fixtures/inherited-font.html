@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* Typography is set on html/body and inherited down. The snipped .text carries no
+	   font declarations of its own, so it depends entirely on inheritance from an
+	   ancestor that does not travel with the snip. bake.ts's inherited-divergence probe
+	   attaches its probe to the live document.body, which already inherits these values,
+	   so the divergence from the true default is masked and the font is lost standalone
+	   (falls back to Times New Roman). The standalone reconciliation catches it. */
+	html, body {
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 21px;
+		line-height: 1.8;
+		letter-spacing: 0.4px;
+		color: #1b2a4a;
+	}
+	body {
+		margin: 0;
+		background: #ffffff;
+	}
+	.wrap {
+		padding: 40px;
+	}
+	.text {
+		width: 460px;
+	}
+	.text strong {
+		font-weight: 700;
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="text">
+			<strong>Inherited typography.</strong> This paragraph has no font rules of its
+			own; its family, size, line-height, and letter-spacing all inherit from the page
+			root. A faithful snip must carry those resolved values, or the text reflows into
+			the wrong font standalone.
+		</div>
+	</div>
+</body>
+</html>

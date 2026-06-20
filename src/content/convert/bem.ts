@@ -78,15 +78,64 @@ export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 	return { html: work.outerHTML, css };
 }
 
-/** Read an element's inline declarations, snapping values for cleaner output. */
+/**
+ * Read an element's inline declarations, snapping values for cleaner output. Parses
+ * the serialized `style.cssText` rather than enumerating `style.item(i)`: a shorthand
+ * set to a `var()` value (e.g. `border-color: var(--border)`, `margin: var(--gap)`) is
+ * stored by the cssom as pending-substitution longhands whose `getPropertyValue` returns
+ * the empty string, so item-enumeration would emit `border-top-color: ;` and the css
+ * parser would silently drop the whole declaration. The serialized text preserves the
+ * shorthand verbatim, exactly as the clone renders it, which is what the class output
+ * must reproduce.
+ */
 function readDecls(el: HTMLElement): Array<[string, string]> {
 	const out: Array<[string, string]> = [];
-	const style = el.style;
-	for (let i = 0; i < style.length; i++) {
-		const prop = style.item(i);
-		if (!prop) continue;
-		out.push([prop, snapValue(prop, style.getPropertyValue(prop)).value]);
+	for (const [prop, value] of parseDeclarations(el.style.cssText)) {
+		out.push([prop, snapValue(prop, value).value]);
 	}
+	return out;
+}
+
+/**
+ * Splits a serialized inline-style string into `[property, value]` pairs. Splits on
+ * top-level `;` and `:` only: a `;` or `:` inside parentheses (a `url(data:...;base64,)`
+ * background, a nested function) or a quoted string is part of the value, never a
+ * separator. An `!important` priority is stripped, matching the prior getPropertyValue
+ * read (the class rules carry no competing selectors, so priority changes nothing).
+ *
+ * @param cssText - the element's serialized inline style
+ */
+function parseDeclarations(cssText: string): Array<[string, string]> {
+	const out: Array<[string, string]> = [];
+	let depth = 0;
+	let quote = '';
+	let buf = '';
+	const flush = (): void => {
+		const seg = buf.trim();
+		buf = '';
+		if (!seg) return;
+		const colon = seg.indexOf(':');
+		if (colon < 0) return;
+		const prop = seg.slice(0, colon).trim();
+		const value = seg.slice(colon + 1).replace(/\s*!\s*important\s*$/i, '').trim();
+		if (prop && value) out.push([prop, value]);
+	};
+	for (const ch of cssText) {
+		if (quote) {
+			if (ch === quote) quote = '';
+		} else if (ch === '"' || ch === "'") {
+			quote = ch;
+		} else if (ch === '(') {
+			depth++;
+		} else if (ch === ')') {
+			if (depth > 0) depth--;
+		} else if (ch === ';' && depth === 0) {
+			flush();
+			continue;
+		}
+		buf += ch;
+	}
+	flush();
 	return out;
 }
 

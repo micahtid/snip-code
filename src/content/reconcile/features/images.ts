@@ -46,7 +46,11 @@ export function apply(captured: Captured): Captured {
 			const cl = cloneImgs[i];
 			if (!orig || !cl) continue;
 			const resolved = orig.currentSrc || orig.src;
-			if (resolved) {
+			// Don't pin a placeholder over a real source: when a lazy image never loaded
+			// its real src on the live page (no loader ran), currentSrc is still the 1x1
+			// spacer, but cloneElement already promoted the clone's src from data-src. Keep
+			// that promoted real src rather than overwriting it with the spacer.
+			if (resolved && !(isPlaceholder(resolved) && !isPlaceholder(cl.getAttribute('src') ?? ''))) {
 				cl.setAttribute('src', toAbsolute(resolved, base) ?? resolved);
 				// Drop responsive selectors so the pinned src is what renders.
 				cl.removeAttribute('srcset');
@@ -92,6 +96,11 @@ function absolutizeUrls(value: string, base: string, captured: Captured): string
 		}
 		return `url(${quote}${abs}${quote})`;
 	});
+}
+
+/** The empty/spacer srcs a lazy-loader shows before swapping in the real image. */
+function isPlaceholder(src: string): boolean {
+	return !src || src.startsWith('data:image') || src.includes('1x1') || src.includes('placeholder');
 }
 
 /** Resolve a possibly-relative url against the document base; null if unparseable. */

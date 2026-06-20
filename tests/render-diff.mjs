@@ -54,17 +54,38 @@ async function findBundles(dataDir, targetCandidates) {
 				}
 			}
 			if (!chosen) continue;
-			bundles.push({ tier: tier.name, name: c.name, dir: caseDir, screenshot, target: chosen.path, targetFile: chosen.file });
+			bundles.push({ tier: tier.name, name: c.name, dir: caseDir, screenshot, target: chosen.path, targetFile: chosen.file, dpr: await readDpr(caseDir) });
 		}
 	}
 	bundles.sort((a, b) => (a.tier + a.name).localeCompare(b.tier + b.name));
 	return bundles;
 }
 
-// Render the target html sized to (width, height); reducedMotion freezes css
-// animations at frame 0 for determinism, fonts.ready replaces a brittle timer.
-async function renderTarget(browser, htmlPath, width, height) {
-	const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+// The capture devicePixelRatio for a bundle, read from its source.json (default 1).
+// The reference screenshot was captured at this dpr, so the output must render at it.
+async function readDpr(caseDir) {
+	try {
+		let raw = await fs.readFile(path.join(caseDir, 'source.json'), 'utf8');
+		if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+		const src = JSON.parse(raw);
+		const vp = src.viewport ?? src.page?.viewport ?? {};
+		return vp.devicePixelRatio || 1;
+	} catch {
+		return 1;
+	}
+}
+
+// Render the target html into a screenshot of (width, height) DEVICE pixels at the
+// given devicePixelRatio. The reference screenshot was captured at the bundle's dpr,
+// so the output must render at that same dpr or it lands at the wrong scale (an element
+// authored at N css px would otherwise fill N device px against a reference that fills
+// N*dpr): the css viewport is the device size divided by dpr, scaled back up on capture.
+// reducedMotion freezes css animations at frame 0 for determinism; fonts.ready replaces
+// a brittle timer.
+export async function renderTarget(browser, htmlPath, width, height, dpr = 1) {
+	const cssW = Math.max(1, Math.round(width / dpr));
+	const cssH = Math.max(1, Math.round(height / dpr));
+	const context = await browser.newContext({ viewport: { width: cssW, height: cssH }, deviceScaleFactor: dpr, reducedMotion: 'reduce' });
 	const page = await context.newPage();
 	await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
 	await page.evaluate(() => document.fonts.ready);
@@ -75,9 +96,25 @@ async function renderTarget(browser, htmlPath, width, height) {
 
 // Decode any image buffer to raw rgba at exactly (width, height) so pixelmatch
 // and ssim see equivalent inputs (screenshot is jpg, render is png).
-async function toRawRGBA(buffer, width, height) {
+export async function toRawRGBA(buffer, width, height) {
 	const { data } = await sharp(buffer).resize(width, height, { fit: 'fill' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 	return data;
+}
+
+// Fraction of pixels that carry visible ink: any channel more than INK_DELTA
+// below pure white. This is the blank metric (deterministic, independent of the
+// reference): a rendered output is blank when its ink coverage is near zero. Used
+// to catch bundles that render empty even when their reference has visible content.
+const INK_DELTA = 12;
+export function inkCoverage(raw, width, height) {
+	let inked = 0;
+	for (let i = 0; i < raw.length; i += 4) {
+		const r = raw[i];
+		const g = raw[i + 1];
+		const b = raw[i + 2];
+		if (255 - r > INK_DELTA || 255 - g > INK_DELTA || 255 - b > INK_DELTA) inked++;
+	}
+	return inked / (width * height);
 }
 
 async function gradeBundle(browser, bundle) {
@@ -86,7 +123,7 @@ async function gradeBundle(browser, bundle) {
 	const width = meta.width;
 	const height = meta.height;
 
-	const renderBuf = await renderTarget(browser, bundle.target, width, height);
+	const renderBuf = await renderTarget(browser, bundle.target, width, height, bundle.dpr ?? 1);
 	const srcRaw = await toRawRGBA(screenshotBuf, width, height);
 	const renderRaw = await toRawRGBA(renderBuf, width, height);
 
@@ -94,8 +131,29 @@ async function gradeBundle(browser, bundle) {
 	const diffPixels = pixelmatch(srcRaw, renderRaw, null, width, height, { threshold: 0.1, includeAA: false });
 	const pixelScore = 1 - diffPixels / totalPixels;
 	const ssimScore = ssim({ data: srcRaw, width, height }, { data: renderRaw, width, height }).mssim;
+	// Ink coverage of both the render and the reference; a bundle is blank when its
+	// render ink is near zero while the reference's is not (see loop.mjs).
+	const ink = inkCoverage(renderRaw, width, height);
+	const refInk = inkCoverage(srcRaw, width, height);
 
-	return { tier: bundle.tier, name: bundle.name, targetFile: bundle.targetFile, width, height, pixelScore, ssimScore, diffPixels, totalPixels };
+	// Fold in the completeness-probe sidecar the pipeline runner wrote (drift-free
+	// counts of properties/elements the standalone clone fails to reproduce), when present.
+	const probe = await readProbe(bundle.dir);
+
+	return { tier: bundle.tier, name: bundle.name, targetFile: bundle.targetFile, width, height, pixelScore, ssimScore, ink, refInk, ...probe, diffPixels, totalPixels };
+}
+
+// Read probe.json (written by run-pipeline.mjs) and return its summary counts, or
+// an empty object when no sidecar exists. The probe is deterministic and drift-free,
+// so it is the trustworthy completeness signal regardless of live-capture drift.
+async function readProbe(dir) {
+	try {
+		const raw = await fs.readFile(path.join(dir, 'probe.json'), 'utf8');
+		const p = JSON.parse(raw);
+		return { droppedProps: p.droppedProps ?? 0, droppedEls: p.droppedEls ?? 0 };
+	} catch {
+		return {};
+	}
 }
 
 export async function gradeAll(opts = {}) {

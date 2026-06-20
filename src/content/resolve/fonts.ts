@@ -42,6 +42,40 @@ interface FaceRequest {
 	style: string; // 'normal' | 'italic' | 'oblique'
 }
 
+/** The css2 generic font families; a stack ending in one of these has a safe fallback. */
+const GENERIC_FAMILIES = new Set([
+	'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif',
+	'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong',
+]);
+
+/**
+ * Guarantees every baked font-family stack ends in a generic family, so text never
+ * falls back to the browser default serif (Times New Roman) when a custom font is
+ * unavailable. A stack that already ends in a generic is left untouched; otherwise a
+ * generic is appended, inferred from the first family's monospace hint, else sans-serif
+ * (the overwhelmingly common case for ui type). Runs after the standalone
+ * reconciliation has baked the resolved family stacks.
+ *
+ * @param captured - every baked font-family value is normalized in place
+ */
+export function appendGenericFallbacks(captured: Captured): void {
+	for (const [clone, baked] of captured.bakedStyles) {
+		const stack = baked.get('font-family');
+		if (!stack) continue;
+		const families = stack.split(',').map((f) => f.trim()).filter(Boolean);
+		const last = families[families.length - 1]?.replace(/^["']|["']$/g, '').toLowerCase();
+		if (!last || GENERIC_FAMILIES.has(last)) continue; // Already safe.
+		const generic = /\bmono(space)?\b/i.test(stack) ? 'monospace' : 'sans-serif';
+		const next = `${stack}, ${generic}`;
+		baked.set('font-family', next);
+		try {
+			(clone as HTMLElement).style.setProperty('font-family', next);
+		} catch {
+			// Invalid for this element; the baked-map entry still ships to emit.
+		}
+	}
+}
+
 /**
  * Narrows captured @font-face entries to the faces the snip renders and
  * absolutizes their src.

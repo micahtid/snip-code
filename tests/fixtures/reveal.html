@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body {
+		margin: 0;
+		font-family: Arial, sans-serif;
+		background: #ffffff;
+	}
+	/* A tall spacer pushes the panel below the fold so the reveal is genuinely
+	   scroll-gated, the way IntersectionObserver reveals work on real pages. */
+	.spacer {
+		height: 1400px;
+	}
+	.panel {
+		margin: 0 40px;
+		width: 420px;
+		padding: 32px;
+		border-radius: 16px;
+		background: #0b6e4f;
+		color: #ffffff;
+		/* Pre-reveal state: invisible and offset. Flipped by the observer below. A
+		   capture that does not settle (scroll + await) bakes this frozen blank state. */
+		opacity: 0;
+		transform: translateY(28px);
+		transition: opacity 0.4s ease, transform 0.4s ease;
+	}
+	.panel.revealed {
+		opacity: 1;
+		transform: none;
+	}
+	.panel h2 {
+		margin: 0 0 10px;
+		font-size: 26px;
+	}
+	.panel p {
+		margin: 0;
+		font-size: 16px;
+		line-height: 1.6;
+	}
+</style>
+</head>
+<body>
+	<div class="spacer"></div>
+	<div class="panel">
+		<h2>Revealed on scroll</h2>
+		<p>This panel starts invisible and slides up when it scrolls into view, the
+		standard entry-animation pattern. The capture path must settle the reveal before
+		reading, or it freezes the blank pre-reveal frame.</p>
+	</div>
+	<div class="spacer"></div>
+	<script>
+		const panel = document.querySelector('.panel');
+		const io = new IntersectionObserver((entries) => {
+			for (const e of entries) {
+				if (e.isIntersecting) {
+					panel.classList.add('revealed');
+					io.disconnect();
+				}
+			}
+		}, { threshold: 0.2 });
+		io.observe(panel);
+	</script>
+</body>
+</html>

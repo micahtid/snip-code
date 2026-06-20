@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body {
+		margin: 0;
+		font-family: Arial, sans-serif;
+		background: #ffffff;
+	}
+	.gallery {
+		padding: 40px;
+	}
+	.shot {
+		width: 360px;
+		height: 240px;
+		border-radius: 16px;
+		display: block;
+		object-fit: cover;
+		background: #eef0f4;
+	}
+</style>
+</head>
+<body>
+	<div class="gallery">
+		<!-- Lazy-loaded image: the real source lives in data-src, the visible src is a
+		     1x1 transparent spacer until the host page's loader swaps it in. A pasted snip
+		     must promote and inline the real source, or it shows the empty spacer box. -->
+		<img class="shot" alt="lazy"
+			src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+			data-src="./tile.png" />
+	</div>
+</body>
+</html>

@@ -19,6 +19,34 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCORES_PATH = path.join(HERE, 'scores.jsonl');
 const REGRESSION_THRESHOLD = 0.01; // 1 score-point drop counts as a regression
 
+// Success-criteria thresholds, from FIDELITY-PLAN.md. A bundle is blank when its
+// render carries less than INK_FLOOR ink while its reference clears REF_INK_MIN.
+const INK_FLOOR = 0.02; // 2% non-white pixels
+const REF_INK_MIN = 0.02; // Reference must itself have visible content to count
+const MEAN_SSIM_TARGET = 0.97;
+const MIN_SSIM_TARGET = 0.9;
+
+/** A case is blank when its render has near-zero ink but its reference does not. */
+function isBlank(c) {
+	return typeof c.ink === 'number' && typeof c.refInk === 'number' && c.ink < INK_FLOOR && c.refInk >= REF_INK_MIN;
+}
+
+/**
+ * Reports whether the corpus meets the plan's exit condition: no blanks, mean SSIM
+ * at or above target, and no single bundle below the floor. Prints the verdict and
+ * lists every bundle that still fails a criterion.
+ */
+function reportCriteria(result) {
+	const scored = result.cases.filter((c) => !c.error);
+	const blanks = scored.filter(isBlank);
+	const belowFloor = scored.filter((c) => !isBlank(c) && c.ssimScore < MIN_SSIM_TARGET);
+	const meanOk = result.aggregate.meanSsim >= MEAN_SSIM_TARGET;
+	console.log('\nsuccess criteria:');
+	console.log(`  no blanks:        ${blanks.length === 0 ? 'PASS' : `FAIL (${blanks.map((c) => `${c.tier}/${c.name}`).join(', ')})`}`);
+	console.log(`  mean ssim >=${MEAN_SSIM_TARGET}:  ${meanOk ? 'PASS' : `FAIL (${result.aggregate.meanSsim.toFixed(4)})`}`);
+	console.log(`  all ssim >=${MIN_SSIM_TARGET}:    ${belowFloor.length === 0 ? 'PASS' : `FAIL (${belowFloor.map((c) => `${c.tier}/${c.name}=${c.ssimScore.toFixed(2)}`).join(', ')})`}`);
+}
+
 function parseFlags(argv) {
 	const flags = { cached: false, bisect: false, note: null, target: null };
 	for (let i = 0; i < argv.length; i++) {
@@ -110,12 +138,19 @@ async function main() {
 	const result = await gradeAll({ target: flags.target ?? undefined });
 	console.log('\nper-case scores:');
 	for (const c of result.cases) {
-		if (c.error) console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} error: ${c.error}`);
-		else console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} pixel ${c.pixelScore.toFixed(4)}  ssim ${c.ssimScore.toFixed(4)}`);
+		if (c.error) {
+			console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} error: ${c.error}`);
+			continue;
+		}
+		const ink = typeof c.ink === 'number' ? `ink ${(c.ink * 100).toFixed(1)}%` : '';
+		const blank = isBlank(c) ? '  BLANK' : '';
+		const probe = c.droppedProps || c.droppedEls ? `  drop ${c.droppedProps ?? 0}p/${c.droppedEls ?? 0}e` : '';
+		console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} pixel ${c.pixelScore.toFixed(4)}  ssim ${c.ssimScore.toFixed(4)}  ${ink}${probe}${blank}`);
 	}
 	console.log(`\naggregate (n=${result.aggregate.cases}, failed=${result.aggregate.failed}):`);
 	console.log(`  mean pixel: ${result.aggregate.meanPixel.toFixed(4)}`);
 	console.log(`  mean ssim:  ${result.aggregate.meanSsim.toFixed(4)}`);
+	reportCriteria(result);
 
 	await appendHistory({ ...result, note: flags.note });
 	console.log(`\nappended to ${SCORES_PATH}`);

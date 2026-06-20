@@ -20,11 +20,13 @@
 import type { Captured } from './types';
 import { ElementPicker } from './capture/picker';
 import { buildElementMetadata, cloneElement } from './capture/dom';
+import { settle } from './capture/settle';
 import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
 import { denoise } from './reconcile/denoise';
+import { reconcileStandalone, probeStandalone, probeEmitted } from './reconcile/standalone';
 import { apply as applyIcons } from './reconcile/features/icons';
 import { apply as applyFonts } from './reconcile/features/fonts';
 import { apply as applyQueries } from './reconcile/features/queries';
@@ -40,8 +42,9 @@ import { apply as applyTables } from './reconcile/features/tables';
 import { apply as applyLists } from './reconcile/features/lists';
 import { apply as applyForms } from './reconcile/features/forms';
 import { resolveVariables } from './resolve/vars';
-import { resolveFonts } from './resolve/fonts';
+import { resolveFonts, appendGenericFallbacks } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
+import { inlineResources } from './resolve/inline';
 import type { OutputFormat } from './types';
 import { emitHtml, composeDocument, type HtmlOutput } from './convert/html';
 import { emitTailwind } from './convert/tailwind';
@@ -117,6 +120,11 @@ let activePicker: ElementPicker | null = null;
  * @returns the populated Captured object
  */
 async function capture(root: Element, screenshot: string): Promise<Captured> {
+	// Settle first: drive the element to its revealed, loaded state before anything is
+	// read or cloned, so the snip reflects what a human sees rather than a transient
+	// pre-reveal frame. Runs ahead of the clone and every computed-style read below.
+	const settled = await settle(root);
+
 	const sheets = discoverStylesheets();
 	const captured: Captured = {
 		page: {
@@ -145,7 +153,7 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 			closedShadowRoots: 0, // Cdp shadow-pierce fills this in.
 		},
 		bakedStyles: new Map(),
-		warnings: [],
+		warnings: settled.warning ? [settled.warning] : [],
 	};
 
 	// Privileged augmentation (background-mediated). Both soft-fail: the snip
@@ -201,6 +209,17 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	resolveVariables(captured);
 	resolveFonts(captured);
 	resolveAnimations(captured);
+
+	// Closing reconciliation: make the standalone artifact's own render the source of
+	// truth, baking the original's resolved value for any paint/box property that does
+	// not reproduce standalone (dangling tokens, lost inherited fonts, missing
+	// backgrounds). Runs last so it corrects anything resolve left dangling.
+	reconcileStandalone(captured);
+	// Self-containment: guarantee every font stack ends in a generic so text never
+	// falls back to the default serif when a custom font is unavailable, then inline the
+	// referenced fonts and images as data uris so the artifact does not depend on the origin.
+	appendGenericFallbacks(captured);
+	await inlineResources(captured);
 
 	// Convert phase. Emit the user's chosen format and run dead-code elimination
 	// over the emitted stylesheet.
@@ -383,6 +402,16 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		resolveVariables(captured);
 		resolveFonts(captured);
 		resolveAnimations(captured);
+		// Closing reconciliation: bake the original's resolved value for any paint/box
+		// property that does not reproduce in the standalone clone.
+		reconcileStandalone(captured);
+		appendGenericFallbacks(captured);
+		await inlineResources(captured);
+		// Completeness probe (read-only): diff the reconciled clone's standalone render
+		// against the live original. After the reconciliation this should be near zero;
+		// a residual is the deterministic, drift-free signal of what still fails to
+		// reproduce. It mutates nothing.
+		const probe = probeStandalone(captured);
 		// Emit the bem (class-based) output the default html format ships, deterministically:
 		// the byok polish phase stays out, so the classes are the generated block__tag-n names
 		// (irrelevant to rendering). Assemble it the same way the sidebar does (lift pseudo
@@ -393,10 +422,19 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		const cleanedCss = cleanCss(bem.css, captured, bem.html);
 		const doc = assembleHtmlDocument(bem.html, cleanedCss, captured.warnings);
 
+		// Emitted-artifact probe (read-only): diff the shipped BEM artifact's own
+		// standalone render against the live original (delta A) and the inline-clone
+		// render (delta B). This classifies each residual as an emit-cascade loss (delta B),
+		// an absent-at-bake gap (delta A absent from the css), or another render-time
+		// mechanism. Measured on the cleaned css that actually ships.
+		const emittedProbe = probeEmitted(captured, bem.html, cleanedCss);
+
 		return {
 			ok: true,
 			status: 'ok',
 			html: doc.document,
+			probe,
+			emittedProbe,
 			warnings: captured.warnings,
 		};
 	} catch (err) {
