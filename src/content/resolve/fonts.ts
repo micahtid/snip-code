@@ -83,12 +83,12 @@ export function appendGenericFallbacks(captured: Captured): void {
  * @param captured - fonts is replaced in place with the resolved, used subset
  */
 export function resolveFonts(captured: Captured): void {
-	const requests = faceRequests(captured.root);
+	const { requests, codepoints } = faceRequests(captured.root);
 	const base = document.baseURI || location.href;
 	const seen = new Set<string>();
 	const resolved: FontFace[] = [];
 
-	for (const font of keptFaces(captured.fonts, requests)) {
+	for (const font of keptFaces(captured.fonts, requests, codepoints)) {
 		const src = absolutizeSrc(font.src, base);
 		const key = `${normalizeFamily(font.family).toLowerCase()}|${src}|${descriptorKey(font)}`;
 		if (seen.has(key)) continue; // Dedupe identical faces
@@ -103,8 +103,14 @@ export function resolveFonts(captured: Captured): void {
  * rendered in the subtree and its (weight, style) is the one css font-matching
  * picks for one of that family's requests. A family with no request never
  * renders, so all of its faces drop.
+ *
+ * unicode-range subsetting (a family split into latin / latin-ext / cyrillic / ... files,
+ * the next.js and google-fonts shape) is honored: of the faces at the matched
+ * (weight, style), only those whose range covers a codepoint the snip actually renders
+ * survive, so a latin snip keeps the latin subset rather than an arbitrary first subset
+ * that would render nothing and silently fall back.
  */
-function keptFaces(fonts: FontFace[], requests: Map<string, FaceRequest[]>): FontFace[] {
+function keptFaces(fonts: FontFace[], requests: Map<string, FaceRequest[]>, codepoints: Set<number>): FontFace[] {
 	const byFamily = new Map<string, FontFace[]>();
 	for (const font of fonts) {
 		const family = normalizeFamily(font.family).toLowerCase();
@@ -118,16 +124,27 @@ function keptFaces(fonts: FontFace[], requests: Map<string, FaceRequest[]>): Fon
 		const reqs = requests.get(family);
 		if (!reqs) continue; // Family never renders, drop every weight
 		for (const req of reqs) {
-			const face = selectFace(req, faces);
-			if (face) keep.add(face);
+			for (const face of selectFaces(req, faces, codepoints)) keep.add(face);
 		}
 	}
 	return fonts.filter((font) => keep.has(font));
 }
 
-/** The (family, weight, style) triples the live subtree renders, keyed by lowercased family. */
-function faceRequests(root: Element): Map<string, FaceRequest[]> {
+/** The (family, weight, style) requests plus the codepoints the live subtree renders. */
+interface SubtreeFaces {
+	requests: Map<string, FaceRequest[]>;
+	codepoints: Set<number>;
+}
+
+/**
+ * The (family, weight, style) triples the live subtree renders, keyed by lowercased
+ * family, plus the set of codepoints it renders (so unicode-range narrowing can keep the
+ * subset faces that actually cover the text). Reads element and generated-content text.
+ */
+function faceRequests(root: Element): SubtreeFaces {
 	const requests = new Map<string, FaceRequest[]>();
+	const codepoints = new Set<number>();
+	addCodepoints(codepoints, root.textContent ?? '');
 	const record = (style: CSSStyleDeclaration) => {
 		const family = normalizeFamily(style.fontFamily.split(',')[0] ?? '').toLowerCase();
 		if (!family) return;
@@ -139,9 +156,22 @@ function faceRequests(root: Element): Map<string, FaceRequest[]> {
 
 	for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
 		record(getComputedStyle(el));
-		for (const pseudo of renderedPseudos(el)) record(getComputedStyle(el, pseudo));
+		for (const pseudo of renderedPseudos(el)) {
+			const cs = getComputedStyle(el, pseudo);
+			record(cs);
+			const content = cs.getPropertyValue('content');
+			if (content && content !== 'none' && content !== 'normal') addCodepoints(codepoints, content.replace(/^["']|["']$/g, ''));
+		}
 	}
-	return requests;
+	return { requests, codepoints };
+}
+
+/** Adds every codepoint of a string to the set (iterating by code point, not utf-16 unit). */
+function addCodepoints(set: Set<number>, text: string): void {
+	for (const ch of text) {
+		const cp = ch.codePointAt(0);
+		if (cp !== undefined) set.add(cp);
+	}
 }
 
 /** Which pseudo-elements actually generate a box on this element (so their font renders). */
@@ -162,15 +192,78 @@ function renderedPseudos(el: Element): string[] {
 }
 
 /**
- * The captured face one weight request resolves to, or null when the family has
- * none. Faces of the requested style win; if the family has no face in that
- * style the browser synthesizes it from any weight, so all faces stay eligible.
+ * The captured faces one weight request resolves to, empty when the family has none.
+ * Faces of the requested style win; if the family has no face in that style the browser
+ * synthesizes it from any weight, so all faces stay eligible. The css weight-matching
+ * algorithm picks one weight; every face at that matched (weight, style) whose
+ * unicode-range covers a rendered codepoint is kept, because subset faces partition the
+ * codepoint space and the snip may render glyphs from several subsets. If no subset
+ * covers the text (an exotic repertoire, or an unparseable range), the weight winner is
+ * kept as a floor so the family still renders rather than vanishing.
  */
-function selectFace(request: FaceRequest, faces: FontFace[]): FontFace | null {
+function selectFaces(request: FaceRequest, faces: FontFace[], codepoints: Set<number>): FontFace[] {
 	const styled = faces.filter((face) => faceStyle(face) === request.style);
 	const pool = styled.length > 0 ? styled : faces;
 	const index = matchWeight(request.weight, pool.map(faceWeightRange));
-	return index === -1 ? null : pool[index] ?? null;
+	if (index === -1) return [];
+	const winner = pool[index];
+	if (!winner) return [];
+	const [wlo, whi] = faceWeightRange(winner);
+	const covering = pool.filter((face) => {
+		const [lo, hi] = faceWeightRange(face);
+		return lo === wlo && hi === whi && faceCoversCodepoints(face, codepoints);
+	});
+	return covering.length > 0 ? covering : [winner];
+}
+
+/**
+ * Whether a face renders any codepoint the snip shows. A face with no unicode-range
+ * descriptor covers the full repertoire, so it always qualifies; otherwise at least one
+ * of its declared ranges must contain a rendered codepoint. An empty codepoint set (no
+ * text) or an unparseable range qualifies too, so coverage never wrongly drops a face.
+ *
+ * @param font - the captured face
+ * @param codepoints - the codepoints the live subtree renders
+ */
+function faceCoversCodepoints(font: FontFace, codepoints: Set<number>): boolean {
+	const descriptor = font.descriptors['unicode-range'];
+	if (!descriptor) return true; // No subsetting: the face covers everything.
+	if (codepoints.size === 0) return true; // Nothing to render; do not drop on coverage.
+	const ranges = parseUnicodeRange(descriptor);
+	if (ranges.length === 0) return true; // Unparseable; keep rather than wrongly drop.
+	for (const cp of codepoints) {
+		for (const [lo, hi] of ranges) if (cp >= lo && cp <= hi) return true;
+	}
+	return false;
+}
+
+/**
+ * Parses a css unicode-range descriptor into [lo, hi] codepoint ranges. Handles the
+ * single (U+41), range (U+460-52F), and wildcard (U+00??) forms; a token it cannot read
+ * is skipped rather than failing the whole descriptor.
+ *
+ * @param descriptor - the unicode-range value
+ */
+function parseUnicodeRange(descriptor: string): Array<[number, number]> {
+	const out: Array<[number, number]> = [];
+	for (const token of descriptor.split(',')) {
+		const t = token.trim().replace(/^u\+/i, '');
+		if (!t) continue;
+		if (t.includes('?')) {
+			const lo = parseInt(t.replace(/\?/g, '0'), 16);
+			const hi = parseInt(t.replace(/\?/g, 'f'), 16);
+			if (Number.isFinite(lo) && Number.isFinite(hi)) out.push([lo, hi]);
+		} else if (t.includes('-')) {
+			const [a, b] = t.split('-');
+			const lo = parseInt(a ?? '', 16);
+			const hi = parseInt(b ?? '', 16);
+			if (Number.isFinite(lo) && Number.isFinite(hi)) out.push([lo, hi]);
+		} else {
+			const cp = parseInt(t, 16);
+			if (Number.isFinite(cp)) out.push([cp, cp]);
+		}
+	}
+	return out;
 }
 
 /**
