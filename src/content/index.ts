@@ -411,7 +411,7 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		// against the live original. After the reconciliation this should be near zero;
 		// a residual is the deterministic, drift-free signal of what still fails to
 		// reproduce. It mutates nothing.
-		const probe = probeStandalone(captured);
+		const probe = await probeStandalone(captured);
 		// Emit the bem (class-based) output the default html format ships, deterministically:
 		// the byok polish phase stays out, so the classes are the generated block__tag-n names
 		// (irrelevant to rendering). Assemble it the same way the sidebar does (lift pseudo

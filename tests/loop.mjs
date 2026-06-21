@@ -145,7 +145,8 @@ async function main() {
 		const ink = typeof c.ink === 'number' ? `ink ${(c.ink * 100).toFixed(1)}%` : '';
 		const blank = isBlank(c) ? '  BLANK' : '';
 		const probe = c.droppedProps || c.droppedEls ? `  drop ${c.droppedProps ?? 0}p/${c.droppedEls ?? 0}e` : '';
-		console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} pixel ${c.pixelScore.toFixed(4)}  ssim ${c.ssimScore.toFixed(4)}  ${ink}${probe}${blank}`);
+		const res = c.unresolvedResources ? `  res ${c.unresolvedResources}` : '';
+		console.log(`  ${c.tier.padEnd(12)} ${c.name.padEnd(18)} pixel ${c.pixelScore.toFixed(4)}  ssim ${c.ssimScore.toFixed(4)}  ${ink}${probe}${res}${blank}`);
 	}
 	console.log(`\naggregate (n=${result.aggregate.cases}, failed=${result.aggregate.failed}):`);
 	console.log(`  mean pixel: ${result.aggregate.meanPixel.toFixed(4)}`);

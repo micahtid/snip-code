@@ -150,7 +150,7 @@ async function readProbe(dir) {
 	try {
 		const raw = await fs.readFile(path.join(dir, 'probe.json'), 'utf8');
 		const p = JSON.parse(raw);
-		return { droppedProps: p.droppedProps ?? 0, droppedEls: p.droppedEls ?? 0 };
+		return { droppedProps: p.droppedProps ?? 0, droppedEls: p.droppedEls ?? 0, unresolvedResources: p.unresolvedResources ?? 0 };
 	} catch {
 		return {};
 	}

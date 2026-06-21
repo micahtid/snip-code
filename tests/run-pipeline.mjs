@@ -148,7 +148,7 @@ export async function runAll(opts = {}) {
 					if (probe) {
 						await fs.writeFile(
 							path.join(bundle.dir, 'probe.json'),
-							JSON.stringify({ droppedProps: probe.droppedProps, droppedEls: probe.droppedEls, topProps: probe.topProps, samples: probe.samples }, null, 2),
+							JSON.stringify({ droppedProps: probe.droppedProps, droppedEls: probe.droppedEls, unresolvedResources: probe.unresolvedResources, topProps: probe.topProps, samples: probe.samples }, null, 2),
 							'utf8',
 						);
 					}
@@ -157,7 +157,7 @@ export async function runAll(opts = {}) {
 					if (emittedProbe) {
 						await fs.writeFile(path.join(bundle.dir, 'emitted-probe.json'), JSON.stringify(emittedProbe, null, 2), 'utf8');
 					}
-					const probeNote = probe ? ` [drop ${probe.droppedProps}p/${probe.droppedEls}e]` : '';
+					const probeNote = probe ? ` [drop ${probe.droppedProps}p/${probe.droppedEls}e/res${probe.unresolvedResources ?? 0}]` : '';
 					const emitNote = emittedProbe ? ` [emit A${emittedProbe.deltaA.droppedProps}/B${emittedProbe.deltaB.droppedProps}/abs${emittedProbe.absentProps}]` : '';
 					console.log(`${(html.length / 1024).toFixed(1)} KB` + (warnings.length ? ` (${warnings.length} warn)` : '') + probeNote + emitNote);
 					results.push({ ok: true, tier: bundle.tier, name: bundle.name, bytes: html.length });
