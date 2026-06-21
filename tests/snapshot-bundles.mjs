@@ -49,46 +49,77 @@ async function findBundles(dataDir) {
 }
 
 /**
- * Dismisses cookie/consent popups before the screenshot so they do not pollute the
- * reference (the snipped element never includes them). Best-effort and conservative:
- * clicks the common accept buttons, then removes only elements whose id/class matches a
- * consent pattern AND that float over the page (fixed/sticky/high z-index) or are a
- * fixed modal dialog. Never throws; a page with no popup is unchanged.
+ * Removes every foreign element painting over the target before the screenshot, so no
+ * page chrome (cookie banner, consent modal, sticky nav, chat widget, promo) pollutes the
+ * reference. The snipped element never includes them, so a reference that does is wrong
+ * ground truth.
  *
- * @param page - the loaded page
+ * Universal by construction: an overlay is found by how it paints, never by a name or
+ * class pattern (which only ever catches the banners we happened to list). An element is
+ * "foreign" when it is neither the target, a descendant (part of the snip), nor an
+ * ancestor (removing it would remove the snip). Two paint signals together catch any
+ * overlay:
+ *  - any foreign element pinned to the viewport (position fixed or sticky), because such
+ *    an element pins over an element screenshot at every scroll offset (the sticky-nav
+ *    case); and
+ *  - any foreign element the browser's own hit-test reports painting above the target
+ *    anywhere inside its box (absolute overlays, modal backdrops, top-layer dialogs).
+ * Each match is removed at its outermost foreign container, so the whole banner goes, not
+ * a leaf. Runs to convergence over a few passes, because removing one layer can reveal
+ * another and some banners re-mount on mutation. Must run after the target is scrolled to
+ * its final screenshot position, since a sticky overlay's overlap depends on scroll.
+ * Never throws; a page with no overlay is unchanged.
+ *
+ * @param page - the loaded page, already scrolled to the screenshot position
+ * @param selector - the target element's css selector
  */
-async function dismissConsent(page) {
-	// Two passes with a wait between: cookie banners and chat widgets often mount after
-	// load, so a single early pass misses them.
-	for (let pass = 0; pass < 2; pass++) {
-		const acceptSelectors = ['#onetrust-accept-btn-handler', '#truste-consent-button', '[aria-label="Accept all"]', '[aria-label="Accept All"]', '[aria-label="Accept all cookies"]'];
-		for (const sel of acceptSelectors) {
-			await page.locator(sel).first().click({ timeout: 700 }).catch(() => {});
-		}
-		for (const re of [/^accept all/i, /^accept all cookies/i, /^accept cookies/i, /^accept$/i, /^i agree/i, /^got it/i, /^allow all/i]) {
-			await page.getByRole('button', { name: re }).first().click({ timeout: 700 }).catch(() => {});
-		}
-		await page.evaluate(() => {
-			// Consent banners and floating chat/support widgets, neither of which is part
-			// of a snipped component. Matched only when they float over the page.
-			const pat = /(cookie|consent|gdpr|onetrust|truste|\bcmp\b|cky-|privacy-banner|usercentrics|cookiebot|livechat|intercom|drift|zendesk|zsiq|olark|tawk|chat-widget|chat-launcher|messenger|helpscout|beacon)/i;
-			const floats = (cs) => cs.position === 'fixed' || cs.position === 'sticky' || Number(cs.zIndex) > 100;
-			for (const el of Array.from(document.querySelectorAll('[id],[class]'))) {
-				const id = el.id || '';
-				const cls = typeof el.className === 'string' ? el.className : '';
-				if (!pat.test(id) && !pat.test(cls)) continue;
-				if (floats(getComputedStyle(el))) el.remove();
+async function removeOverlays(page, selector) {
+	for (let pass = 0; pass < 4; pass++) {
+		const removed = await page.evaluate((sel) => {
+			const target = document.querySelector(sel);
+			if (!target) return 0;
+			// Foreign: outside the snip's own subtree and not one of its ancestors.
+			const isForeign = (el) => !!el && el !== target && !target.contains(el) && !el.contains(target);
+			// The outermost still-foreign ancestor, so a whole banner is removed, not a leaf.
+			const outermostForeign = (el) => {
+				let node = el;
+				while (isForeign(node.parentElement)) node = node.parentElement;
+				return node;
+			};
+			const roots = new Set();
+
+			// Signal 1: viewport-pinned chrome pollutes an element screenshot at any scroll.
+			for (const el of document.documentElement.querySelectorAll('*')) {
+				if (!isForeign(el)) continue;
+				const position = getComputedStyle(el).position;
+				if (position === 'fixed' || position === 'sticky') roots.add(outermostForeign(el));
 			}
-			for (const el of Array.from(document.querySelectorAll('[role="dialog"],[aria-modal="true"]'))) {
-				if (getComputedStyle(el).position === 'fixed') el.remove();
+
+			// Signal 2: anything the hit-test paints above the target inside its box.
+			const rect = target.getBoundingClientRect();
+			if (rect.width > 0 && rect.height > 0) {
+				const STEP = 20; // Sample density in px, fine enough to catch a thin banner edge.
+				const right = Math.min(window.innerWidth - 1, rect.right);
+				const bottom = Math.min(window.innerHeight - 1, rect.bottom);
+				for (let y = Math.max(0, rect.top); y <= bottom; y += STEP) {
+					for (let x = Math.max(0, rect.left); x <= right; x += STEP) {
+						const stack = document.elementsFromPoint(x, y);
+						// Hits before the target (or all hits, if the target is fully covered here)
+						// paint above it.
+						const hit = stack.findIndex((el) => el === target || target.contains(el));
+						const above = hit === -1 ? stack.length : hit;
+						for (let i = 0; i < above; i++) {
+							if (isForeign(stack[i])) roots.add(outermostForeign(stack[i]));
+						}
+					}
+				}
 			}
-			// Floating widgets are often bare iframes (live chat); drop fixed ones.
-			for (const f of Array.from(document.querySelectorAll('iframe'))) {
-				const cs = getComputedStyle(f);
-				if (cs.position === 'fixed' && (Number(cs.zIndex) > 100 || cs.bottom !== 'auto')) f.remove();
-			}
-		}).catch(() => {});
-		await page.waitForTimeout(pass === 0 ? 900 : 300);
+
+			for (const el of roots) el.remove();
+			return roots.size;
+		}, selector).catch(() => 0);
+		if (!removed) break; // Converged: nothing foreign paints over the target.
+		await page.waitForTimeout(200); // Let a re-mount settle before the next pass.
 	}
 }
 
@@ -105,7 +136,6 @@ async function snapshotBundle(browser, bundle) {
 		await page.goto(src.url, { waitUntil: 'load', timeout: 30000 });
 		await page.evaluate(() => document.fonts.ready);
 		await page.waitForTimeout(SETTLE_MS);
-		await dismissConsent(page);
 
 		const locator = page.locator(src.selector).first();
 		if ((await locator.count()) === 0) throw new Error(`selector matched 0 elements: ${src.selector}`);
@@ -114,6 +144,12 @@ async function snapshotBundle(browser, bundle) {
 		// element enters the viewport, so shooting immediately captures a mid-fade frame
 		// (a washed-out, low-opacity reference). The same wait the snip side now uses.
 		await page.waitForTimeout(SETTLE_MS);
+		// Strip foreign overlays at the final screenshot position: a sticky nav only overlaps
+		// the element once it is scrolled into view, so this must run after the scroll, not
+		// before. Re-acquire the element box afterward in case removals shifted layout.
+		await removeOverlays(page, src.selector);
+		await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+		await page.waitForTimeout(120);
 		const pngBuf = await locator.screenshot({ type: 'png', omitBackground: false });
 
 		// Re-encode to jpg (matches the original.jpg convention; q92 keeps edges crisp).
