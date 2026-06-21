@@ -11,7 +11,8 @@
  * react root in the extension. It owns top-level navigation between the three
  * sidebar views (capture / history / settings), hosts the picker control, and is
  * the panel-side terminus of two content-script signals:
- * - It listens for SNIP_RESULT and renders the emitted code in ResultPanel.
+ * - It listens for SNIP_RESULT, renders the emitted code in ResultPanel, and adds
+ *   that snip's polish token usage to a running per-session total.
  * - While a pick is in flight it owns the "picking" state and a window-level esc
  * handler that cancels the overlay even when keyboard focus is in the panel
  * (the picker's own esc handler only fires when the page holds focus).
@@ -64,6 +65,7 @@ const styles = {
 	},
 	nav: { display: 'flex', gap: '6px', padding: '10px', borderBottom: `1px solid ${SURFACE.border}` },
 	main: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+	tokens: { marginTop: '8px', fontSize: '11px', fontWeight: 500, color: COLORS.slate500 },
 } satisfies Record<string, unknown>;
 
 /** The three sidebar views, each with the icon and hover-tooltip label its nav button shows. */
@@ -98,6 +100,8 @@ function App() {
 	const [mode, setMode] = useState<Mode>('snip');
 	const [picking, setPicking] = useState(false);
 	const [result, setResult] = useState<SnipResult | null>(null);
+	// Running token total for this panel session (resets when the side panel reloads).
+	const [sessionTokens, setSessionTokens] = useState(0);
 
 	// Inject the global stylesheet once (fonts, cloud geometry, control states).
 	useEffect(() => injectGlobalCss(), []);
@@ -110,7 +114,10 @@ function App() {
 					? (message as { type: unknown }).type
 					: null;
 			if (type === SNIP_RESULT) {
-				setResult((message as { payload?: SnipResult }).payload ?? null);
+				const payload = (message as { payload?: SnipResult }).payload ?? null;
+				setResult(payload);
+				const usage = payload?.usage;
+				if (usage) setSessionTokens((total) => total + usage.input + usage.output);
 				setView('capture');
 				setPicking(false);
 			}
@@ -159,7 +166,15 @@ function App() {
 
 				<div style={styles.main as React.CSSProperties}>
 					{view === 'capture' && (
-						<ViewLayout fill footer={<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />}>
+						<ViewLayout
+							fill
+							footer={
+								<>
+									<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />
+									<div style={styles.tokens as React.CSSProperties}>Tokens Used: {sessionTokens.toLocaleString()}</div>
+								</>
+							}
+						>
 							<ResultPanel result={result} />
 						</ViewLayout>
 					)}

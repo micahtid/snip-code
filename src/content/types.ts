@@ -184,6 +184,16 @@ export interface AssetFile {
 	dataUrl?: string; // Original data: url for image files
 }
 
+/**
+ * Token usage reported by a provider for one polish call (the only billed ai
+ * step). Counts are exact (read straight from the response); dollars are not
+ * tracked because providers return tokens, not cost, and per-model rates vary.
+ */
+export interface TokenUsage {
+	input: number;
+	output: number;
+}
+
 /** One stored snippet (last 50, fifo). */
 export interface SnippetRecord {
 	id: string; // Uuid v4

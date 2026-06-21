@@ -23,7 +23,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Bookmark, Check, Copy, Eye, MousePointer2 } from 'lucide-react';
-import type { AssetFile, OutputFormat } from '../content/types';
+import type { AssetFile, OutputFormat, TokenUsage } from '../content/types';
 import { EmptyState } from './EmptyState';
 import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
@@ -39,6 +39,8 @@ export interface SnipResult {
 	files?: AssetFile[];
 	/** Emitted assistive json (assistive mode). */
 	json?: string;
+	/** Provider-reported token usage for the polish call, when one ran. */
+	usage?: TokenUsage;
 	warnings?: string[];
 	/** Set when the page is a blocked site builder (framer/wix/etc). */
 	unsupported?: boolean;

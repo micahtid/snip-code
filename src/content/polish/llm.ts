@@ -17,7 +17,7 @@
  * marketing-website openrouter.ts (request shape + response parsing only, none
  * of the original's account, credit-accounting, or backend-verification code).
  */
-import type { Provider } from '../types';
+import type { Provider, TokenUsage } from '../types';
 import { VerbatimVault } from '../convert/vault';
 import { buildPolishPrompt } from './prompts';
 import { applyRenames } from './rename';
@@ -27,6 +27,7 @@ import { finalize } from './restore';
 interface LlmReply {
 	renameMap?: Record<string, string>;
 	hoverRules?: string[];
+	usage?: TokenUsage;
 }
 
 /** The error code the broker returns when no key is stored for the provider. */
@@ -44,33 +45,37 @@ const NO_KEY = 'NO_KEY_CONFIGURED';
  * @param css - stylesheet from the earlier phases
  * @param provider - the active byok provider
  * @param model - the model to use (resolved by the caller from prefs/defaults)
- * @returns polished html + css, plus a warning when a configured key was present but the request failed
+ * @returns polished html + css, the provider-reported token usage when an edit ran,
+ *   plus a warning when a configured key was present but the request failed
  */
 export async function polish(
 	html: string,
 	css: string,
 	provider: Provider,
 	model: string,
-): Promise<{ html: string; css: string; warning?: string }> {
+): Promise<{ html: string; css: string; warning?: string; usage?: TokenUsage }> {
 	// Vault token-heavy values for the prompt only; the working html/css stay
 	// un-vaulted (the model returns instructions, not rewritten code).
 	const vault = new VerbatimVault();
 	const vaulted = vault.protect(`<style>${css}</style>\n${html}`);
 	const prompt = buildPolishPrompt(vaulted);
 
-	const { reply, error } = await requestLlm(provider, model, prompt);
+	const { reply, error, usage } = await requestLlm(provider, model, prompt);
 	if (!reply) {
 		// No key is the intended no-op; any other error means a configured key was
-		// present but the request failed, so surface it rather than hiding it.
+		// present but the request failed, so surface it rather than hiding it. A
+		// failed-but-billed reply still reports usage, so pass it through to be counted.
 		if (error && error !== NO_KEY) {
 			console.warn('snipcode: llm polish skipped', error);
-			return { html, css, warning: `llm polish skipped: ${error}` };
+			const warning = `llm polish skipped: ${error}`;
+			return usage ? { html, css, warning, usage } : { html, css, warning };
 		}
 		return { html, css };
 	}
 
 	const renamed = applyRenames(html, css, reply.renameMap ?? {});
-	return finalize(renamed.html, renamed.css, reply.hoverRules ?? [], vault);
+	const out = finalize(renamed.html, renamed.css, reply.hoverRules ?? [], vault);
+	return reply.usage ? { ...out, usage: reply.usage } : out;
 }
 
 /**
@@ -78,21 +83,25 @@ export async function polish(
  * Content scripts are bound by the host page's csp and cannot reach provider
  * hosts directly, so the call is delegated. On any failure (no key, network,
  * provider, parse) the reply is null and the broker's error message is returned
- * alongside it so the caller can both skip cleanly and report the cause.
+ * alongside it so the caller can both skip cleanly and report the cause. A
+ * failed-but-billed reply (empty/non-json) also returns its token usage so the
+ * spent tokens still count toward the session total.
  */
 async function requestLlm(
 	provider: Provider,
 	model: string,
 	prompt: string,
-): Promise<{ reply: LlmReply | null; error?: string }> {
+): Promise<{ reply: LlmReply | null; error?: string; usage?: TokenUsage }> {
 	try {
 		const res = (await chrome.runtime.sendMessage({
 			type: 'LLM_REQUEST',
 			requestId: crypto.randomUUID(),
 			payload: { provider, model, prompt },
-		})) as { ok: boolean; result?: LlmReply; error?: { message?: string } } | undefined;
+		})) as { ok: boolean; result?: LlmReply; error?: { message?: string }; usage?: TokenUsage } | undefined;
 		if (res?.ok && res.result) return { reply: res.result };
-		return { reply: null, error: res?.error?.message ?? 'no response from background broker' };
+		const error = res?.error?.message ?? 'no response from background broker';
+		// A failed-but-billed reply (empty/non-json) still reports usage on the envelope.
+		return res?.usage ? { reply: null, error, usage: res.usage } : { reply: null, error };
 	} catch (err) {
 		return { reply: null, error: (err as Error).message };
 	}
