@@ -70,7 +70,13 @@ export function discoverStylesheets(): SheetDiscovery {
 			continue;
 		}
 		const before = out.foundationRules.length + out.componentRules.length;
+		const fontsBefore = out.fonts.length;
 		walkRules(rules, {}, out, 'cssom');
+		// An @font-face src is relative to its own stylesheet, not the page, so absolutize
+		// the faces this sheet contributed against the sheet url (the document url for an
+		// inline <style>). A relative src on a sheet served from a sub-path (the next.js
+		// /_next/static/css shape) otherwise resolves against the page root and 404s.
+		absolutizeFontSrcs(out.fonts, fontsBefore, sheet.href || document.baseURI);
 		const after = out.foundationRules.length + out.componentRules.length;
 		out.stylesheets.push({ href: sheet.href, origin, ruleCount: after - before });
 	}
@@ -88,9 +94,11 @@ export function discoverStylesheets(): SheetDiscovery {
  *
  * @param cssText - the stylesheet text fetched by the background
  * @param source - provenance tag for the produced CssRule entries
+ * @param base - the sheet url, to absolutize @font-face src against (relative to the
+ *   sheet, not the page); omitted when the caller absolutizes itself
  * @returns the discovery deltas (rules, variables, fonts, keyframes)
  */
-export async function parseCssText(cssText: string, source: CssRule['source'] = 'cssom'): Promise<SheetDiscovery> {
+export async function parseCssText(cssText: string, source: CssRule['source'] = 'cssom', base?: string): Promise<SheetDiscovery> {
 	const out: SheetDiscovery = {
 		stylesheets: [],
 		foundationRules: [],
@@ -103,7 +111,35 @@ export async function parseCssText(cssText: string, source: CssRule['source'] = 
 	const sheet = new CSSStyleSheet();
 	await sheet.replace(cssText);
 	walkRules(sheet.cssRules, {}, out, source);
+	if (base) absolutizeFontSrcs(out.fonts, 0, base);
 	return out;
+}
+
+/** Matches each url() token in a css value (font src), quote-tolerant. */
+const URL_IN_SRC = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+
+/**
+ * Rewrites the src of every face from index `start` onward to an absolute url against
+ * `base` (the owning stylesheet's url). data:/blob:/already-absolute urls and local()
+ * sources are left untouched, so the rewrite is idempotent.
+ *
+ * @param fonts - the discovered faces (mutated in place from `start`)
+ * @param start - first index to rewrite (faces this sheet contributed)
+ * @param base - the stylesheet url to resolve relative srcs against
+ */
+function absolutizeFontSrcs(fonts: FontFace[], start: number, base: string): void {
+	for (let i = start; i < fonts.length; i++) {
+		const font = fonts[i];
+		if (!font) continue;
+		font.src = font.src.replace(URL_IN_SRC, (match, quote: string, url: string) => {
+			if (/^(data:|blob:|https?:)/i.test(url)) return match;
+			try {
+				return `url(${quote}${new URL(url, base).href}${quote})`;
+			} catch {
+				return match;
+			}
+		});
+	}
 }
 
 /** Classify a sheet's origin from its owner node and href. */

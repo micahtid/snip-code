@@ -122,7 +122,7 @@ export async function recoverCrossOriginSheets(captured: Captured): Promise<void
 				captured.warnings.push(`cross-origin stylesheet unreadable: ${href}`);
 				continue;
 			}
-			const delta = await parseCssText(res.result.text, 'cssom');
+			const delta = await parseCssText(res.result.text, 'cssom', href);
 			captured.foundationRules.push(...delta.foundationRules);
 			captured.componentRules.push(...delta.componentRules);
 			captured.variables.push(...delta.variables);
@@ -137,9 +137,6 @@ export async function recoverCrossOriginSheets(captured: Captured): Promise<void
 	captured.inaccessible.crossOriginStylesheets = stillInaccessible;
 }
 
-/** Matches each url() token in a css value (font src), quote-tolerant. */
-const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
-
 /**
  * Recovers the @font-face rules cross-origin stylesheets hide, by reading the text the
  * browser already parsed over cdp. recoverCrossOriginSheets above tries a privileged
@@ -151,11 +148,10 @@ const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
  *
  * Scope is deliberately @font-face only: this plan recovers fonts (a resource the
  * artifact must carry), not the full cross-origin cascade, so only the faces are
- * harvested and the inaccessible list is left untouched. A recovered src is relative to
- * its STYLESHEET url, not the page, so it is absolutized against the sheet href here;
- * resolveFonts later absolutizes against the page baseURI and skips an already-absolute
- * url, so a root-relative src on a cdn-hosted sheet (a common next.js shape) resolves to
- * the cdn host rather than the wrong page origin.
+ * harvested and the inaccessible list is left untouched. parseCssText absolutizes each
+ * recovered src against the sheet href (a src is relative to its stylesheet, not the
+ * page), so a relative or root-relative src on a cdn-hosted sheet resolves to the cdn
+ * host rather than the wrong page origin.
  *
  * @param captured - the in-flight capture; captured.fonts is extended in place
  */
@@ -172,11 +168,8 @@ export async function recoverCrossOriginFontsViaCDP(captured: Captured): Promise
 		if (!res?.ok || !res.result?.sheets?.length) return; // Nothing recovered; leave the list as-is.
 		for (const sheet of res.result.sheets) {
 			try {
-				const delta = await parseCssText(sheet.text, 'cdp');
-				for (const font of delta.fonts) {
-					font.src = absolutizeAgainst(font.src, sheet.href);
-					captured.fonts.push(font);
-				}
+				const delta = await parseCssText(sheet.text, 'cdp', sheet.href);
+				captured.fonts.push(...delta.fonts);
 			} catch (err) {
 				captured.warnings.push(`cdp font recovery parse failed for ${sheet.href}: ${(err as Error).message}`);
 			}
@@ -184,16 +177,4 @@ export async function recoverCrossOriginFontsViaCDP(captured: Captured): Promise
 	} catch (err) {
 		captured.warnings.push(`cdp font recovery failed: ${(err as Error).message}`);
 	}
-}
-
-/** Rewrites every url() in a css value to an absolute url against `base`. data:/blob:/absolute left as-is. */
-function absolutizeAgainst(value: string, base: string): string {
-	return value.replace(URL_IN_VALUE, (match, quote: string, url: string) => {
-		if (/^(data:|blob:|https?:)/i.test(url)) return match;
-		try {
-			return `url(${quote}${new URL(url, base).href}${quote})`;
-		} catch {
-			return match;
-		}
-	});
 }
