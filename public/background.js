@@ -84,6 +84,24 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			return true;
 		}
 
+		case 'CDP_STYLESHEETS': {
+			// Recover cross-origin stylesheet text the browser already parsed, via the
+			// devtools protocol. The page cannot read these sheets and a background re-fetch
+			// is unreliable (cdn wafs commonly block the extension origin); cdp reads the
+			// parsed text above both limits. Capture-internal; see capture/cdp.ts.
+			const tabId = _sender.tab && _sender.tab.id;
+			cdpStylesheets(tabId, (message.payload && message.payload.hrefs) || [])
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({
+						requestId: message.requestId,
+						ok: false,
+						error: { code: 'MALFORMED_REQUEST', message: String(err && err.message ? err.message : err) },
+					}),
+				);
+			return true;
+		}
+
 		case 'FETCH_STYLESHEET': {
 			// Background fetch bypasses cors via the <all_urls> host permission so
 			// the content script can recover cross-origin stylesheets.
@@ -163,6 +181,66 @@ async function cdpInheritedChain(tabId, selector) {
 		}
 		return { inherited, closedShadowRoots };
 	} finally {
+		if (attached) {
+			try {
+				await chrome.debugger.detach(target);
+			} catch (e) {
+				// Already detached or tab gone; nothing to recover.
+			}
+		}
+	}
+}
+
+/**
+ * Recovers cross-origin stylesheet text the browser already parsed, via the devtools
+ * protocol. The page cannot read these sheets (same-origin policy) and a privileged
+ * re-fetch is unreliable (a cdn waf commonly 403s the extension origin), but the browser
+ * holds the parsed text and cdp reads it above both limits with no network round-trip.
+ *
+ * Flow: attach debugger -> enable DOM+CSS (CSS.enable replays CSS.styleSheetAdded for
+ * every already-loaded sheet) -> for each sheet whose sourceURL was requested, read
+ * CSS.getStyleSheetText. Returns { sheets: [{ href, text }] }; detaches in finally.
+ *
+ * @param tabId - the sender tab to attach to
+ * @param hrefs - the cross-origin sheet urls the content script could not read
+ */
+async function cdpStylesheets(tabId, hrefs) {
+	if (!tabId) throw new Error('no tab id');
+	const wanted = new Set(hrefs || []);
+	if (wanted.size === 0) return { sheets: [] };
+	const target = { tabId };
+	const headers = [];
+	const onEvent = (source, method, params) => {
+		if (source.tabId === tabId && method === 'CSS.styleSheetAdded' && params && params.header) headers.push(params.header);
+	};
+	let attached = false;
+	try {
+		await chrome.debugger.attach(target, '1.3');
+		attached = true;
+		chrome.debugger.onEvent.addListener(onEvent);
+		await chrome.debugger.sendCommand(target, 'DOM.enable');
+		await chrome.debugger.sendCommand(target, 'CSS.enable');
+		// styleSheetAdded replays for every loaded sheet right after enable. Wait in short
+		// bounded steps until every requested href has appeared, then stop early.
+		for (let i = 0; i < 20; i++) {
+			if (hrefs.every((h) => headers.some((hd) => hd.sourceURL === h))) break;
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		}
+		const sheets = [];
+		const seen = new Set();
+		for (const header of headers) {
+			if (!wanted.has(header.sourceURL) || seen.has(header.styleSheetId)) continue;
+			seen.add(header.styleSheetId);
+			try {
+				const res = await chrome.debugger.sendCommand(target, 'CSS.getStyleSheetText', { styleSheetId: header.styleSheetId });
+				if (res && res.text) sheets.push({ href: header.sourceURL, text: res.text });
+			} catch (e) {
+				// No retrievable text for this sheet; skip it.
+			}
+		}
+		return { sheets };
+	} finally {
+		chrome.debugger.onEvent.removeListener(onEvent);
 		if (attached) {
 			try {
 				await chrome.debugger.detach(target);

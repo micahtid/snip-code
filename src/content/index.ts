@@ -22,7 +22,7 @@ import { ElementPicker } from './capture/picker';
 import { buildElementMetadata, cloneElement } from './capture/dom';
 import { settle } from './capture/settle';
 import { discoverStylesheets } from './capture/sheets';
-import { augmentInheritedChainViaCDP, recoverCrossOriginSheets } from './capture/cdp';
+import { augmentInheritedChainViaCDP, recoverCrossOriginSheets, recoverCrossOriginFontsViaCDP } from './capture/cdp';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
 import { denoise } from './reconcile/denoise';
@@ -159,7 +159,11 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 	// Privileged augmentation (background-mediated). Both soft-fail: the snip
 	// proceeds on cssom-only data if cdp attach is refused or a fetch is blocked.
 	await augmentInheritedChainViaCDP(captured); // inherited cascade via cdp
-	await recoverCrossOriginSheets(captured); // Recover cors-blocked sheets
+	await recoverCrossOriginSheets(captured); // Recover cors-blocked sheets by privileged re-fetch
+	// Fallback for the @font-face rules the re-fetch could not get (a cdn waf blocking the
+	// extension origin): read the sheet text the browser already parsed over cdp. This closes
+	// the font-discovery gap cross-origin cdns leave behind the same-origin policy and bot rules.
+	await recoverCrossOriginFontsViaCDP(captured);
 
 	return captured;
 }
