@@ -8,16 +8,19 @@
  * Principles applied: none (ui).
  *
  * Why this exists: the picker is triggered from the sidebar.
- * This is that trigger: the snip/assistive mode toggle plus the "pick element"
- * button. Clicking the button asks the active tab's content script to inject its
- * highlight overlay so the user can choose an element. The heavy lifting (the
- * overlay, sticky arrow-climb, screenshot) lives in the content script; this
- * component owns the mode state and the start signal. While a pick is in flight it
- * reflects a "selecting" state and lifts that up via onPickingChange so App can
- * wire the panel-side esc-to-cancel (the page-side esc handler only fires when the
- * page, not the side panel, holds keyboard focus).
+ * This is that trigger: a split action whose main segment starts a pick and whose
+ * chevron segment opens a small menu above it to choose the capture mode (snip /
+ * assistive). The main button's label is itself the active-mode indicator: it reads
+ * "Snip Element" or "Assistive Element". Clicking pick asks the active tab's content
+ * script to inject its highlight overlay so the user can choose an element. The
+ * heavy lifting (the overlay, sticky arrow-climb, screenshot) lives in the content
+ * script; this component owns the mode state and the start signal. While a pick is
+ * in flight it reflects a "selecting" state and lifts that up via onPickingChange so
+ * App can wire the panel-side esc-to-cancel (the page-side esc handler only fires
+ * when the page, not the side panel, holds keyboard focus).
  */
-import { Scissors } from 'lucide-react';
+import { useState } from 'react';
+import { Check, ChevronUp } from 'lucide-react';
 import { FONT_UI } from '../theme';
 
 /** The ui-local message that wakes the content script's picker overlay. */
@@ -32,10 +35,21 @@ interface PickerProps {
 	onPickingChange: (picking: boolean) => void;
 }
 
+/**
+ * The capture modes, in menu order. `label` names the mode in the menu; `action`
+ * is the main button's label for that mode (so the button text is the active-mode
+ * indicator).
+ */
+const MODES: ReadonlyArray<{ id: 'snip' | 'assistive'; label: string; action: string }> = [
+	{ id: 'snip', label: 'Snip', action: 'Snip Element' },
+	{ id: 'assistive', label: 'Assistive', action: 'Assistive Element' },
+];
+
 const styles = {
-	wrap: { marginBottom: '14px' },
-	toggle: { display: 'flex', gap: '6px', marginBottom: '10px' },
-	pickInner: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
+	/** Anchors the popover menu directly above the split action. */
+	splitWrap: { position: 'relative' },
+	/** Transparent click-catcher that closes the menu on an outside click. */
+	backdrop: { position: 'fixed', inset: 0, zIndex: 19 },
 } satisfies Record<string, unknown>;
 
 /**
@@ -69,36 +83,57 @@ async function startPicker(mode: 'snip' | 'assistive'): Promise<boolean> {
 }
 
 export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerProps) {
+	const [menuOpen, setMenuOpen] = useState(false);
+
 	const onPick = async (): Promise<void> => {
 		onPickingChange(true);
 		const started = await startPicker(mode);
 		if (!started) onPickingChange(false); // Could not reach the page; leave select mode.
 	};
 
+	const activeAction = MODES.find((m) => m.id === mode)?.action ?? 'Pick Element';
+
 	return (
-		<div style={styles.wrap as React.CSSProperties}>
-			<div style={styles.toggle as React.CSSProperties}>
-				<button
-					className={`sc-mode${mode === 'snip' ? ' sc-mode-active' : ''}`}
-					disabled={picking}
-					onClick={() => onModeChange('snip')}
-				>
-					Snip
+		<div style={styles.splitWrap as React.CSSProperties}>
+			{menuOpen && (
+				<>
+					<div style={styles.backdrop as React.CSSProperties} onClick={() => setMenuOpen(false)} />
+					<div className="sc-menu" role="listbox" aria-label="Capture mode">
+						{MODES.map((m) => (
+							<button
+								key={m.id}
+								role="option"
+								aria-selected={mode === m.id}
+								className={`sc-menu-item${mode === m.id ? ' sc-menu-item-active' : ''}`}
+								onClick={() => {
+									onModeChange(m.id);
+									setMenuOpen(false);
+								}}
+							>
+								{m.label}
+								{mode === m.id && <Check size={15} />}
+							</button>
+						))}
+					</div>
+				</>
+			)}
+
+			<div className={`sc-split${picking ? ' sc-split-disabled' : ''}`}>
+				<button className="sc-split-main" disabled={picking} onClick={() => void onPick()} style={{ fontFamily: FONT_UI }}>
+					{picking ? 'Selecting… (Esc to cancel)' : activeAction}
 				</button>
+				<div className="sc-split-divider" />
 				<button
-					className={`sc-mode${mode === 'assistive' ? ' sc-mode-active' : ''}`}
+					className="sc-split-chevron"
 					disabled={picking}
-					onClick={() => onModeChange('assistive')}
+					aria-haspopup="listbox"
+					aria-expanded={menuOpen}
+					aria-label="Choose capture mode"
+					onClick={() => setMenuOpen((open) => !open)}
 				>
-					Assistive
+					<ChevronUp size={16} style={{ transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
 				</button>
 			</div>
-			<button className="sc-btn sc-btn-primary" disabled={picking} onClick={() => void onPick()} style={{ fontFamily: FONT_UI }}>
-				<span style={styles.pickInner as React.CSSProperties}>
-					<Scissors size={16} />
-					{picking ? 'Selecting… (Esc to cancel)' : 'Pick Element'}
-				</span>
-			</button>
 		</div>
 	);
 }

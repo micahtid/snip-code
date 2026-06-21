@@ -1,0 +1,39 @@
+/**
+ * components/ViewLayout.tsx: the shared sidebar view scaffold
+ *
+ * Pipeline position: n/a (ui)
+ * Reads from Captured: n/a
+ * Writes to Captured: n/a
+ *
+ * Principles applied: none (ui).
+ *
+ * Why this exists: every sidebar view (capture / history / settings, plus their
+ * loading and empty states) has the same shape: a scrolling body that fills the
+ * panel over an optional footer pinned to the bottom. Centralizing that here keeps
+ * the views structurally identical and is the one place the scroll/footer treatment
+ * is applied (the values themselves live in LAYOUT in theme.ts). Pass `fill` when
+ * the body's single child should grow to the full height (the capture view's code
+ * block) rather than sit at its natural height.
+ */
+import { LAYOUT } from '../theme';
+
+interface ViewLayoutProps {
+	children: React.ReactNode;
+	/** Pinned to the bottom; stays put while the body scrolls. Omit for no footer. */
+	footer?: React.ReactNode;
+	/** Let the body's single child grow to the full available height. */
+	fill?: boolean;
+}
+
+export function ViewLayout({ children, footer, fill = false }: ViewLayoutProps) {
+	return (
+		<div style={LAYOUT.column}>
+			<div className="sc-scroll" style={fill ? scrollFill : LAYOUT.scroll}>
+				{children}
+			</div>
+			{footer && <div style={LAYOUT.footer}>{footer}</div>}
+		</div>
+	);
+}
+
+const scrollFill: React.CSSProperties = { ...LAYOUT.scroll, display: 'flex', flexDirection: 'column' };

@@ -9,7 +9,7 @@
  *
  * Why this exists: chrome opens this document in the side panel. It is the only
  * react root in the extension. It owns top-level navigation between the three
- * sidebar views (capture / saved / settings), hosts the picker control, and is
+ * sidebar views (capture / history / settings), hosts the picker control, and is
  * the panel-side terminus of two content-script signals:
  * - It listens for SNIP_RESULT and renders the emitted code in ResultPanel.
  * - While a pick is in flight it owns the "picking" state and a window-level esc
@@ -23,22 +23,23 @@
  */
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Scissors } from 'lucide-react';
+import { History, Scissors, Settings, type LucideIcon } from 'lucide-react';
 import { Picker } from './components/Picker';
 import { ResultPanel, type SnipResult } from './components/ResultPanel';
 import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
 import { CloudBackdrop } from './components/CloudBackdrop';
+import { ViewLayout } from './components/ViewLayout';
 import { injectGlobalCss } from './global-css';
 import { COLORS, FONT_UI, SURFACE } from './theme';
 
 /** The three top-level sidebar views the nav switches between. */
-type View = 'capture' | 'saved' | 'settings';
+type View = 'capture' | 'history' | 'settings';
 
 /**
  * The two capture modes. Snip runs the whole pipeline and emits
- * code; assistive runs capture and emits a json document. The toggle lives in the
- * capture view and is passed down to the picker.
+ * code; assistive runs capture and emits a json document. The mode is owned here and
+ * passed to the picker, whose chevron menu lets the user switch it.
  */
 type Mode = 'snip' | 'assistive';
 
@@ -61,19 +62,16 @@ const styles = {
 		backdropFilter: 'blur(20px)',
 		WebkitBackdropFilter: 'blur(20px)',
 	},
-	header: {
-		display: 'flex',
-		alignItems: 'center',
-		gap: '8px',
-		padding: '12px 14px',
-		borderBottom: `1px solid ${SURFACE.border}`,
-		fontWeight: 700,
-		fontSize: '15px',
-		color: COLORS.slate900,
-	},
-	nav: { display: 'flex', borderBottom: `1px solid ${SURFACE.border}` },
-	body: { flex: 1, overflow: 'auto', padding: '14px' },
+	nav: { display: 'flex', gap: '6px', padding: '10px', borderBottom: `1px solid ${SURFACE.border}` },
+	main: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
 } satisfies Record<string, unknown>;
+
+/** The three sidebar views, each with the icon and hover-tooltip label its nav button shows. */
+const NAV: ReadonlyArray<{ id: View; label: string; Icon: LucideIcon }> = [
+	{ id: 'capture', label: 'Capture', Icon: Scissors },
+	{ id: 'history', label: 'History', Icon: History },
+	{ id: 'settings', label: 'Settings', Icon: Settings },
+];
 
 /** Sends the cancel-picker signal to the active tab's content script. */
 async function cancelPicker(): Promise<void> {
@@ -87,7 +85,9 @@ async function cancelPicker(): Promise<void> {
 }
 
 /**
- * The sidebar shell: header, view nav, and the active view's body.
+ * The sidebar shell: the icon nav and the active view, which fills the rest of the
+ * panel as a scrollable body with a footer pinned to the bottom (the chrome side
+ * panel supplies the only title bar, so there is no app header of our own).
  *
  * Holds the cross-view ui state (current view, capture mode, in-flight pick, and
  * the latest snip result) and wires the two content-script signals described in
@@ -139,35 +139,31 @@ function App() {
 		if (next) setResult(null);
 	};
 
-	const tab = (id: View, label: string) => (
-		<button className={`sc-nav${view === id ? ' sc-nav-active' : ''}`} onClick={() => setView(id)}>
-			{label}
-		</button>
-	);
-
 	return (
 		<>
 			<CloudBackdrop />
 			<div style={styles.shell as React.CSSProperties}>
-				<div style={styles.header as React.CSSProperties}>
-					<Scissors size={18} color={COLORS.slate900} />
-					SnipCode
-				</div>
-
 				<nav style={styles.nav as React.CSSProperties}>
-					{tab('capture', 'Capture')}
-					{tab('saved', 'Saved')}
-					{tab('settings', 'Settings')}
+					{NAV.map(({ id, label, Icon }) => (
+						<button
+							key={id}
+							className={`sc-navicon${view === id ? ' sc-navicon-active' : ''}`}
+							title={label}
+							aria-label={label}
+							onClick={() => setView(id)}
+						>
+							<Icon size={18} />
+						</button>
+					))}
 				</nav>
 
-				<div style={styles.body as React.CSSProperties}>
+				<div style={styles.main as React.CSSProperties}>
 					{view === 'capture' && (
-						<>
-							<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />
+						<ViewLayout fill footer={<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />}>
 							<ResultPanel result={result} />
-						</>
+						</ViewLayout>
 					)}
-					{view === 'saved' && <SnippetList />}
+					{view === 'history' && <SnippetList />}
 					{view === 'settings' && <SettingsView />}
 				</div>
 			</div>
