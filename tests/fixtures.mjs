@@ -44,6 +44,7 @@ const FIXTURES = [
 	{ name: 'bg-image', selector: '.hero', viewport: { width: 900, height: 520 } },
 	{ name: 'lazy-img', selector: '.shot', viewport: { width: 900, height: 520 } },
 	{ name: 'reveal', selector: '.panel', viewport: { width: 900, height: 760 }, scroll: true },
+	{ name: 'dead-font', selector: '.card', viewport: { width: 900, height: 520 } },
 ];
 
 /** Generate the shared tile.png the bg-image and lazy-img fixtures reference, if absent. */

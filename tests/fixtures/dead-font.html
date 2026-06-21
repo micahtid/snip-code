@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* The snipped .card renders a web font whose @font-face src points at a url that
+	   cannot be reached (and so can never be inlined). The browser already falls back to
+	   the next family in the stack, and a faithful self-contained snip must do the same:
+	   it must NOT ship the dead origin reference. The inlining self-containment guard
+	   drops the un-inlinable face, leaving the appended generic fallback to render the
+	   text exactly as the live page does. */
+	body {
+		margin: 0;
+		background: #ffffff;
+	}
+	@font-face {
+		font-family: "Phantom Sans";
+		src: url(/this-font-does-not-exist.woff2) format("woff2");
+		font-weight: 400;
+		font-display: swap;
+	}
+	.wrap {
+		padding: 40px;
+	}
+	.card {
+		width: 460px;
+		padding: 28px;
+		border-radius: 12px;
+		background: #0f1b3d;
+		color: #eef2ff;
+		font-family: "Phantom Sans", Georgia, "Times New Roman", serif;
+		font-size: 22px;
+		line-height: 1.6;
+	}
+	.card strong {
+		font-weight: 700;
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="card">
+			<strong>Self-contained fallback.</strong> This card asks for a web font whose file
+			cannot be fetched, so the page renders it in the serif fallback. The snip must drop
+			the unreachable face and fall back the same way, never carrying a dead origin url.
+		</div>
+	</div>
+</body>
+</html>

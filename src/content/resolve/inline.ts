@@ -70,8 +70,10 @@ export async function inlineResources(captured: Captured): Promise<void> {
 
 	const dataByUrl = await fetchAll(urls);
 	if (dataByUrl.size === 0) {
+		// Nothing inlined: the rewrite passes below are all no-ops, but the closing
+		// self-containment guard must still run so an un-inlinable face is dropped to its
+		// fallback rather than shipping a dead origin url.
 		captured.warnings.push('inline: no resources could be inlined; the snip references the origin for fonts/images');
-		return;
 	}
 
 	// Rewrite @font-face src.
@@ -98,6 +100,44 @@ export async function inlineResources(captured: Captured): Promise<void> {
 			}
 		}
 	}
+
+	dropUncontainedFaces(captured);
+}
+
+/**
+ * Drops any @font-face the inlining could not make self-contained, so the artifact never
+ * ships a dead origin reference. A face whose src resolves only to an external url (no
+ * data: bytes inlined and no local() system source) cannot render once the snip is pasted
+ * away from the origin, and appendGenericFallbacks has already guaranteed every baked
+ * font-family stack ends in a generic, so the text falls back deterministically rather
+ * than depending on (or 404ing from) the origin.
+ *
+ * This is the closing guard for the resource path: whatever the recovery and inlining
+ * steps could not carry is corrected to a clean fallback here, never left to break, and
+ * the standalone resource probe still counts the family as unresolved so the loss stays
+ * visible. Only un-inlinable faces are removed, so a fully inlined corpus is untouched.
+ *
+ * @param captured - captured.fonts is filtered in place
+ */
+function dropUncontainedFaces(captured: Captured): void {
+	const contained = captured.fonts.filter((font) => isSelfContained(font.src));
+	if (contained.length === captured.fonts.length) return;
+	captured.warnings.push(
+		`inline: dropped ${captured.fonts.length - contained.length} font face(s) that could not be made self-contained; their text falls back to a generic`,
+	);
+	captured.fonts = contained;
+}
+
+/**
+ * Whether a @font-face src can render without the origin: it has no external url at all
+ * (data:, local(), or already resolved), or it pairs an external url with an inlined
+ * data: source or a local() system fallback the browser can use offline.
+ *
+ * @param src - the face's src descriptor
+ */
+function isSelfContained(src: string): boolean {
+	if (!/url\(\s*['"]?https?:/i.test(src)) return true; // No external url to depend on.
+	return /url\(\s*['"]?data:/i.test(src) || /\blocal\(/i.test(src);
 }
 
 /** Every <img> in the snip subtree, including the root when it is itself an image. */
