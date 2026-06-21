@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* The snipped .card is transparent and prints light text, legible only because an
+	   ancestor section paints a colored gradient behind it. Reparented standalone, that
+	   gradient is gone and the light text would vanish on white. A gradient is a css paint
+	   that re-renders at any size (unlike a positioned photo), so the standalone
+	   reconciliation recovers the nearest ancestor gradient onto the snip root, the same
+	   escaped-context recovery it already does for a solid ancestor color. */
+	body {
+		margin: 0;
+		background: #ffffff;
+	}
+	.hero {
+		padding: 36px;
+		background: linear-gradient(180deg, #15347e 0%, #2f5bd6 100%);
+	}
+	.card {
+		width: 440px;
+		padding: 30px;
+		background: transparent;
+		color: #eaf0ff;
+		font-family: Georgia, "Times New Roman", serif;
+	}
+	.card h2 {
+		margin: 0 0 12px;
+		font-size: 30px;
+		line-height: 1.2;
+	}
+	.card p {
+		margin: 0;
+		font-size: 18px;
+		line-height: 1.5;
+		color: #c9d8ff;
+	}
+</style>
+</head>
+<body>
+	<section class="hero">
+		<div class="card">
+			<h2>Light text on a recovered backdrop</h2>
+			<p>This card carries no background of its own; its pale text reads only against the
+			section gradient behind it. A faithful snip must recover that gradient, or the words
+			disappear on white.</p>
+		</div>
+	</section>
+</body>
+</html>

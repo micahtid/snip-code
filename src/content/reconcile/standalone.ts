@@ -530,12 +530,24 @@ function recoverEscapedBackground(captured: Captured): void {
 			}
 			return;
 		}
-		// A nearer ancestor paints its backdrop with an image (a hero photo, a gradient
-		// band) rather than a solid color. That image is sized for the whole section and
-		// is not in the snipped subtree, so it cannot be faithfully reproduced on the
-		// component. Flag the inherent limit rather than ship a transparent element that
-		// renders its light text on white.
+		// A nearer ancestor paints its backdrop with an image rather than a solid color.
+		// A gradient is a css-described paint that re-renders at any size, so baking it onto
+		// the root reproduces the backdrop (and so makes light-on-backdrop text visible)
+		// even though the gradient was authored for the whole section. A raster url() image
+		// is positioned pixels sized for that section and is not in the snipped subtree, so
+		// it cannot be reproduced; that residual is flagged, not faked.
 		if (cs.backgroundImage && cs.backgroundImage !== 'none') {
+			if (isReproducibleGradient(cs.backgroundImage)) {
+				const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
+				baked.set('background-image', cs.backgroundImage);
+				captured.bakedStyles.set(rootClone, baked);
+				try {
+					(rootClone as HTMLElement).style.setProperty('background-image', cs.backgroundImage);
+				} catch {
+					// Invalid for this element; the baked-map entry still ships to emit.
+				}
+				return;
+			}
 			captured.warnings.push('standalone: element is transparent over an ancestor background-image not in the snip; backdrop cannot be reproduced standalone');
 			return;
 		}
@@ -546,6 +558,20 @@ function recoverEscapedBackground(captured: Captured): void {
 /** Whether a computed color is fully transparent (so it paints no backdrop). */
 function isTransparentColor(color: string): boolean {
 	return color === 'transparent' || color === 'rgba(0, 0, 0, 0)' || /,\s*0\)\s*$/.test(color);
+}
+
+/**
+ * Whether a computed background-image is purely css gradients, so it reproduces at the
+ * snip's size. A gradient (linear/radial/conic, including repeating and -webkit- forms)
+ * is a paint function, not positioned pixels, so baking it onto a smaller box still
+ * renders a faithful backdrop. A value that carries any url() raster layer is positioned
+ * for its original section and is excluded, so the irreducible photo case is unaffected.
+ *
+ * @param backgroundImage - the computed background-image value
+ */
+function isReproducibleGradient(backgroundImage: string): boolean {
+	if (/url\(/i.test(backgroundImage)) return false; // A raster layer cannot be reproduced.
+	return /(?:^|[\s,])(?:-webkit-|-moz-|-o-)?(?:repeating-)?(?:linear|radial|conic)-gradient\(/i.test(backgroundImage);
 }
 
 /**
