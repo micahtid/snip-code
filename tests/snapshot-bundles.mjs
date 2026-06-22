@@ -49,38 +49,44 @@ async function findBundles(dataDir) {
 }
 
 /**
- * Removes every foreign element painting over the target before the screenshot, so no
- * page chrome (cookie banner, consent modal, sticky nav, chat widget, promo) pollutes the
+ * Hides every foreign element painting over the target before the screenshot, so no page
+ * chrome (cookie banner, consent modal, sticky nav, chat widget, promo) pollutes the
  * reference. The snipped element never includes them, so a reference that does is wrong
  * ground truth.
  *
  * Universal by construction: an overlay is found by how it paints, never by a name or
  * class pattern (which only ever catches the banners we happened to list). An element is
  * "foreign" when it is neither the target, a descendant (part of the snip), nor an
- * ancestor (removing it would remove the snip). Two paint signals together catch any
- * overlay:
+ * ancestor (hiding it would hide the snip). Two paint signals together catch any overlay:
  *  - any foreign element pinned to the viewport (position fixed or sticky), because such
  *    an element pins over an element screenshot at every scroll offset (the sticky-nav
  *    case); and
  *  - any foreign element the browser's own hit-test reports painting above the target
  *    anywhere inside its box (absolute overlays, modal backdrops, top-layer dialogs).
- * Each match is removed at its outermost foreign container, so the whole banner goes, not
- * a leaf. Runs to convergence over a few passes, because removing one layer can reveal
- * another and some banners re-mount on mutation. Must run after the target is scrolled to
- * its final screenshot position, since a sticky overlay's overlap depends on scroll.
- * Never throws; a page with no overlay is unchanged.
+ * Each match is hidden at its outermost foreign container, so the whole banner goes, not
+ * a leaf.
+ *
+ * Hide with visibility:hidden rather than removing the node: a sticky or otherwise in-flow
+ * overlay occupies layout space (a sticky sidebar is often a grid or flex track), so
+ * removing it reflows the page and collapses the target's own geometry, corrupting the
+ * very capture this protects. visibility:hidden stops the paint (so it leaves the
+ * screenshot) while preserving the box (so the target keeps its real size), and the
+ * browser drops hidden nodes from hit-testing, so the next pass naturally converges. Runs
+ * a few passes because hiding one layer can reveal another and some banners re-mount. Must
+ * run after the target is scrolled to its final screenshot position, since a sticky
+ * overlay's overlap depends on scroll. Never throws; a page with no overlay is unchanged.
  *
  * @param page - the loaded page, already scrolled to the screenshot position
  * @param selector - the target element's css selector
  */
-async function removeOverlays(page, selector) {
+async function hideOverlays(page, selector) {
 	for (let pass = 0; pass < 4; pass++) {
-		const removed = await page.evaluate((sel) => {
+		const hidden = await page.evaluate((sel) => {
 			const target = document.querySelector(sel);
 			if (!target) return 0;
 			// Foreign: outside the snip's own subtree and not one of its ancestors.
 			const isForeign = (el) => !!el && el !== target && !target.contains(el) && !el.contains(target);
-			// The outermost still-foreign ancestor, so a whole banner is removed, not a leaf.
+			// The outermost still-foreign ancestor, so a whole banner is hidden, not a leaf.
 			const outermostForeign = (el) => {
 				let node = el;
 				while (isForeign(node.parentElement)) node = node.parentElement;
@@ -89,13 +95,16 @@ async function removeOverlays(page, selector) {
 			const roots = new Set();
 
 			// Signal 1: viewport-pinned chrome pollutes an element screenshot at any scroll.
+			// Skip nodes already hidden by a prior pass so the pass count converges.
 			for (const el of document.documentElement.querySelectorAll('*')) {
 				if (!isForeign(el)) continue;
-				const position = getComputedStyle(el).position;
-				if (position === 'fixed' || position === 'sticky') roots.add(outermostForeign(el));
+				const cs = getComputedStyle(el);
+				if (cs.visibility === 'hidden') continue;
+				if (cs.position === 'fixed' || cs.position === 'sticky') roots.add(outermostForeign(el));
 			}
 
-			// Signal 2: anything the hit-test paints above the target inside its box.
+			// Signal 2: anything the hit-test paints above the target inside its box (hidden
+			// nodes are not hit-tested, so this never re-finds an already-hidden overlay).
 			const rect = target.getBoundingClientRect();
 			if (rect.width > 0 && rect.height > 0) {
 				const STEP = 20; // Sample density in px, fine enough to catch a thin banner edge.
@@ -115,10 +124,10 @@ async function removeOverlays(page, selector) {
 				}
 			}
 
-			for (const el of roots) el.remove();
+			for (const el of roots) el.style.setProperty('visibility', 'hidden', 'important');
 			return roots.size;
 		}, selector).catch(() => 0);
-		if (!removed) break; // Converged: nothing foreign paints over the target.
+		if (!hidden) break; // Converged: nothing foreign paints over the target.
 		await page.waitForTimeout(200); // Let a re-mount settle before the next pass.
 	}
 }
@@ -144,10 +153,10 @@ async function snapshotBundle(browser, bundle) {
 		// element enters the viewport, so shooting immediately captures a mid-fade frame
 		// (a washed-out, low-opacity reference). The same wait the snip side now uses.
 		await page.waitForTimeout(SETTLE_MS);
-		// Strip foreign overlays at the final screenshot position: a sticky nav only overlaps
+		// Hide foreign overlays at the final screenshot position: a sticky nav only overlaps
 		// the element once it is scrolled into view, so this must run after the scroll, not
-		// before. Re-acquire the element box afterward in case removals shifted layout.
-		await removeOverlays(page, src.selector);
+		// before. Re-acquire the element box afterward in case hiding shifted layout.
+		await hideOverlays(page, src.selector);
 		await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(120);
 		const pngBuf = await locator.screenshot({ type: 'png', omitBackground: false });
