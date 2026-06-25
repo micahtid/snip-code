@@ -12,6 +12,7 @@
  * (resolved currentSrc), css background-image urls, and inline svg icons across
  * the subtree, absolutized. Ported (rewritten) from v1 assets/asset-extractor.ts.
  */
+import { toAbsoluteUrl } from '../../utils/url';
 
 const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
@@ -33,7 +34,7 @@ export function extractAssets(root: Element): AssetManifest {
 
 	for (const img of Array.from(root.querySelectorAll('img'))) {
 		const src = img.currentSrc || img.getAttribute('src') || '';
-		const abs = toAbsolute(src, base);
+		const abs = toAbsoluteUrl(src, base);
 		if (abs) images.add(abs);
 	}
 
@@ -43,7 +44,7 @@ export function extractAssets(root: Element): AssetManifest {
 			let m: RegExpExecArray | null;
 			URL_IN_VALUE.lastIndex = 0;
 			while ((m = URL_IN_VALUE.exec(bg)) !== null) {
-				const abs = toAbsolute(m[2] ?? '', base);
+				const abs = toAbsoluteUrl(m[2] ?? '', base);
 				if (abs) images.add(abs);
 			}
 		}
@@ -58,14 +59,4 @@ export function extractAssets(root: Element): AssetManifest {
 	}
 
 	return { images: [...images], icons: [...icons] };
-}
-
-/** Resolve a possibly-relative url against the document base; '' if unusable. */
-function toAbsolute(url: string, base: string): string {
-	if (!url || url.startsWith('data:')) return url;
-	try {
-		return new URL(url, base).href;
-	} catch {
-		return '';
-	}
 }

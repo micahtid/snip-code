@@ -134,6 +134,18 @@ export type MessageType =
 	| 'GET_PREFS'
 	| 'SET_PREFS';
 
+/**
+ * Ui-local signals that drive the page-scoped inspectors. These are NOT members
+ * of `MessageType` (that union is only for the request/response broker
+ * `Envelope`): like `SNIPCODE_START_PICKER` / `SNIP_RESULT`, they are one-way
+ * fire-and-forget messages between the panel and the content script. They live
+ * here, exported once, so the picker (sender) and `content/index.ts` (receiver)
+ * share the exact string and a single typo can never silently drop the message.
+ */
+export const START_SCAN = 'SNIPCODE_START_SCAN';
+/** Carries one InspectResult (plus optional token usage) from the scan back to the panel. */
+export const INSPECT_RESULT = 'INSPECT_RESULT';
+
 /** The request envelope shared by all messages. requestId correlates responses. */
 export interface Envelope<TPayload, TResult = unknown> {
 	type: MessageType;

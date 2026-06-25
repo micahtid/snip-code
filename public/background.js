@@ -69,12 +69,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'LLM_REQUEST': {
-			// Byok polish. The worker reads the key from storage (never
-			// logs it), calls the provider, and returns the parsed { renameMap,
-			// hoverRules }. Content scripts cannot reach provider
-			// hosts (page csp), so all llm traffic goes through here.
+			// Byok llm calls (polish + the inspect ai passes). The worker reads the
+			// key from storage (never logs it), calls the provider, and returns the
+			// raw model { text, usage }; each caller parses its own shape. Content
+			// scripts cannot reach provider hosts (page csp), so all llm traffic goes
+			// through here. The optional payload.max raises the output-token ceiling
+			// for the larger schema-synthesis prompt (polish omits it; default 2000).
 			const p = message.payload || {};
-			llmRequest(p.provider, p.model, p.prompt)
+			llmRequest(p.provider, p.model, p.prompt, p.max)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
 				.catch((err) => {
 					const msg = String(err && err.message ? err.message : err);
@@ -204,18 +206,22 @@ function rule_of(rm) {
 }
 
 /**
- * Runs a byok llm polish request: reads the provider key from storage, calls the
- * provider, and parses a strict-json reply into { renameMap, hoverRules, usage },
- * where usage is the provider-reported token count. Throws NO_KEY_CONFIGURED when no
- * key is stored (caller skips the polish step). The key is read here and attached to
- * the request only; it is never logged or persisted elsewhere.
+ * Runs a byok llm request: reads the provider key from storage, calls the
+ * provider, and returns the raw model { text, usage }, where usage is the
+ * provider-reported token count. Each caller (polish, the inspect ai passes)
+ * parses the text into its own shape. Throws NO_KEY_CONFIGURED when no key is
+ * stored (caller skips the step). The key is read here and attached to the
+ * request only; it is never logged or persisted elsewhere.
+ *
+ * @param max - optional output-token ceiling, clamped to the provider limit
+ *   (default 2000; raised by the schema-synthesis caller)
  */
-async function llmRequest(provider, model, prompt) {
+async function llmRequest(provider, model, prompt, max) {
 	const stored = await chrome.storage.local.get('byok.' + provider);
 	const key = stored['byok.' + provider];
 	if (!key) throw new Error('NO_KEY_CONFIGURED');
 
-	const req = buildGenerationRequest(provider, key, model, prompt);
+	const req = buildGenerationRequest(provider, key, model, prompt, max);
 	const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) });
 	if (!res.ok) throw new Error('PROVIDER_ERROR_' + res.status);
 	const json = await res.json();
@@ -227,20 +233,29 @@ async function llmRequest(provider, model, prompt) {
 	// The call still spent tokens, so the error carries usage for the session total.
 	if (!text || !text.trim()) throw usageError('EMPTY_COMPLETION', usage);
 	if (!text.includes('{')) throw usageError('NON_JSON_REPLY', usage);
-	// Attach the provider-reported token usage so the panel can total it for the session.
-	return { ...parseReply(text), usage };
+	// Return the raw text plus the provider-reported usage so the panel can total it.
+	return { text, usage };
 }
 
-/** Build a chat/generation request per provider (mirrors utils/byok.ts shapes). */
-function buildGenerationRequest(provider, key, model, prompt) {
+/** Default and per-provider output-token ceilings; an over-large request hard-400s some providers. */
+const DEFAULT_MAX_TOKENS = 2000;
+const PROVIDER_MAX_TOKENS = { anthropic: 8192, google: 8192, openai: 16384, openrouter: 8192 };
+
+/**
+ * Build a chat/generation request per provider (mirrors utils/byok.ts shapes).
+ * The output-token cap is the requested `max` (or the 2000 default) clamped to
+ * the provider's ceiling, since only the broker knows which provider is in play.
+ */
+function buildGenerationRequest(provider, key, model, prompt, max) {
 	const json = 'application/json';
-	const MAX = 2000;
+	const requested = typeof max === 'number' && max > 0 ? max : DEFAULT_MAX_TOKENS;
+	const cap = Math.min(requested, PROVIDER_MAX_TOKENS[provider] || PROVIDER_MAX_TOKENS.openrouter);
 	switch (provider) {
 		case 'anthropic':
 			return {
 				url: 'https://api.anthropic.com/v1/messages',
 				headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'Content-Type': json },
-				body: { model, max_tokens: MAX, messages: [{ role: 'user', content: prompt }] },
+				body: { model, max_tokens: cap, messages: [{ role: 'user', content: prompt }] },
 				extract: (j) => (j.content && j.content[0] && j.content[0].text) || '',
 				usage: (j) => ({ input: (j.usage && j.usage.input_tokens) || 0, output: (j.usage && j.usage.output_tokens) || 0 }),
 			};
@@ -248,7 +263,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 			return {
 				url: 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key),
 				headers: { 'Content-Type': json },
-				body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX } },
+				body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: cap } },
 				extract: (j) => (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '',
 				usage: (j) => ({ input: (j.usageMetadata && j.usageMetadata.promptTokenCount) || 0, output: (j.usageMetadata && j.usageMetadata.candidatesTokenCount) || 0 }),
 			};
@@ -256,7 +271,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 			return {
 				url: 'https://api.openai.com/v1/chat/completions',
 				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
-				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
+				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: cap },
 				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
 				usage: (j) => ({ input: (j.usage && j.usage.prompt_tokens) || 0, output: (j.usage && j.usage.completion_tokens) || 0 }),
 			};
@@ -265,7 +280,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 			return {
 				url: 'https://openrouter.ai/api/v1/chat/completions',
 				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
-				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
+				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: cap },
 				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
 				usage: (j) => ({ input: (j.usage && j.usage.prompt_tokens) || 0, output: (j.usage && j.usage.completion_tokens) || 0 }),
 			};
@@ -277,21 +292,6 @@ function usageError(code, usage) {
 	const err = new Error(code);
 	err.usage = usage;
 	return err;
-}
-
-/** Extract the first json object from the model's text and parse it leniently. */
-function parseReply(text) {
-	const match = text.match(/\{[\s\S]*\}/);
-	if (!match) return { renameMap: {}, hoverRules: [] };
-	try {
-		const parsed = JSON.parse(match[0]);
-		return {
-			renameMap: parsed.renameMap && typeof parsed.renameMap === 'object' ? parsed.renameMap : {},
-			hoverRules: Array.isArray(parsed.hoverRules) ? parsed.hoverRules : [],
-		};
-	} catch (e) {
-		return { renameMap: {}, hoverRules: [] };
-	}
 }
 
 /**

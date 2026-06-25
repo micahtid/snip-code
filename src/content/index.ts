@@ -55,6 +55,15 @@ import { polish } from './polish/llm';
 import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
+import type { Provider } from './types';
+import { START_SCAN, INSPECT_RESULT } from './types';
+import type { InspectResult, ScanKind } from './inspect/types';
+import { extractPageFonts } from './inspect/fonts';
+import { extractPageAssets } from './inspect/assets';
+import { extractPageColors } from './inspect/colors';
+import { extractPageSchema } from './inspect/schema/extract';
+import { optimizeSchema } from './inspect/schema/optimize';
+import { enhanceColors, enhanceSchema } from './inspect/ai';
 
 /** Ui-local signals from the sidebar's picker control (components/Picker.tsx). */
 const START_PICKER = 'SNIPCODE_START_PICKER';
@@ -309,6 +318,88 @@ function shipResult(payload: Record<string, unknown>): void {
 		.catch(() => {});
 }
 
+/**
+ * Runs one page-scoped inspector and ships its result to the sidebar. Each
+ * inspector reads the live dom directly (no element pick, no screenshot). A hard
+ * failure is isolated here: an empty result of the right kind ships with the cause
+ * as a warning, so the panel renders something rather than nothing.
+ *
+ * @param scan - which inspector to run
+ */
+async function runScan(scan: ScanKind): Promise<void> {
+	const warnings: string[] = [];
+	try {
+		const { payload, usage } = await buildScan(scan, warnings);
+		shipInspect(payload, usage);
+	} catch (err) {
+		warnings.push(`scan failed: ${(err as Error).message}`);
+		shipInspect(emptyResult(scan, warnings));
+	}
+}
+
+/**
+ * Builds the result for one scan. Colors and style json run the optional byok ai
+ * pass inline before shipping (it skips silently without a key), mirroring how
+ * polish runs inline in a snip. The ai pass merges onto the raw extraction and
+ * reports any configured-key failure as a warning plus its billed token usage.
+ */
+async function buildScan(scan: ScanKind, warnings: string[]): Promise<{ payload: InspectResult; usage?: TokenUsage }> {
+	switch (scan) {
+		case 'fonts':
+			return { payload: { kind: 'fonts', fonts: extractPageFonts(), warnings } };
+		case 'assets':
+			return { payload: { kind: 'assets', assets: extractPageAssets(), warnings } };
+		case 'colors': {
+			const { colors, cssVariables } = extractPageColors();
+			const { provider, model } = await activeModel();
+			const enhanced = await enhanceColors(colors, cssVariables, provider, model);
+			if (enhanced.warning) warnings.push(enhanced.warning);
+			const payload: InspectResult = { kind: 'colors', colors: enhanced.colors, aiEnhanced: enhanced.aiEnhanced, warnings };
+			return enhanced.usage ? { payload, usage: enhanced.usage } : { payload };
+		}
+		case 'schema': {
+			const rawJson = JSON.stringify(optimizeSchema(extractPageSchema()), null, 2);
+			const { provider, model } = await activeModel();
+			const enhanced = await enhanceSchema(rawJson, provider, model);
+			if (enhanced.warning) warnings.push(enhanced.warning);
+			const payload: InspectResult = { kind: 'schema', json: enhanced.json, aiEnhanced: enhanced.aiEnhanced, warnings };
+			return enhanced.usage ? { payload, usage: enhanced.usage } : { payload };
+		}
+	}
+}
+
+/** An empty result of the given kind, used when an inspector fails hard. */
+function emptyResult(scan: ScanKind, warnings: string[]): InspectResult {
+	switch (scan) {
+		case 'fonts':
+			return { kind: 'fonts', fonts: [], warnings };
+		case 'assets':
+			return { kind: 'assets', assets: [], warnings };
+		case 'colors':
+			return { kind: 'colors', colors: [], aiEnhanced: false, warnings };
+		case 'schema':
+			return { kind: 'schema', json: '', aiEnhanced: false, warnings };
+	}
+}
+
+/** The active byok provider and resolved model (override or default), from prefs. */
+async function activeModel(): Promise<{ provider: Provider; model: string }> {
+	const prefs = await getPrefs();
+	return { provider: prefs.activeProvider, model: prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider] };
+}
+
+/**
+ * Ships a page-scan result to the sidebar (InspectPanel renders it). Like a snip
+ * result, the sidebar may be closed, so a delivery failure is swallowed. The
+ * optional token usage rides alongside so the panel can total it for the session.
+ */
+function shipInspect(payload: InspectResult, usage?: TokenUsage): void {
+	const body = usage ? { ...payload, usage } : payload;
+	chrome.runtime
+		.sendMessage({ type: INSPECT_RESULT, requestId: crypto.randomUUID(), payload: body })
+		.catch(() => {});
+}
+
 /** Start the picker overlay; on select, run the pipeline for the chosen mode. */
 function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker?.deactivate();
@@ -329,6 +420,9 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 	if (type === START_PICKER) {
 		const mode = (message as { mode?: unknown }).mode === 'assistive' ? 'assistive' : 'snip';
 		startPicker(mode);
+	} else if (type === START_SCAN) {
+		const scan = (message as { scan?: unknown }).scan;
+		if (scan === 'fonts' || scan === 'colors' || scan === 'assets' || scan === 'schema') void runScan(scan);
 	} else if (type === CANCEL_PICKER) {
 		// Panel-side esc: tear the overlay down. The panel already cleared its own
 		// picking state, so no onCancel callback is needed here.
