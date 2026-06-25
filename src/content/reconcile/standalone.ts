@@ -89,6 +89,10 @@ export interface EmittedReport {
  * - Geometry-derived and non-visual props (transform/perspective origins resolve from
  *   the box; -webkit-locale is an input-method hint with no paint effect).
  *
+ * The box-size exclusion is narrowed for replaced elements (see REPLACED_BOX_PROPS):
+ * their box is intrinsic or declared, never derived from in-flow content, so a size
+ * divergence there is a lost size, not benign reflow.
+ *
  * Custom properties are handled separately (they never enumerate in computed style).
  * Everything else is compared: the standalone render is the authority, so any
  * divergence in a paint or box property is a real defect to correct.
@@ -101,6 +105,31 @@ const SKIP_PROPS = new Set<string>([
 	'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
 	'transform-origin', 'perspective-origin', '-webkit-locale',
 ]);
+
+/**
+ * The box-size longhands within SKIP_PROPS. These are skipped for an ordinary in-flow
+ * box (its used size re-derives from the box model standalone) but compared for a
+ * replaced element, whose rendered size is the authority: an inline svg with only a
+ * viewBox has no intrinsic size and collapses standalone, a raster image free-sizes to
+ * its intrinsic geometry and loses the display box its container imposed. Margins and
+ * insets stay skipped for everyone; only the element's own size is reclaimed.
+ */
+const REPLACED_BOX_PROPS = new Set<string>([
+	'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+	'inline-size', 'block-size', 'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size',
+]);
+
+/**
+ * Replaced elements, whose box comes from intrinsic content or an explicit dimension
+ * rather than in-flow layout. Their standalone size must equal live, so the comparison
+ * reclaims their box-size props. svg reports a lowercase tagName; html elements report
+ * uppercase, so the test case-folds.
+ */
+const REPLACED_TAGS = new Set<string>(['svg', 'img', 'canvas', 'video', 'iframe', 'object', 'embed']);
+
+function isReplacedElement(el: Element): boolean {
+	return REPLACED_TAGS.has(el.tagName.toLowerCase());
+}
 
 /**
  * Reports the standalone-vs-live discrepancies without mutating anything. This is the
@@ -123,7 +152,7 @@ export async function probeStandalone(captured: Captured): Promise<StandaloneRep
 				if (!framed) continue;
 				const live = getComputedStyle(original);
 				const standalone = win.getComputedStyle(framed);
-				for (const prop of comparableProps(live)) {
+				for (const prop of comparableProps(live, original)) {
 					const liveVal = live.getPropertyValue(prop);
 					const stdVal = standalone.getPropertyValue(prop);
 					if (valuesMatch(liveVal, stdVal)) continue;
@@ -323,7 +352,7 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			if (!emitted) continue;
 			const cloneCs = cloneSized.win.getComputedStyle(framed);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
-			for (const prop of comparableProps(cloneCs)) {
+			for (const prop of comparableProps(cloneCs, clone)) {
 				const cloneVal = cloneCs.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
 				if (valuesMatch(cloneVal, emittedVal)) continue;
@@ -344,7 +373,7 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			if (!emitted) continue;
 			const live = getComputedStyle(original);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
-			for (const prop of comparableProps(live)) {
+			for (const prop of comparableProps(live, original)) {
 				const liveVal = live.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
 				if (valuesMatch(liveVal, emittedVal)) continue;
@@ -436,7 +465,7 @@ export function reconcileStandalone(captured: Captured): void {
 			const liveTargets = pairs.map(([original, clone]) => {
 				const live = getComputedStyle(original);
 				const want = new Map<string, string>();
-				for (const prop of comparableProps(live)) {
+				for (const prop of comparableProps(live, original)) {
 					const value = live.getPropertyValue(prop);
 					if (value !== '') want.set(prop, value);
 				}
@@ -504,13 +533,13 @@ function zeroRootMargin(captured: Captured): void {
  * Runs after the standalone reconciliation deliberately: the reconciliation makes the
  * root reproduce its OWN computed style (a transparent background), and this is the
  * separate, later decision to restore the vanished backdrop, so it is not reverted.
- * Only the root needs it; children paint over it. Color only, never an ancestor's
- * positioned background-image (which is sized for the full section, not the snip).
+ * Only the root needs it; children paint over it. The recovered paint is a solid color,
+ * or any reproducible backdrop image (a gradient, a tiled pattern, a cover/contain
+ * image); a positioned framed photo, sized for the full section, is still only flagged.
  *
  * @param captured - the root clone's baked map + inline style are extended
  */
 function recoverEscapedBackground(captured: Captured): void {
-	const rootClone = captured.clone;
 	const rootCs = getComputedStyle(captured.root);
 	// The root already paints its own backdrop (an opaque color or any image): trust it.
 	if (!isTransparentColor(rootCs.backgroundColor)) return;
@@ -520,38 +549,41 @@ function recoverEscapedBackground(captured: Captured): void {
 	while (node && node !== document.documentElement) {
 		const cs = getComputedStyle(node);
 		if (!isTransparentColor(cs.backgroundColor)) {
-			const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
-			baked.set('background-color', cs.backgroundColor);
-			captured.bakedStyles.set(rootClone, baked);
-			try {
-				(rootClone as HTMLElement).style.setProperty('background-color', cs.backgroundColor);
-			} catch {
-				// Invalid for this element; the baked-map entry still ships to emit.
-			}
+			bakeOnRoot(captured, 'background-color', cs.backgroundColor);
 			return;
 		}
 		// A nearer ancestor paints its backdrop with an image rather than a solid color.
-		// A gradient is a css-described paint that re-renders at any size, so baking it onto
-		// the root reproduces the backdrop (and so makes light-on-backdrop text visible)
-		// even though the gradient was authored for the whole section. A raster url() image
-		// is positioned pixels sized for that section and is not in the snipped subtree, so
-		// it cannot be reproduced; that residual is flagged, not faked.
+		// A reproducible backdrop (a gradient, a repeated tile, a cover/contain image) is a
+		// paint that re-renders at any size, so baking the whole multi-layer value plus its
+		// placement onto the root reproduces the backdrop and makes light-on-backdrop text
+		// visible, even though it was authored for the whole section. A positioned framed
+		// photo is sized for that section and cannot be reproduced; that residual is flagged.
 		if (cs.backgroundImage && cs.backgroundImage !== 'none') {
-			if (isReproducibleGradient(cs.backgroundImage)) {
-				const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
-				baked.set('background-image', cs.backgroundImage);
-				captured.bakedStyles.set(rootClone, baked);
-				try {
-					(rootClone as HTMLElement).style.setProperty('background-image', cs.backgroundImage);
-				} catch {
-					// Invalid for this element; the baked-map entry still ships to emit.
-				}
+			if (isReproducibleBackdrop(node, cs)) {
+				const place = backdropPlacement(cs);
+				bakeOnRoot(captured, 'background-image', cs.backgroundImage);
+				bakeOnRoot(captured, 'background-size', place.size);
+				bakeOnRoot(captured, 'background-repeat', place.repeat);
+				bakeOnRoot(captured, 'background-position', cs.backgroundPosition);
 				return;
 			}
-			captured.warnings.push('standalone: element is transparent over an ancestor background-image not in the snip; backdrop cannot be reproduced standalone');
+			captured.warnings.push('standalone: element is transparent over an ancestor positioned background-image not in the snip; backdrop cannot be reproduced standalone');
 			return;
 		}
 		node = node.parentElement;
+	}
+}
+
+/** Bakes one recovered value onto the snip root (bakedStyles + inline style). */
+function bakeOnRoot(captured: Captured, prop: string, value: string): void {
+	const rootClone = captured.clone as HTMLElement;
+	const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
+	baked.set(prop, value);
+	captured.bakedStyles.set(rootClone, baked);
+	try {
+		rootClone.style.setProperty(prop, value);
+	} catch {
+		// Invalid for this element; the baked-map entry still ships to emit.
 	}
 }
 
@@ -561,11 +593,68 @@ function isTransparentColor(color: string): boolean {
 }
 
 /**
- * Whether a computed background-image is purely css gradients, so it reproduces at the
- * snip's size. A gradient (linear/radial/conic, including repeating and -webkit- forms)
- * is a paint function, not positioned pixels, so baking it onto a smaller box still
- * renders a faithful backdrop. A value that carries any url() raster layer is positioned
- * for its original section and is excluded, so the irreducible photo case is unaffected.
+ * Whether a computed backdrop reproduces faithfully when baked onto the snip's own,
+ * smaller box. A value with no raster layer is judged on its gradients (a paint function
+ * reproduces at any size). A raster layer reproduces when it tiles (a repeat fills any
+ * box), scales (a cover/contain image fits any box), or paints the whole ancestor box
+ * (a full-bleed backdrop, which can be rescaled to cover the snip). A smaller placed
+ * raster is a framed image positioned for its section and does not reproduce.
+ *
+ * @param node - the ancestor painting the backdrop (source of its box size)
+ * @param cs - the ancestor's computed style (image plus its placement)
+ */
+function isReproducibleBackdrop(node: Element, cs: CSSStyleDeclaration): boolean {
+	if (!/url\(/i.test(cs.backgroundImage)) return isReproducibleGradient(cs.backgroundImage);
+	return backdropTiles(cs.backgroundRepeat) || backdropScales(cs.backgroundSize) || isFullBleed(node, cs.backgroundSize);
+}
+
+/**
+ * The size and repeat to bake when reproducing a backdrop on the snip. A tiled or
+ * scaling backdrop keeps its own placement (a tile repeats, a cover/contain image fits).
+ * A full-bleed raster sized in fixed pixels for the original section is rescaled to
+ * cover, so it fills the smaller snip box rather than overflowing it.
+ *
+ * @param cs - the ancestor's computed style
+ */
+function backdropPlacement(cs: CSSStyleDeclaration): { size: string; repeat: string } {
+	const keepsOwn = !/url\(/i.test(cs.backgroundImage) || backdropTiles(cs.backgroundRepeat) || backdropScales(cs.backgroundSize);
+	if (keepsOwn) return { size: cs.backgroundSize, repeat: cs.backgroundRepeat };
+	return { size: 'cover', repeat: 'no-repeat' };
+}
+
+/** Whether any background-repeat layer tiles (so the backdrop fills an arbitrary box). */
+function backdropTiles(backgroundRepeat: string): boolean {
+	return backgroundRepeat.split(',').some((layer) => {
+		const r = layer.trim();
+		return r !== 'no-repeat' && /repeat|round|space/i.test(r);
+	});
+}
+
+/** Whether any background-size layer scales the image to its box (cover or contain). */
+function backdropScales(backgroundSize: string): boolean {
+	return /\b(?:cover|contain)\b/i.test(backgroundSize);
+}
+
+/**
+ * Whether the first background-size layer paints the full width of the ancestor box, the
+ * mark of a decorative full-bleed backdrop rather than a smaller placed image. A
+ * percentage of 100 or more, or a length at least as wide as the box, is full-bleed; an
+ * auto or smaller size is a placed image.
+ *
+ * @param node - the ancestor painting the backdrop
+ * @param backgroundSize - the ancestor's computed background-size
+ */
+function isFullBleed(node: Element, backgroundSize: string): boolean {
+	const first = (backgroundSize.split(',')[0] ?? '').trim().split(/\s+/)[0] ?? '';
+	if (first.endsWith('%')) return parseFloat(first) >= 100;
+	if (first.endsWith('px')) return parseFloat(first) >= (node.clientWidth || 0) * 0.95;
+	return false;
+}
+
+/**
+ * Whether a computed background-image is purely css gradients (linear/radial/conic,
+ * including repeating and -webkit- forms). A gradient is a paint function, not positioned
+ * pixels, so baking it onto a smaller box still renders a faithful backdrop.
  *
  * @param backgroundImage - the computed background-image value
  */
@@ -602,15 +691,19 @@ function applyOverride(captured: Captured, o: Override): void {
  * The longhand properties worth comparing on an element: every enumerable computed
  * longhand except custom properties (which do not enumerate) and the explicit skip
  * set. The standalone render is the authority, so this list is deliberately broad,
- * never a hand-picked "important props" set.
+ * never a hand-picked "important props" set. A replaced element reclaims its box-size
+ * props from the skip set, because for it the rendered size is authoritative.
  *
  * @param cs - the element's computed style
+ * @param el - the element, used to decide whether its box size is authoritative
  */
-function comparableProps(cs: CSSStyleDeclaration): string[] {
+function comparableProps(cs: CSSStyleDeclaration, el: Element): string[] {
+	const boxAuthoritative = isReplacedElement(el);
 	const out: string[] = [];
 	for (let i = 0; i < cs.length; i++) {
 		const prop = cs.item(i);
-		if (!prop || prop.startsWith('--') || SKIP_PROPS.has(prop)) continue;
+		if (!prop || prop.startsWith('--')) continue;
+		if (SKIP_PROPS.has(prop) && !(boxAuthoritative && REPLACED_BOX_PROPS.has(prop))) continue;
 		out.push(prop);
 	}
 	return out;

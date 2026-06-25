@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* Exercises the replaced-element box comparison. The thumbnail carries its source
+	   resolution as width/height attributes (a tall 2:3 portrait) but fills a short, wide
+	   cell that crops it with object-fit:cover. Its size is authored as width/height:100%
+	   of that cell, a value that only resolves while the cell is present: snipped on its
+	   own the percentages have no definite ancestor to resolve against, so the image fights
+	   its intrinsic ratio and free-sizes away from its display box (stretched and miscropped
+	   today). The replaced-element box comparison pins the rendered box on divergence and
+	   the existing object-fit reconciliation keeps the crop. The cell is a plain block, not
+	   flex or grid, so bake.ts's escaped-layout lock does not cover it. */
+	body {
+		margin: 0;
+		font-family: Arial, sans-serif;
+		background: #ffffff;
+	}
+	.cell {
+		width: 220px;
+		height: 130px;
+		border-radius: 10px;
+		overflow: hidden;
+	}
+	.cell img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+</style>
+</head>
+<body>
+	<div class="cell">
+		<img width="600" height="900" src="./tile.png" alt="thumbnail" />
+	</div>
+</body>
+</html>

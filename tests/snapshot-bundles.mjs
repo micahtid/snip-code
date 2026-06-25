@@ -16,6 +16,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Downloads', 'training-data');
 const SETTLE_MS = 400; // Beat after fonts.ready for heavy layout/animation libs.
 
+// Consent-management-platform hosts. Their scripts inject a cookie/consent banner on a
+// post-load timer and re-assert it against DOM hiding, so they fight the paint-based
+// overlay strip. Blocking the script at the network layer is deterministic: the banner
+// never loads, so the reference shows the component, not the consent chrome. This is a
+// closed, well-known class of third-party chrome, blocked by class, never per-site.
+const CONSENT_HOSTS = /(?:^|\.)(?:cookielaw\.org|onetrust\.com|cookiebot\.com|trustarc\.com|osano\.com|usercentrics\.eu|cookieyes\.com|civiccomputing\.com|quantcast\.com|sourcepoint\.com|didomi\.io)$/i;
+
 /** Read source.json supporting both the flat bundle schema and the nested assistive schema. */
 function readSource(source) {
 	return {
@@ -141,6 +148,16 @@ async function snapshotBundle(browser, bundle) {
 		reducedMotion: 'reduce',
 	});
 	const page = await context.newPage();
+	// Block consent-platform scripts so their banner never loads (see CONSENT_HOSTS).
+	await page.route('**/*', (route) => {
+		let host = '';
+		try {
+			host = new URL(route.request().url()).host;
+		} catch {
+			// Opaque url (data:, blob:); let it through.
+		}
+		return CONSENT_HOSTS.test(host) ? route.abort() : route.continue();
+	});
 	try {
 		await page.goto(src.url, { waitUntil: 'load', timeout: 30000 });
 		await page.evaluate(() => document.fonts.ready);

@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* The snipped .card is transparent and prints light text, legible only because an
+	   ancestor section paints a tiled image behind it. Reparented standalone, that section
+	   is gone and the light text would vanish on white. A tile re-renders at any size (it
+	   repeats), so the standalone reconciliation recovers the nearest ancestor tiled
+	   background-image onto the snip root and inlines it, the same escaped-context recovery
+	   it does for an ancestor gradient or solid color. */
+	body {
+		margin: 0;
+		background: #ffffff;
+	}
+	.panel {
+		padding: 40px;
+		background-image: url(./tile.png);
+		background-repeat: repeat;
+	}
+	.card {
+		width: 420px;
+		padding: 30px;
+		background: transparent;
+		color: #ffffff;
+		font-family: Georgia, "Times New Roman", serif;
+	}
+	.card h2 {
+		margin: 0 0 12px;
+		font-size: 30px;
+		line-height: 1.2;
+	}
+	.card p {
+		margin: 0;
+		font-size: 18px;
+		line-height: 1.5;
+	}
+</style>
+</head>
+<body>
+	<section class="panel">
+		<div class="card">
+			<h2>Light text on a recovered tile</h2>
+			<p>This card carries no background of its own; its pale text reads only against the
+			tiled pattern the section paints behind it. A faithful snip must recover and inline
+			that tile, or the words disappear on white.</p>
+		</div>
+	</section>
+</body>
+</html>
