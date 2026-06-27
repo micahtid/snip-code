@@ -17,7 +17,19 @@
  * style. Where they diverge, the standalone artifact is wrong, so the original's
  * resolved value is baked, overriding any authored value that does not reproduce
  * standalone. One anchor fixes missing backgrounds, dangling tokens, lost display,
- * and dropped box props at once, because they are all the same defect.
+ * and collapsed box geometry at once, because they are all the same defect: a value
+ * that only resolved while the page was present.
+ *
+ * Box geometry is reconciled directionally, because the standalone render is the
+ * authority on size in only one direction. A non-replaced box that loses a sizing
+ * input it drew from outside the snip (a flex track, a `var()` chain on a theme
+ * ancestor, an inset) can only collapse standalone, never grow, so its used size is
+ * reclaimed only when it shrank; a box the same or larger standalone has the room its
+ * content needs and is left alone, which is what keeps a font-grown fallback box from
+ * being clipped back to the live width. A replaced element has an intrinsic box, so a
+ * divergence in either direction is a lost size and is reclaimed. The discriminator is
+ * a CSS category (replaced vs not) and the sign of the divergence, never a tolerance
+ * constant. See shouldReclaim.
  *
  * The same anchor extends to structure: an element rendered in the original but
  * absent from the clone (silently dropped by some earlier handler) is restored, so a
@@ -79,56 +91,92 @@ export interface EmittedReport {
 
 /**
  * Properties excluded from the standalone comparison, because a divergence there is
- * benign context, not a lost style. Two groups:
+ * benign context rather than a lost style. What remains is precisely the blind spot the
+ * directional reclaim closes (used size + insets); everything skipped here is skipped
+ * for a reason the directional rule cannot improve on:
  *
- * - Used-value geometry (width/height/insets/margins and their logical aliases): a
- *   reparented box legitimately resolves a different used size, and that size follows
- *   from the box model and the recovered paint/box properties once those are baked.
- *   bake.ts already locks the root's escaped geometry; freezing every descendant's box
- *   would bloat the output and fight the display/padding the reconciliation restores.
+ * - Margins: a margin positions a box against siblings that did not travel with the
+ *   snip, so its standalone value is benign. The root's are zeroed separately
+ *   (zeroRootMargin); a descendant's re-derive from the recovered box.
+ * - min/max sizes: the reconciliation pins the *used* size directly (see SIZE_PROPS),
+ *   which already overrides whatever bound produced it, so comparing the bound itself
+ *   would be redundant.
  * - Geometry-derived and non-visual props (transform/perspective origins resolve from
  *   the box; -webkit-locale is an input-method hint with no paint effect).
  *
- * The box-size exclusion is narrowed for replaced elements (see REPLACED_BOX_PROPS):
- * their box is intrinsic or declared, never derived from in-flow content, so a size
- * divergence there is a lost size, not benign reflow.
+ * Used size (width/height + logical) and insets (top/right/bottom/left + logical) are
+ * deliberately NOT here: they are compared for every element and reclaimed through
+ * shouldReclaim, which decides direction from the replaced/non-replaced CSS category.
  *
  * Custom properties are handled separately (they never enumerate in computed style).
  * Everything else is compared: the standalone render is the authority, so any
  * divergence in a paint or box property is a real defect to correct.
  */
 const SKIP_PROPS = new Set<string>([
-	'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-	'inline-size', 'block-size', 'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size',
+	'min-width', 'min-height', 'max-width', 'max-height',
+	'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size',
 	'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-	'top', 'right', 'bottom', 'left',
-	'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
 	'transform-origin', 'perspective-origin', '-webkit-locale',
 ]);
 
 /**
- * The box-size longhands within SKIP_PROPS. These are skipped for an ordinary in-flow
- * box (its used size re-derives from the box model standalone) but compared for a
- * replaced element, whose rendered size is the authority: an inline svg with only a
- * viewBox has no intrinsic size and collapses standalone, a raster image free-sizes to
- * its intrinsic geometry and loses the display box its container imposed. Margins and
- * insets stay skipped for everyone; only the element's own size is reclaimed.
+ * The used-size longhands (physical and logical). They carry the directional rule in
+ * shouldReclaim: a non-replaced box only ever *loses* a sizing input standalone, so a
+ * real defect is always a collapse and is reclaimed only when the box shrank; a
+ * replaced box is intrinsic, so a divergence either way is a lost size. Insets are
+ * deliberately excluded — they have no intrinsic direction, so they reclaim on any
+ * divergence, like paint.
  */
-const REPLACED_BOX_PROPS = new Set<string>([
-	'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
-	'inline-size', 'block-size', 'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size',
-]);
+const SIZE_PROPS = new Set<string>(['width', 'height', 'inline-size', 'block-size']);
 
 /**
  * Replaced elements, whose box comes from intrinsic content or an explicit dimension
- * rather than in-flow layout. Their standalone size must equal live, so the comparison
- * reclaims their box-size props. svg reports a lowercase tagName; html elements report
- * uppercase, so the test case-folds.
+ * rather than in-flow layout. Because their box is intrinsic, a standalone size that
+ * diverges in either direction is wrong (an svg with only a viewBox collapses, a raster
+ * image free-sizes past the cell its container imposed), so shouldReclaim pins their
+ * size symmetrically. svg reports a lowercase tagName; html elements report uppercase,
+ * so the test case-folds.
  */
 const REPLACED_TAGS = new Set<string>(['svg', 'img', 'canvas', 'video', 'iframe', 'object', 'embed']);
 
 function isReplacedElement(el: Element): boolean {
 	return REPLACED_TAGS.has(el.tagName.toLowerCase());
+}
+
+/**
+ * Whether a standalone-vs-live property divergence is a real defect to reclaim (bake the
+ * live value), deciding *direction* from a CSS distinction rather than any tolerance.
+ *
+ * - Within sub-0.1px float noise (valuesMatch) nothing is reclaimed.
+ * - A non-replaced element's used size is reclaimed only when it is a *confirmed*
+ *   collapse (artifact < target, both numeric): a box that lost an externally-imposed
+ *   sizing input can only shrink standalone, while a box the same or larger has the room
+ *   its content needs and is left alone — this is what protects a font-grown fallback box
+ *   from being clipped back to the live width. A comparison that is not numerically
+ *   decidable (a keyword used size such as `auto`) cannot be shown to have collapsed, so
+ *   it is left alone too, under that same restraint.
+ * - A replaced element's used size is reclaimed in *either* direction: its box is
+ *   intrinsic, so free-sizing larger than its display cell is as wrong as collapsing.
+ * - Everything else (insets, paint, box) is reclaimed on any real divergence.
+ *
+ * @param prop - the computed-style longhand being compared
+ * @param artifact - the value the standalone artifact rendered
+ * @param target - the live element's value (the authority being reclaimed toward)
+ * @param replaced - whether the element is a replaced element (intrinsic box)
+ */
+function shouldReclaim(prop: string, artifact: string, target: string, replaced: boolean): boolean {
+	if (valuesMatch(artifact, target)) return false;
+	if (SIZE_PROPS.has(prop) && !replaced) {
+		// Reclaim only a confirmed numeric collapse. A growth is left alone (a box the
+		// same or larger has the room its content needs), and so is any comparison that
+		// is not numerically decidable — a keyword used size such as `auto`, which cannot
+		// be shown to have collapsed. Both fall under the same restraint that keeps a
+		// font-grown fallback box from being clipped back to the live width.
+		const a = parseFloat(artifact);
+		const t = parseFloat(target);
+		return Number.isFinite(a) && Number.isFinite(t) && a < t;
+	}
+	return true;
 }
 
 /**
@@ -152,10 +200,11 @@ export async function probeStandalone(captured: Captured): Promise<StandaloneRep
 				if (!framed) continue;
 				const live = getComputedStyle(original);
 				const standalone = win.getComputedStyle(framed);
-				for (const prop of comparableProps(live, original)) {
+				const replaced = isReplacedElement(original);
+				for (const prop of comparableProps(live)) {
 					const liveVal = live.getPropertyValue(prop);
 					const stdVal = standalone.getPropertyValue(prop);
-					if (valuesMatch(liveVal, stdVal)) continue;
+					if (!shouldReclaim(prop, stdVal, liveVal, replaced)) continue;
 					report.droppedProps++;
 					counts.set(prop, (counts.get(prop) ?? 0) + 1);
 					if (report.samples.length < 40) {
@@ -352,10 +401,11 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			if (!emitted) continue;
 			const cloneCs = cloneSized.win.getComputedStyle(framed);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
-			for (const prop of comparableProps(cloneCs, clone)) {
+			const replaced = isReplacedElement(clone);
+			for (const prop of comparableProps(cloneCs)) {
 				const cloneVal = cloneCs.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
-				if (valuesMatch(cloneVal, emittedVal)) continue;
+				if (!shouldReclaim(prop, emittedVal, cloneVal, replaced)) continue;
 				report.deltaB.droppedProps++;
 				bCounts.set(prop, (bCounts.get(prop) ?? 0) + 1);
 				if (report.deltaB.samples.length < 40) {
@@ -373,10 +423,11 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			if (!emitted) continue;
 			const live = getComputedStyle(original);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
-			for (const prop of comparableProps(live, original)) {
+			const replaced = isReplacedElement(original);
+			for (const prop of comparableProps(live)) {
 				const liveVal = live.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
-				if (valuesMatch(liveVal, emittedVal)) continue;
+				if (!shouldReclaim(prop, emittedVal, liveVal, replaced)) continue;
 				report.deltaA.droppedProps++;
 				aCounts.set(prop, (aCounts.get(prop) ?? 0) + 1);
 				if (!cssHaystack.includes(liveVal.replace(/\s+/g, ' ').toLowerCase())) report.absentProps++;
@@ -442,12 +493,13 @@ const MAX_ROUNDS = 4;
 
 /**
  * The closing reconciliation: makes the standalone artifact's own render the source of
- * truth. For every paired element, any paint or box property whose value in the
- * standalone clone differs from the original's live computed value is corrected by
- * baking the original's resolved value, overriding an authored value that does not
- * reproduce standalone (a dangling token, a lost inherited font, an ancestor-relative
- * length). This is the single anchor that fixes missing backgrounds, dangling
- * variables, lost display, and dropped box props at once.
+ * truth. For every paired element, any paint or box property whose standalone value
+ * diverges from the original's live computed value (as shouldReclaim judges it) is
+ * corrected by baking the original's resolved value, overriding an authored value that
+ * does not reproduce standalone (a dangling token, a lost inherited font, an
+ * ancestor-relative length, a flex/grid track or inset that did not travel with the
+ * snip). This is the single anchor that fixes missing backgrounds, dangling variables,
+ * lost display, and collapsed box geometry at once.
  *
  * It runs to a fixed point: baking a structural property such as `display` can change
  * descendants' computed values, so each round re-reads the standalone render (the
@@ -465,19 +517,21 @@ export function reconcileStandalone(captured: Captured): void {
 			const liveTargets = pairs.map(([original, clone]) => {
 				const live = getComputedStyle(original);
 				const want = new Map<string, string>();
-				for (const prop of comparableProps(live, original)) {
+				for (const prop of comparableProps(live)) {
 					const value = live.getPropertyValue(prop);
 					if (value !== '') want.set(prop, value);
 				}
-				return { clone, framed: mapCloneToFrame.get(clone)!, want };
+				return { clone, framed: mapCloneToFrame.get(clone)!, want, replaced: isReplacedElement(original) };
 			});
 
 			for (let round = 0; round < MAX_ROUNDS; round++) {
 				const overrides: Override[] = [];
-				for (const { clone, framed, want } of liveTargets) {
+				for (const { clone, framed, want, replaced } of liveTargets) {
 					const standalone = win.getComputedStyle(framed);
 					for (const [prop, value] of want) {
-						if (standalone.getPropertyValue(prop) !== value) overrides.push({ clone, framed, prop, value });
+						if (shouldReclaim(prop, standalone.getPropertyValue(prop), value, replaced)) {
+							overrides.push({ clone, framed, prop, value });
+						}
 					}
 				}
 				if (overrides.length === 0) break; // Converged.
@@ -691,19 +745,17 @@ function applyOverride(captured: Captured, o: Override): void {
  * The longhand properties worth comparing on an element: every enumerable computed
  * longhand except custom properties (which do not enumerate) and the explicit skip
  * set. The standalone render is the authority, so this list is deliberately broad,
- * never a hand-picked "important props" set. A replaced element reclaims its box-size
- * props from the skip set, because for it the rendered size is authoritative.
+ * never a hand-picked "important props" set. Used size and insets are included for
+ * every element; shouldReclaim then decides which divergences are real defects.
  *
  * @param cs - the element's computed style
- * @param el - the element, used to decide whether its box size is authoritative
  */
-function comparableProps(cs: CSSStyleDeclaration, el: Element): string[] {
-	const boxAuthoritative = isReplacedElement(el);
+function comparableProps(cs: CSSStyleDeclaration): string[] {
 	const out: string[] = [];
 	for (let i = 0; i < cs.length; i++) {
 		const prop = cs.item(i);
 		if (!prop || prop.startsWith('--')) continue;
-		if (SKIP_PROPS.has(prop) && !(boxAuthoritative && REPLACED_BOX_PROPS.has(prop))) continue;
+		if (SKIP_PROPS.has(prop)) continue;
 		out.push(prop);
 	}
 	return out;
