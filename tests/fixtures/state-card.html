@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body { margin: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	/* Self-hover on the snip root, plus a descendant-state (card hover recolors the
+	   title) and a child-combinator state (card hover tints the tag). */
+	.card {
+		width: 280px;
+		padding: 24px;
+		background: #ffffff;
+		border: 1px solid #e5e7eb;
+		border-radius: 12px;
+		transition: box-shadow 0.2s ease;
+	}
+	.card:hover {
+		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+	}
+	.title {
+		margin: 0 0 8px;
+		font-size: 20px;
+		color: #111827;
+	}
+	.card:hover .title {
+		color: #db2777;
+	}
+	.tag {
+		display: inline-block;
+		margin-top: 12px;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: #eef2ff;
+		color: #4338ca;
+		font-size: 12px;
+	}
+	.card:hover > .meta > .tag {
+		background: #4338ca;
+		color: #ffffff;
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="card">
+			<h3 class="title">Card title</h3>
+			<p>Hover the card to recolor the title and tint the tag.</p>
+			<div class="meta"><span class="tag">New</span></div>
+		</div>
+	</div>
+</body>
+</html>

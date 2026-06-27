@@ -22,6 +22,7 @@
  */
 import type { Captured } from '../types';
 import { pairedSubtrees } from '../reconcile/match';
+import { synthesizedStyle, forEachSynthesizedDeclaration, rewriteSynthesizedDeclarations } from '../reconcile/synthesized';
 
 const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 
@@ -73,7 +74,86 @@ export function resolveVariables(captured: Captured): void {
 		}
 	}
 
+	// Synthesized state/pseudo rules carry their own var() references, which the
+	// bakedStyles loop above never sees (they live in a <style>, not in bakedStyles).
+	// Resolve them with the same survival rule, with one state-specific exception
+	// (see resolveSynthesizedVariables).
+	resolveSynthesizedVariables(captured, subtreeDefs, rootVars, neededRootVars);
+
 	emitRootVars(captured, rootVars, closeOver(neededRootVars, rootVars));
+}
+
+/**
+ * Resolves the var() references inside the synthesized <style> (the state and pseudo
+ * rules). A reference whose definition survives the snip is kept verbatim and renders
+ * standalone: a subtree-scoped definition already travels on its clone node, and a
+ * :root definition is marked needed so it is re-emitted on the root.
+ *
+ * The state-specific exception is the subtle one: a definition OUTSIDE the snip cannot be
+ * resolved the way a resting declaration is. A resting var() is replaced by the live
+ * element's computed literal, but that literal is the element's RESTING value — wrong for
+ * a `:hover { color: var(--accent-hover) }` whose accent only takes its hover value while
+ * hovered. There is no correct literal to copy (only a forced-state measurement could get
+ * it, the deferred follow-up), so the declaration is dropped with a warning rather than
+ * baked to a wrong color.
+ *
+ * A synthesized rule may also define its OWN custom properties (`:hover { --x: red;
+ * color: var(--x) }`, or the tailwind ring's `--tw-ring-*` chain): those travel in the
+ * same <style>, so a reference to one survives when that definition itself survives. The
+ * survivable set is therefore computed to a fixpoint, and a declaration is dropped only if
+ * it references a variable that survives nowhere — which also drops, transitively, any
+ * declaration that depended on a dropped one, so no dangling var() is ever emitted.
+ *
+ * @param captured - the synthesized <style> is rewritten in place; warnings appended
+ * @param subtreeDefs - custom-property names defined on a subtree element
+ * @param rootVars - the :root custom properties available to re-emit
+ * @param neededRootVars - accumulates the :root vars a kept reference depends on
+ */
+function resolveSynthesizedVariables(
+	captured: Captured,
+	subtreeDefs: Set<string>,
+	rootVars: Map<string, string>,
+	neededRootVars: Set<string>,
+): void {
+	const style = synthesizedStyle(captured);
+	if (!style || !(style.textContent ?? '').includes('var(')) return;
+
+	// Custom properties the synthesized rules define themselves, name -> its value(s).
+	const synthDefs = new Map<string, string[]>();
+	forEachSynthesizedDeclaration(captured, (decl) => {
+		if (!decl.prop.startsWith('--')) return;
+		synthDefs.set(decl.prop, [...(synthDefs.get(decl.prop) ?? []), decl.value]);
+	});
+
+	const survivable = (name: string, synthOk: Set<string>): boolean =>
+		subtreeDefs.has(name) || rootVars.has(name) || synthOk.has(name);
+
+	// Fixpoint: a synth-defined var survives once one of its definitions references only
+	// survivable variables. Re-scan until no new name becomes survivable.
+	const survivableSynth = new Set<string>();
+	for (let changed = true; changed; ) {
+		changed = false;
+		for (const [name, values] of synthDefs) {
+			if (survivableSynth.has(name)) continue;
+			if (values.some((v) => referencedVars(v).every((r) => survivable(r, survivableSynth)))) {
+				survivableSynth.add(name);
+				changed = true;
+			}
+		}
+	}
+
+	rewriteSynthesizedDeclarations(captured, (decl) => {
+		if (!decl.value.includes('var(')) return decl.value;
+		const refs = referencedVars(decl.value);
+		if (!refs.every((r) => survivable(r, survivableSynth))) {
+			captured.warnings.push(
+				`states: dropped "${decl.prop}" in "${decl.selector}"; its var() is defined outside the snip and has no resting-safe value`,
+			);
+			return null;
+		}
+		for (const r of refs) if (rootVars.has(r)) neededRootVars.add(r); // Keep the :root deps alive.
+		return decl.value;
+	});
 }
 
 /** Re-emit the surviving :root custom properties onto the snip root clone. */

@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* A :root token used by a :hover rule: it must be re-emitted on the snip root so the
+	   hover renders standalone. */
+	:root { --accent-hover: #db2777; }
+	body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
+	.panel { display: flex; gap: 20px; padding: 40px; }
+	/* A token defined on a SIBLING of the snipped .btn: it does not inherit into the snip
+	   and is not on :root, so a :hover rule referencing it has no resting-safe value in the
+	   artifact and must be dropped with a warning. */
+	.aside { --aside-ink: #f59e0b; width: 80px; background: #eee; }
+	.btn {
+		display: inline-block;
+		padding: 12px 24px;
+		background-color: #2563eb;
+		color: #ffffff;
+		border-radius: 8px;
+		font-size: 16px;
+		text-decoration: none;
+	}
+	.btn:hover {
+		background-color: var(--accent-hover);
+		color: var(--aside-ink);
+	}
+</style>
+</head>
+<body>
+	<div class="panel">
+		<a class="btn" href="#">Hover me</a>
+		<div class="aside">aside</div>
+	</div>
+</body>
+</html>

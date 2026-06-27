@@ -268,8 +268,14 @@ function ruleApplies(rule: CssRule, el: Element): boolean {
 	}
 }
 
-/** Evaluate an @media condition against the live environment. */
-function mediaApplies(query: string): boolean {
+/**
+ * Evaluate an @media condition against the live environment. Exported so the
+ * interactive-states handler gates its rules on the same frozen viewport the resting
+ * cascade uses, for parity.
+ *
+ * @param query - the @media condition text
+ */
+export function mediaApplies(query: string): boolean {
 	try {
 		return window.matchMedia(query).matches;
 	} catch {

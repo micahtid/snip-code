@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	/* A pseudo-element (::before badge) and a :hover state on the same element, to
+	   confirm both handlers feed one shared synthesized <style>. */
+	.chip {
+		position: relative;
+		display: inline-block;
+		padding: 20px 32px 20px 64px;
+		background: #ecfdf5;
+		color: #065f46;
+		border-radius: 999px;
+		font-size: 32px;
+	}
+	.chip::before {
+		content: "\2713";
+		position: absolute;
+		left: 28px;
+		color: #059669;
+	}
+	.chip:hover {
+		background: #059669;
+		color: #ffffff;
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<span class="chip">Verified</span>
+	</div>
+</body>
+</html>

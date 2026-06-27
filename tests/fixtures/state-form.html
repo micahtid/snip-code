@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body { margin: 0; background: #ffffff; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	.toolbar { display: flex; flex-direction: column; gap: 16px; width: 320px; }
+
+	/* Sibling combinator: hovering the swatch recolors its following label. */
+	.row { display: flex; align-items: center; gap: 10px; }
+	.swatch { width: 28px; height: 28px; border-radius: 6px; background: #f59e0b; }
+	.name { font-size: 15px; color: #374151; }
+	.swatch:hover + .name { color: #b45309; font-weight: 700; }
+
+	/* :focus-within on a field wrapper, :focus on the input itself. */
+	.field { padding: 6px; border: 2px solid #d1d5db; border-radius: 8px; }
+	.field:focus-within { border-color: #2563eb; }
+	.input { width: 100%; border: 0; font-size: 15px; outline: none; }
+	.input:focus { background: #eff6ff; }
+	/* Out-of-subtree trigger: hovering the field (the parent) tints the input. When the
+	   input is snipped alone, the .field trigger is not in the artifact, so this drops. */
+	.field:hover .input { background: #fef9c3; }
+
+	/* :active on the submit button. */
+	.go { padding: 10px 18px; border: 0; border-radius: 8px; background: #16a34a; color: #fff; font-size: 15px; }
+	.go:active { background: #14532d; }
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="toolbar">
+			<div class="row"><span class="swatch"></span><span class="name">Amber</span></div>
+			<div class="field"><input class="input" placeholder="Search" /></div>
+			<button class="go">Submit</button>
+		</div>
+	</div>
+</body>
+</html>

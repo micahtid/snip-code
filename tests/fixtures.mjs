@@ -5,7 +5,7 @@
 // over loopback http, so a snip's output is a pure function of the pipeline code:
 // zero drift, any score change is a real code effect. Each fixture isolates one
 // root cause (token resolution, inherited typography, background image, lazy image,
-// scroll reveal).
+// scroll reveal, interactive-state re-emit).
 //
 // For each fixture this harness:
 //   1. captures the native browser render of the element (the ground truth),
@@ -48,6 +48,15 @@ const FIXTURES = [
 	{ name: 'escaped-gradient', selector: '.card', viewport: { width: 900, height: 360 } },
 	{ name: 'object-fit-img', selector: '.cell img', viewport: { width: 900, height: 400 } },
 	{ name: 'escaped-bg-tile', selector: '.card', viewport: { width: 900, height: 360 } },
+	// Interactive states (features/states.ts). These exercise the :hover/:focus/:active
+	// re-emit path; the gate measures the RESTING render (state selectors match nothing at
+	// rest), so they must stay byte-deterministic and pixel-neutral like every other fixture.
+	{ name: 'state-card', selector: '.card', viewport: { width: 900, height: 520 } },
+	{ name: 'state-form', selector: '.toolbar', viewport: { width: 900, height: 520 } },
+	{ name: 'state-var', selector: '.btn', viewport: { width: 900, height: 520 } },
+	{ name: 'state-localvar', selector: '.btn', viewport: { width: 900, height: 520 } },
+	{ name: 'state-url', selector: '.box', viewport: { width: 900, height: 520 } },
+	{ name: 'state-pseudo', selector: '.chip', viewport: { width: 900, height: 520 } },
 ];
 
 /** Generate the shared tile.png the bg-image and lazy-img fixtures reference, if absent. */

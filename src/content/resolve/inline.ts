@@ -19,6 +19,7 @@
  * the background) a size cap so a heavy page cannot bloat the output without limit.
  */
 import type { Captured } from '../types';
+import { synthesizedStyle, forEachSynthesizedDeclaration, rewriteSynthesizedDeclarations } from '../reconcile/synthesized';
 
 /** Matches each url() token in a css value (font src, background-image), quote-tolerant. */
 const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
@@ -61,6 +62,9 @@ export async function inlineResources(captured: Captured): Promise<void> {
 	for (const [, baked] of captured.bakedStyles) {
 		for (const prop of BG_PROPS) for (const u of urlsIn(baked.get(prop) ?? '')) add(u);
 	}
+	// Synthesized state/pseudo rules carry their own url() (a hover background, a css-icon
+	// content), which the bakedStyles loop never sees because they live in a <style>.
+	forEachSynthesizedDeclaration(captured, (decl) => { for (const u of urlsIn(decl.value)) add(u); });
 
 	if (wanted.size === 0) return;
 	const urls = [...wanted].slice(0, MAX_RESOURCES);
@@ -99,6 +103,15 @@ export async function inlineResources(captured: Captured): Promise<void> {
 				// Invalid for this element; the baked-map entry still ships to emit.
 			}
 		}
+	}
+
+	// Rewrite the synthesized rules' url()s the same way, but only when one was actually
+	// inlined, so the synthesized <style> is not re-serialized (and reformatted) for the
+	// common case that carries no url() at all.
+	if (dataByUrl.size > 0 && (synthesizedStyle(captured)?.textContent ?? '').includes('url(')) {
+		rewriteSynthesizedDeclarations(captured, (decl) =>
+			decl.value.includes('url(') ? rewriteUrls(decl.value, base, dataByUrl) : decl.value,
+		);
 	}
 
 	dropUncontainedFaces(captured);

@@ -13,8 +13,9 @@
  * ::marker on display:list-item elements; ::placeholder on elements with a
  * placeholder attribute; ::file-selector-button on file inputs.
  * Transform contract: tags the matching clone element with a data-snip-pseudo marker
- * and appends one <style> to the clone carrying `[data-snip-pseudo="n"]::x {... }`
- * rules snapshotted from the live pseudo's computed style. Clone only.
+ * and adds `[data-snip-pseudo="n"]::x {... }` rules snapshotted from the live pseudo's
+ * computed style to the clone's shared synthesized <style> (see reconcile/synthesized.ts).
+ * Clone only.
  * Test bundle: TODO, add later (icon-via-::before, custom list markers).
  *
  * Why this exists: ::before/::after content (counters, quote glyphs, decorative
@@ -26,6 +27,7 @@
 import type { Captured } from '../../types';
 import { pairedSubtrees, isRedundantDecl, transformContext, inheritsProperty } from '../match';
 import { pseudoDefaults, effectiveInherited, resolveCssWideKeyword } from '../denoise';
+import { appendSynthesizedRules } from '../synthesized';
 
 const MARKER = 'data-snip-pseudo';
 
@@ -65,11 +67,7 @@ export function apply(captured: Captured): Captured {
 		}
 	}
 
-	if (rules.length > 0) {
-		const style = document.createElement('style');
-		style.textContent = rules.join('\n');
-		captured.clone.appendChild(style);
-	}
+	appendSynthesizedRules(captured, rules);
 	return captured;
 }
 

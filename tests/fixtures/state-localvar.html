@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	.btn {
+		display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #fff;
+		border-radius: 8px; font-size: 16px; text-decoration: none;
+	}
+	/* The :hover rule defines its own custom property and uses it: both must survive, since
+	   the definition ships in the same synthesized <style>. */
+	.btn:hover {
+		--local-accent: #db2777;
+		background-color: var(--local-accent);
+	}
+</style>
+</head>
+<body>
+	<div class="wrap"><a class="btn" href="#">Hover me</a></div>
+</body>
+</html>

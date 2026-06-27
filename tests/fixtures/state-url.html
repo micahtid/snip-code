@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	.box {
+		width: 240px;
+		height: 120px;
+		background: #111827;
+		border-radius: 12px;
+		position: relative;
+	}
+	/* A url() carried by a :hover rule (the synthesized-<style> url() path) and one carried
+	   by a ::before (the pre-existing pseudo url() gap). Both must inline to data: uris so
+	   the artifact is self-contained. */
+	.box:hover {
+		background-image: url(tile.png);
+		background-size: cover;
+	}
+	.box::before {
+		content: "";
+		position: absolute;
+		inset: 8px;
+		background-image: url(tile.png);
+		background-size: 40px 40px;
+		opacity: 0.5;
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="box"></div>
+	</div>
+</body>
+</html>
