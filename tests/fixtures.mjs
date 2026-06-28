@@ -57,6 +57,7 @@ const FIXTURES = [
 	{ name: 'state-localvar', selector: '.btn', viewport: { width: 900, height: 520 } },
 	{ name: 'state-url', selector: '.box', viewport: { width: 900, height: 520 } },
 	{ name: 'state-pseudo', selector: '.chip', viewport: { width: 900, height: 520 } },
+	{ name: 'state-transform', selector: '.card', viewport: { width: 700, height: 360 } },
 ];
 
 /** Generate the shared tile.png the bg-image and lazy-img fixtures reference, if absent. */

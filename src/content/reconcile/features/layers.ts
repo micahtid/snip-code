@@ -2,7 +2,8 @@
  * features/layers.ts: @layer / @property / @scope
  *
  * Pipeline position: reconcile
- * Reads from Captured: clone, bakedStyles, variables (used custom props)
+ * Reads from Captured: clone, bakedStyles, variables, and the synthesized <style> (used
+ *   custom props); the @property scan itself lives in reconcile/properties.ts
  * Writes to Captured: clone (appends an @property <style>), warnings
  *
  * A feature handler for the cascade-layering and registered-property mechanisms.
@@ -25,6 +26,10 @@
  * synthetic layer order.)
  */
 import type { Captured } from '../../types';
+import { registeredProperties } from '../properties';
+import { forEachSynthesizedDeclaration } from '../synthesized';
+
+const VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
 
 /**
  * Re-emits @property registrations for custom properties the snip uses.
@@ -36,14 +41,8 @@ export function apply(captured: Captured): Captured {
 	if (used.size === 0) return captured;
 
 	const rules: string[] = [];
-	for (const sheet of Array.from(document.styleSheets)) {
-		let cssRules: CSSRuleList;
-		try {
-			cssRules = sheet.cssRules;
-		} catch {
-			continue; // Cross-origin sheet; cannot read.
-		}
-		collectPropertyRules(cssRules, used, rules);
+	for (const [name, prop] of registeredProperties()) {
+		if (used.has(name)) rules.push(prop.cssText);
 	}
 	if (rules.length === 0) return captured;
 
@@ -53,36 +52,31 @@ export function apply(captured: Captured): Captured {
 	return captured;
 }
 
-/** Every custom-property name the snip references or defines. */
+/**
+ * Every custom-property name the snip references or defines, across the baked styles and
+ * the synthesized state/pseudo rules. The synthesized rules are included so a registered
+ * property a state rule depends on (the tailwind ring/shadow chain) keeps its @property
+ * registration in the artifact, which is what lets resolve/vars.ts treat it as resolvable.
+ *
+ * @param captured - the capture whose baked + synthesized styles are scanned
+ */
 function usedCustomProps(captured: Captured): Set<string> {
 	const names = new Set<string>();
+	const addRefs = (value: string): void => {
+		let m: RegExpExecArray | null;
+		VAR_REF.lastIndex = 0;
+		while ((m = VAR_REF.exec(value)) !== null) if (m[1]) names.add(m[1]);
+	};
 	for (const v of captured.variables) names.add(v.name);
 	for (const [, baked] of captured.bakedStyles) {
 		for (const [prop, value] of baked) {
 			if (prop.startsWith('--')) names.add(prop);
-			let m: RegExpExecArray | null;
-			const re = /var\(\s*(--[A-Za-z0-9_-]+)/g;
-			while ((m = re.exec(value)) !== null) if (m[1]) names.add(m[1]);
+			addRefs(value);
 		}
 	}
+	forEachSynthesizedDeclaration(captured, (decl) => {
+		if (decl.prop.startsWith('--')) names.add(decl.prop);
+		addRefs(decl.value);
+	});
 	return names;
-}
-
-/** Find @property rules (CSSPropertyRule) whose name is used and serialize them. */
-function collectPropertyRules(rules: CSSRuleList, used: Set<string>, out: string[]): void {
-	for (const rule of Array.from(rules)) {
-		// CSSPropertyRule is not in all dom lib versions; detect structurally.
-		const r = rule as unknown as { name?: unknown; syntax?: unknown; inherits?: unknown; initialValue?: unknown; cssText?: string };
-		if (typeof r.name === 'string' && typeof r.syntax === 'string' && r.name.startsWith('--')) {
-			if (used.has(r.name)) out.push(r.cssText ?? serializeProperty(r));
-		} else if ('cssRules' in rule && (rule as { cssRules?: unknown }).cssRules instanceof CSSRuleList) {
-			collectPropertyRules((rule as CSSRule & { cssRules: CSSRuleList }).cssRules, used, out);
-		}
-	}
-}
-
-/** Fallback serializer for an @property rule when cssText is unavailable. */
-function serializeProperty(r: { name?: unknown; syntax?: unknown; inherits?: unknown; initialValue?: unknown }): string {
-	const initial = typeof r.initialValue === 'string' && r.initialValue ? `\n\tinitial-value: ${r.initialValue};` : '';
-	return `@property ${String(r.name)} {\n\tsyntax: ${String(r.syntax)};\n\tinherits: ${String(r.inherits)};${initial}\n}`;
 }

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+	/* Older-tailwind transform model: the chain vars are reset on `*` (no @property), and a
+	   :hover rule composes them. The `*`-reset is foundation-scoped, so re-emitting the
+	   referenced ones lets the standalone hover transform resolve. */
+	* { --tw-translate-x: 0; --tw-translate-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; }
+	body { margin: 0; background: #fff; font-family: Arial, sans-serif; }
+	.wrap { padding: 40px; }
+	.card { width: 240px; overflow: hidden; border-radius: 12px; }
+	.img {
+		width: 240px;
+		height: 140px;
+		background: linear-gradient(135deg, #6366f1, #ec4899);
+		transition: transform 0.2s ease;
+	}
+	.card:hover .img {
+		--tw-scale-x: 1.15;
+		--tw-scale-y: 1.15;
+		transform: translate(var(--tw-translate-x), var(--tw-translate-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+	}
+</style>
+</head>
+<body>
+	<div class="wrap">
+		<div class="card"><div class="img"></div></div>
+	</div>
+</body>
+</html>
