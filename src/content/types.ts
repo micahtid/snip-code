@@ -73,8 +73,42 @@ export interface Captured {
 	// Reconciliation working state (populated by bake.ts, consumed by emit)
 	bakedStyles: Map<Element, Map<string, string>>;
 
+	// Interactive states measured by forcing them live (capture phase writes via
+	// capture/states-measure.ts; reconcile phase reads via reconcile/features/states.ts).
+	// Null means measurement did not run for this snip (cdp unavailable) and states.ts
+	// falls back to copying authored rules; an empty array means measurement ran and found
+	// no in-subtree state effect.
+	measuredStates: MeasuredState[] | null;
+
 	// Warnings accumulated across phases (never throw; always append)
 	warnings: string[];
+}
+
+/** One property whose computed value changed under a forced interactive state. */
+export interface MeasuredStateDecl {
+	/** The longhand (or shorthand) property name. */
+	property: string;
+	/** The concrete computed literal read under the forced state, already cascade- and
+	 * inheritance-resolved by the engine, so no var()/cascade work remains downstream. */
+	value: string;
+}
+
+/** One element the forced state restyled, with the properties that changed. */
+export interface MeasuredAffected {
+	/** The original (live) element; reconcile maps it to its clone via pairedSubtrees. */
+	element: Element;
+	/** The properties whose computed value differs from rest under the forced state. */
+	decls: MeasuredStateDecl[];
+}
+
+/** One forced (trigger, interactive-state) activation and everything it restyled. */
+export interface MeasuredState {
+	/** The original element whose state was forced (the bearer of the dynamic pseudo). */
+	trigger: Element;
+	/** The dynamic pseudos forced together, colon form, e.g. `[':hover']` or `[':focus-visible']`. */
+	states: string[];
+	/** The trigger plus any descendant/sibling whose computed value changed under the force. */
+	affected: MeasuredAffected[];
 }
 
 /** Metadata about one discovered stylesheet (not its rules, those are flattened into CssRule[]). */

@@ -102,6 +102,43 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			return true;
 		}
 
+		case 'CDP_FORCE_BEGIN': {
+			// Begin a measured-state session: attach the debugger and pin motion media so
+			// interactive states can be forced and read live. Capture-internal; see
+			// capture/states-measure.ts. Soft-fails the same way the inherited-chain capture
+			// does (the content side degrades to copying authored rules).
+			const tabId = _sender.tab && _sender.tab.id;
+			cdpForceBegin(tabId)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({ requestId: message.requestId, ok: false, error: { code: 'MALFORMED_REQUEST', message: String(err && err.message ? err.message : err) } }),
+				);
+			return true;
+		}
+
+		case 'CDP_FORCE_STATE': {
+			// Force (or, with an empty state list, clear) a pseudo-state on one node of the
+			// open session. The content script reads getComputedStyle while the force is live.
+			cdpForceState(message.payload && message.payload.selector, (message.payload && message.payload.states) || [])
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({ requestId: message.requestId, ok: false, error: { code: 'MALFORMED_REQUEST', message: String(err && err.message ? err.message : err) } }),
+				);
+			return true;
+		}
+
+		case 'CDP_FORCE_END': {
+			// End the measured-state session: clear emulated media and detach. The sender tab
+			// is passed so detach happens even if the worker was recycled mid-session and lost
+			// the remembered target (otherwise a forced state could leak into the resting bake).
+			cdpForceEnd(_sender.tab && _sender.tab.id)
+				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
+				.catch((err) =>
+					sendResponse({ requestId: message.requestId, ok: false, error: { code: 'MALFORMED_REQUEST', message: String(err && err.message ? err.message : err) } }),
+				);
+			return true;
+		}
+
 		case 'FETCH_STYLESHEET': {
 			// Background fetch bypasses cors via the <all_urls> host permission so
 			// the content script can recover cross-origin stylesheets.
@@ -249,6 +286,105 @@ async function cdpStylesheets(tabId, hrefs) {
 			}
 		}
 	}
+}
+
+// The open measured-state session: the attached target and the document node the content
+// script's force selectors resolve against. Only one session runs at a time (one snip).
+let forceTarget = null;
+let forceRootNodeId = null;
+
+/**
+ * Begins a measured-state session: attaches the debugger, enables DOM+CSS, pins
+ * prefers-reduced-motion so a reduce environment does not null transition timing, and
+ * resolves the document node that later force calls query against. Stays attached until
+ * cdpForceEnd. Throws on attach contention so the content side soft-fails to copying rules.
+ *
+ * @param tabId - the sender tab to attach to
+ */
+async function cdpForceBegin(tabId) {
+	if (!tabId) throw new Error('no tab id');
+	const target = { tabId };
+	// Attaching can transiently fail while a sibling tab's detach is still settling (the
+	// fixtures harness drives many snips back to back). A bounded retry keeps the measured
+	// path reliable so its output stays deterministic; a hard failure still soft-fails to copy.
+	await attachWithRetry(target);
+	forceTarget = target;
+	try {
+		await chrome.debugger.sendCommand(target, 'DOM.enable');
+		await chrome.debugger.sendCommand(target, 'CSS.enable');
+		// Pin motion (and scheme) so the captured timing is the page's intent, not a
+		// headless/ci 'reduce' that would report 0s durations. Best-effort.
+		try {
+			await chrome.debugger.sendCommand(target, 'Emulation.setEmulatedMedia', {
+				features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
+			});
+		} catch (e) {
+			// Emulation is optional; the transitions-off shim already guarantees the endpoints.
+		}
+		const doc = await chrome.debugger.sendCommand(target, 'DOM.getDocument', { depth: -1, pierce: true });
+		forceRootNodeId = doc.root.nodeId;
+		return { began: true };
+	} catch (err) {
+		await cdpForceEnd();
+		throw err;
+	}
+}
+
+/**
+ * Forces (or, with an empty list, clears) a set of pseudo-states on the one node matched by
+ * `selector` in the open session. The state names are bare (no colon), e.g. ['hover'].
+ *
+ * @param selector - a selector resolving to exactly the element to force
+ * @param states - the pseudo-class names to force, or [] to clear
+ */
+async function cdpForceState(selector, states) {
+	if (!forceTarget || forceRootNodeId == null) throw new Error('force session not begun');
+	if (!selector) throw new Error('no selector');
+	const found = await chrome.debugger.sendCommand(forceTarget, 'DOM.querySelector', { nodeId: forceRootNodeId, selector });
+	if (!found || !found.nodeId) return { found: false };
+	await chrome.debugger.sendCommand(forceTarget, 'CSS.forcePseudoState', { nodeId: found.nodeId, forcedPseudoClasses: states });
+	return { found: true };
+}
+
+/** Attaches the debugger, retrying a few times on transient contention with a short backoff. */
+async function attachWithRetry(target) {
+	let lastErr;
+	for (let attempt = 0; attempt < 4; attempt++) {
+		try {
+			await chrome.debugger.attach(target, '1.3');
+			return;
+		} catch (err) {
+			lastErr = err;
+			await new Promise((resolve) => setTimeout(resolve, 60 * (attempt + 1)));
+		}
+	}
+	throw lastErr;
+}
+
+/**
+ * Ends the measured-state session: clears emulated media and detaches. Detaching is what clears
+ * every forced pseudo-state, so it must happen even when the worker was recycled and lost the
+ * remembered target — the sender tab id is the fallback so a forced :hover can never leak into
+ * the later resting bake. Idempotent.
+ *
+ * @param tabId - the sender tab, used to detach when the remembered target was lost
+ */
+async function cdpForceEnd(tabId) {
+	const target = forceTarget || (tabId ? { tabId } : null);
+	forceTarget = null;
+	forceRootNodeId = null;
+	if (!target) return { detached: false };
+	try {
+		await chrome.debugger.sendCommand(target, 'Emulation.setEmulatedMedia', { features: [] });
+	} catch (e) {
+		// Already detaching or media was never pinned.
+	}
+	try {
+		await chrome.debugger.detach(target);
+	} catch (e) {
+		// Already detached or tab gone.
+	}
+	return { detached: true };
 }
 
 /** Recursively count author-closed shadow roots in a cdp DOM.Node tree. */

@@ -38,6 +38,14 @@ export const DYNAMIC_PSEUDOS = new Set([':hover', ':focus', ':focus-visible', ':
 /** Legacy single-colon spellings of pseudo-elements, normalized to `::` on parse. */
 const LEGACY_PSEUDO_ELEMENTS = new Set([':before', ':after', ':first-line', ':first-letter']);
 
+/**
+ * The forgiving/relational functional pseudo-classes whose argument is itself a selector
+ * list. A framework can bury an interactive pseudo inside one — Tailwind v4 compiles
+ * `group-hover:` to `:is(:where(.group):hover *)` — so finding the element to force means
+ * descending into these and locating the compound that actually carries the `:hover`.
+ */
+const FORGIVING_FUNCTIONAL = new Set([':is', ':where', ':not', ':has']);
+
 /** One compound selector: a run of simple selectors with no combinator between them. */
 export interface Compound {
 	/** The compound's source text, verbatim. */
@@ -97,6 +105,81 @@ export function containsDynamicPseudo(selector: string): boolean {
  */
 export function parseSelectorList(selector: string): Complex[] {
 	return splitTopLevel(selector, ',').map(parseComplex);
+}
+
+/** One element to force a state on: its structural selector plus the pseudos to force there. */
+export interface TriggerBearer {
+	/** The bearer compound's structural selector, matched against a live element to force it.
+	 * Empty string (a bare `:hover`) matches any element. */
+	structural: string;
+	/** The dynamic interactive pseudo-classes to force on that element, colon form, e.g. `[':hover']`. */
+	dynamicPseudos: string[];
+}
+
+/**
+ * Finds every element a state rule's selector asks to force, as (structural selector,
+ * pseudos) pairs. Measurement only needs the element carrying the dynamic pseudo — wherever
+ * it sits — never the subject relationship: forcing that element and reading the subtree lets
+ * the engine resolve descendant/group-hover/sibling effects on its own. This is strictly
+ * smaller than re-anchoring the whole combinator chain.
+ *
+ * A pseudo at a compound's top level (`.btn:hover`) yields the compound's structural part as
+ * the bearer. A pseudo buried in a forgiving functional pseudo (`:is(:where(.group):hover *)`)
+ * is found by descending into the argument and taking the inner bearer (`.group`) — the
+ * grammar a framework encodes the relationship in is never decoded, only stepped past.
+ *
+ * @param selector - a full rule selector, possibly a comma list
+ * @returns one bearer per place a dynamic pseudo is carried, across every branch
+ * @throws SyntaxError on unbalanced parens, brackets, or quotes
+ */
+export function findTriggerBearers(selector: string): TriggerBearer[] {
+	const bearers: TriggerBearer[] = [];
+	for (const complex of parseSelectorList(selector)) {
+		for (const compound of complex.compounds) collectBearers(compound.raw, bearers);
+	}
+	return bearers;
+}
+
+/**
+ * Collects the bearers carried by one compound: its own top-level dynamic pseudos (with the
+ * compound's structural part), plus any carried inside a forgiving functional pseudo whose
+ * argument holds a dynamic pseudo (descended into recursively). A functional pseudo that
+ * holds a dynamic pseudo is itself dropped from the structural part — it would never match at
+ * rest — while a purely-structural one (`:where(.group)`, `:not(.disabled)`) is kept.
+ *
+ * @param compoundText - the compound's source text (no combinators)
+ * @param out - the accumulating bearer list, appended in place
+ */
+function collectBearers(compoundText: string, out: TriggerBearer[]): void {
+	const structural: string[] = [];
+	const dynamic: string[] = [];
+	for (const piece of tokenizeSimpleSelectors(compoundText)) {
+		if (piece.startsWith('::')) continue; // Pseudo-element: irrelevant to which element to force.
+		if (piece.startsWith(':')) {
+			const name = pseudoName(piece);
+			if (LEGACY_PSEUDO_ELEMENTS.has(name)) continue;
+			if (DYNAMIC_PSEUDOS.has(name)) {
+				dynamic.push(piece.toLowerCase());
+				continue;
+			}
+			if (FORGIVING_FUNCTIONAL.has(name)) {
+				const arg = functionalArgument(piece);
+				if (arg && containsDynamicPseudo(arg)) {
+					for (const inner of parseSelectorList(arg)) for (const c of inner.compounds) collectBearers(c.raw, out);
+					continue; // Holds a dynamic pseudo, so it is not a rest-time structural constraint.
+				}
+			}
+		}
+		structural.push(piece);
+	}
+	if (dynamic.length > 0) out.push({ structural: structural.join(''), dynamicPseudos: dynamic });
+}
+
+/** The argument text of a functional pseudo piece (`:is(ARG)` -> `ARG`), or '' if none. */
+function functionalArgument(piece: string): string {
+	const open = piece.indexOf('(');
+	const close = piece.lastIndexOf(')');
+	return open !== -1 && close > open ? piece.slice(open + 1, close) : '';
 }
 
 /**

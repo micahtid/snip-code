@@ -23,6 +23,7 @@ import { buildElementMetadata, cloneElement } from './capture/dom';
 import { settle } from './capture/settle';
 import { discoverStylesheets } from './capture/sheets';
 import { augmentInheritedChainViaCDP, recoverCrossOriginSheets, recoverCrossOriginFontsViaCDP } from './capture/cdp';
+import { measureInteractiveStates } from './capture/states-measure';
 import { detectBuilder } from './capture/gate';
 import { reconcile } from './reconcile/bake';
 import { denoise } from './reconcile/denoise';
@@ -155,6 +156,7 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 			closedShadowRoots: 0, // Cdp shadow-pierce fills this in.
 		},
 		bakedStyles: new Map(),
+		measuredStates: null, // measureInteractiveStates fills this in (null = not measured).
 		warnings: settled.warning ? [settled.warning] : [],
 	};
 
@@ -166,6 +168,11 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 	// extension origin): read the sheet text the browser already parsed over cdp. This closes
 	// the font-discovery gap cross-origin cdns leave behind the same-origin policy and bot rules.
 	await recoverCrossOriginFontsViaCDP(captured);
+	// Measure interactive states by forcing them live (soft-fails to copying authored rules
+	// if cdp is busy). Runs after the clone is taken, so the transient force/shim it applies
+	// to the live page never reaches the artifact. Sequential with the cdp paths above; each
+	// attaches and detaches fully before the next, so the debugger is never doubly attached.
+	await measureInteractiveStates(captured);
 
 	return captured;
 }

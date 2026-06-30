@@ -2,54 +2,54 @@
  * features/states.ts: interactive-state rules (:hover, :focus, :active)
  *
  * Pipeline position: reconcile
- * Reads from Captured: root, clone, foundationRules, componentRules, bakedStyles
+ * Reads from Captured: root, clone, measuredStates, foundationRules, componentRules, bakedStyles
  * Writes to Captured: clone (marks elements + appends a <style> of state rules), warnings
  *
- * Extends the "ship what renders" approach to the interactive states a static
- * snapshot drops: a button that lightens on hover, a link that underlines, an input
- * that rings on focus. These are plain css rules the page already captured, but the
- * resting cascade discards them because the element is not being hovered/focused at
- * capture time (el.matches('.btn:hover') is false at rest), flattening each property
- * to a single resting value. This handler reads those state rules back out and emits
- * them so they reproduce in the standalone artifact.
+ * Extends the "ship what renders" approach to the interactive states a static snapshot
+ * drops: a button that lightens on hover, a link that underlines, an input that rings on
+ * focus. The resting cascade discards them because the element is not hovered/focused at
+ * capture time (el.matches('.btn:hover') is false at rest), flattening each property to its
+ * resting value. This handler re-emits them so they reproduce in the standalone artifact.
+ *
+ * There are two sources of truth, and this handler prefers ground truth. When the capture
+ * phase measured the states live (capture/states-measure.ts forced each state and read what
+ * actually computed — captured.measuredStates is non-null), this emits those concrete
+ * literals: the engine already resolved the cascade, the inheritance, and every group-hover /
+ * descendant / sibling relationship, so there is nothing left to parse. When measurement did
+ * not run (cdp was busy — measuredStates is null), it falls back to copying the page's
+ * authored state rules and re-anchoring their selectors, which reproduces the common case (an
+ * element's own `:hover`) but cannot follow a relationship a framework encodes out of reach.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/:hover (and
- * :focus / :focus-visible / :focus-within / :active). The trigger set is the closed
- * spec category of dynamic interactive pseudo-classes; the form-state pseudos
- * (:checked, :disabled, …) are excluded because they reflect current dom state and are
- * already captured at rest.
+ * :focus / :focus-visible / :focus-within / :active). The trigger set is the closed spec
+ * category of dynamic interactive pseudo-classes; the form-state pseudos (:checked, :disabled,
+ * …) are excluded because they reflect current dom state and are already captured at rest.
  *
- * Why this exists / four things a naive re-emit gets wrong:
- *  - A resting value ships as an inline style attribute, and a normal inline
- *    declaration outranks every normal selector (it is resolved before specificity is
- *    consulted). So a state rule in a <style> block has zero effect unless it is
- *    !important — the same reason the email inliner juice keeps :hover in a surviving
- *    <style> rather than inlining it. State declarations are therefore emitted
- *    !important; because the state selector matches only while the state is active, the
- *    override applies only during interaction and reverts cleanly to the inline base at
- *    rest.
- *  - A captured selector (`body.dark .nav > .btn:hover`) is written against the live
- *    page's classes and ancestor chain, which the emitters rewrite and the standalone
- *    artifact does not carry. Each state-bearing and subject element is re-anchored to a
- *    unique data-snip-state marker (a data-* attribute, so it survives the tailwind/bem
- *    emitters that rewrite class). A purely-structural ancestor compound (`body.dark`) is
- *    only a gate — "does this apply right now?" — already resolved against the live
- *    element at capture, exactly as a matched @media is frozen-satisfied, so it is
- *    dropped, not reproduced.
- *  - The one irreducible boundary: a state whose trigger element is outside the snipped
- *    subtree (`.outside:hover .snipped`) cannot be reproduced — the artifact does not
- *    contain the thing to hover. That declaration is dropped with a warning, never a
- *    silent or wrong result.
+ * Why a naive re-emit gets it wrong, and how both paths answer it:
+ *  - A resting value ships as an inline style attribute, and a normal inline declaration
+ *    outranks every normal selector (it is resolved before specificity is consulted). So a
+ *    state rule in a <style> block has zero effect unless it is !important — the same reason
+ *    the email inliner juice keeps :hover in a surviving <style>. State declarations are
+ *    therefore emitted !important; because the state selector matches only while the state is
+ *    active, the override applies only during interaction and reverts cleanly at rest.
+ *  - A captured selector (`body.dark .nav > .btn:hover`) is written against the live page's
+ *    classes and ancestor chain, which the emitters rewrite and the artifact does not carry.
+ *    Each marked element is re-anchored to a unique data-snip-state marker (a data-* attribute,
+ *    so it survives the tailwind/bem emitters that rewrite class), joined by a combinator that
+ *    is sound because the markers are unique (descendant when the trigger contains the affected
+ *    element, general-sibling when they share a parent and the trigger precedes it).
+ *  - The one irreducible boundary: a state whose trigger element is outside the snipped subtree
+ *    (`.outside:hover .snipped`) cannot be reproduced — the artifact does not contain the thing
+ *    to force. That effect is dropped with a warning, never a silent or wrong result.
  *
- * Transform contract: tags each bound, in-subtree element with a data-snip-state marker
- * and adds `[data-snip-state="n"]:hover {…}` rules to the clone's shared synthesized
- * <style> (see reconcile/synthesized.ts), with declarations resolved as the state cascade
- * per property, denoised against the resting baseline, and emitted !important. Clone only;
- * state selectors match nothing at rest, so the resting render is byte-identical.
- * Test fixtures: tests/fixtures/state-{card,form,var,localvar,url,pseudo}.html, registered
- * in tests/fixtures.mjs; the gate measures the resting (state-inactive) render.
+ * Transform contract: tags each marked, in-subtree element with a data-snip-state marker and
+ * adds `[data-snip-state="n"]:hover {…}` rules to the clone's shared synthesized <style> (see
+ * reconcile/synthesized.ts), denoised against the resting baked value and emitted !important.
+ * Clone only; state selectors match nothing at rest, so the resting render is byte-identical.
+ * Test fixtures: tests/fixtures/state-{card,form,var,localvar,url,pseudo,transform}.html,
+ * registered in tests/fixtures.mjs; the gate measures the resting (state-inactive) render.
  */
-import type { Captured, CssRule } from '../../types';
+import type { Captured, CssRule, MeasuredState, MeasuredStateDecl } from '../../types';
 import { pairedSubtrees, mediaApplies } from '../match';
 import { appendSynthesizedRules } from '../synthesized';
 import {
@@ -93,11 +93,189 @@ interface RankedStateDecl {
 }
 
 /**
- * Reproduces the page's interactive-state rules on the clone.
+ * Reproduces the page's interactive states on the clone, preferring the live measurement
+ * when the capture phase produced one and falling back to copying authored rules otherwise.
  *
  * @param captured - clone is mutated in place (markers + an appended <style>)
  */
 export function apply(captured: Captured): Captured {
+	if (captured.measuredStates !== null) return applyMeasured(captured, captured.measuredStates);
+	return applyCopied(captured);
+}
+
+/**
+ * Emits the measured states: each is already a list of concrete computed deltas keyed to the
+ * original elements, so this maps those to clones, marks them, builds the marker selector with
+ * a safe generalized combinator, denoises against the resting baked value, and emits the rest
+ * !important. No cascade merge and no var() survival remain — the engine resolved both when
+ * the value was measured.
+ *
+ * @param captured - clone is mutated in place (markers + an appended <style>)
+ * @param measuredStates - the per-(trigger, state) computed deltas from capture/states-measure.ts
+ */
+function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Captured {
+	if (measuredStates.length === 0) return captured;
+	const pairs = pairedSubtrees(captured.root, captured.clone);
+	const originalToClone = new Map<Element, Element>(pairs.map(([original, clone]) => [original, clone]));
+
+	// Resolve each measured (trigger, state, affected element) to clone elements; an element a
+	// later feature handler did not carry into the clone is skipped (it cannot be re-anchored).
+	const units = resolveMeasuredUnits(measuredStates, originalToClone);
+	if (units.length === 0) return captured;
+
+	// Number every marked element by clone document order, so markers and the rules keying them
+	// are deterministic regardless of the order states were measured in.
+	const markerIds = assignMeasuredMarkers(pairs, units);
+	for (const [el, id] of markerIds) el.setAttribute(MARKER, String(id));
+
+	// Group declarations by the selector they re-anchor to. Distinct (trigger, state, affected)
+	// triples produce distinct marker selectors, so a group is normally one triple; the merge is
+	// just the natural home for its denoised declarations.
+	const groups = new Map<string, Map<string, string>>();
+	for (const unit of units) {
+		const selector = buildMeasuredSelector(unit, markerIds);
+		if (!selector) {
+			captured.warnings.push(`states: could not anchor a measured ${unit.states.join('')} effect standalone; dropped`);
+			continue;
+		}
+		const winners = groups.get(selector) ?? new Map<string, string>();
+		denoiseMeasured(unit.decls, captured.bakedStyles.get(unit.affectedClone), winners);
+		groups.set(selector, winners);
+	}
+
+	const rules: string[] = [];
+	for (const [selector, winners] of groups) {
+		const lines = [...winners].map(([prop, value]) => `\t${prop}: ${value} !important;`);
+		if (lines.length > 0) rules.push(`${selector} {\n${lines.join('\n')}\n}`);
+	}
+	appendSynthesizedRules(captured, rules);
+	return captured;
+}
+
+/** One emit unit: a trigger clone forced into `states`, and one affected clone's measured delta. */
+interface MeasuredUnit {
+	triggerClone: Element;
+	states: string[];
+	affectedClone: Element;
+	decls: MeasuredStateDecl[];
+}
+
+/**
+ * Maps each measured (trigger, state, affected) triple to its clone counterparts, dropping a
+ * triple whose trigger or affected element is absent from the clone.
+ *
+ * @param measuredStates - the measured deltas keyed to original elements
+ * @param originalToClone - the original->clone map from pairedSubtrees
+ */
+function resolveMeasuredUnits(measuredStates: MeasuredState[], originalToClone: Map<Element, Element>): MeasuredUnit[] {
+	const units: MeasuredUnit[] = [];
+	for (const ms of measuredStates) {
+		const triggerClone = originalToClone.get(ms.trigger);
+		if (!triggerClone) continue;
+		for (const affected of ms.affected) {
+			const affectedClone = originalToClone.get(affected.element);
+			if (!affectedClone) continue;
+			units.push({ triggerClone, states: ms.states, affectedClone, decls: affected.decls });
+		}
+	}
+	return units;
+}
+
+/**
+ * Assigns a marker id to every clone element a unit references (trigger or affected), numbered
+ * by document order for determinism.
+ *
+ * @param pairs - the [original, clone] subtree pairs, in document order
+ * @param units - the resolved emit units
+ */
+function assignMeasuredMarkers(pairs: Array<[Element, Element]>, units: MeasuredUnit[]): Map<Element, number> {
+	const needed = new Set<Element>();
+	for (const unit of units) {
+		needed.add(unit.triggerClone);
+		needed.add(unit.affectedClone);
+	}
+	const ids = new Map<Element, number>();
+	let next = 0;
+	for (const [, clone] of pairs) if (needed.has(clone) && !ids.has(clone)) ids.set(clone, next++);
+	return ids;
+}
+
+/**
+ * Builds the output selector for one unit: the trigger marker carrying its state pseudos, then
+ * (when the affected element is not the trigger itself) the generalized combinator and the
+ * affected marker. Returns null when the relationship is not expressible by a single combinator.
+ *
+ * @param unit - the emit unit
+ * @param markerIds - the assigned marker id per clone element
+ */
+function buildMeasuredSelector(unit: MeasuredUnit, markerIds: Map<Element, number>): string | null {
+	const triggerId = markerIds.get(unit.triggerClone);
+	const affectedId = markerIds.get(unit.affectedClone);
+	if (triggerId === undefined || affectedId === undefined) return null;
+	const triggerPart = `[${MARKER}="${triggerId}"]${unit.states.join('')}`;
+	if (unit.triggerClone === unit.affectedClone) return triggerPart;
+	const combinator = generalize(unit.triggerClone, unit.affectedClone);
+	if (!combinator) return null;
+	const affectedPart = `[${MARKER}="${affectedId}"]`;
+	return combinator === ' ' ? `${triggerPart} ${affectedPart}` : `${triggerPart} ${combinator} ${affectedPart}`;
+}
+
+/**
+ * Color-family properties that resolve to `currentColor` when not pinned to a divergent value:
+ * either by css default (border/outline/decoration/emphasis/caret/column-rule/text-stroke) or
+ * because reconcile/features/colors.ts normalized an icon's matching literal back to it
+ * (fill/stroke). A measured change to one of these that equals the forced `color` is carried by
+ * the `color` declaration we already emit — a color pinned to its own divergent value would not
+ * have tracked `color` into the diff in the first place, so dropping it is sound. `color` (the
+ * source) and `-webkit-text-fill-color` (the one channel the resting bake pins per element,
+ * severing the inheritance a text recolor rides) are never dropped this way.
+ */
+const CURRENT_COLOR_TRACKERS = new Set([
+	'caret-color', 'outline-color', 'text-decoration-color', 'text-emphasis-color', 'column-rule-color',
+	'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+	'-webkit-text-stroke-color', 'fill', 'stroke',
+]);
+
+/**
+ * Folds a unit's measured declarations into a selector's winners, dropping any that merely
+ * restate the element's resting baked value, have no effect in this element's context, or only
+ * track the forced `color`, so the emitted rule stays proportional to the real change. A later
+ * unit for the same selector overwrites an earlier property, but distinct triples carry distinct
+ * selectors, so this is just the per-selector accumulation point.
+ *
+ * @param decls - the measured declarations for this affected element
+ * @param resting - the affected clone's resting baked styles
+ * @param winners - the per-property winners for the selector, mutated in place
+ */
+function denoiseMeasured(decls: MeasuredStateDecl[], resting: Map<string, string> | undefined, winners: Map<string, string>): void {
+	const present = (prop: string): boolean => {
+		const value = decls.find((d) => d.property === prop)?.value ?? resting?.get(prop);
+		return value !== undefined && value !== '' && value !== 'none';
+	};
+	// transform-origin/perspective-origin resolve to per-element pixels, so a size change shifts
+	// them, but they only have an effect on a box that actually establishes a transform/perspective.
+	const hasTransform = present('transform') || present('translate') || present('rotate') || present('scale');
+	const hasPerspective = present('perspective');
+	const forcedColor = decls.find((d) => d.property === 'color')?.value;
+
+	for (const decl of decls) {
+		const rest = resting?.get(decl.property);
+		if (rest !== undefined && rest.trim() === decl.value.trim()) continue;
+		if (decl.property === 'transform-origin' && !hasTransform) continue;
+		if (decl.property === 'perspective-origin' && !hasTransform && !hasPerspective) continue;
+		if (forcedColor !== undefined && CURRENT_COLOR_TRACKERS.has(decl.property) && decl.value.trim() === forcedColor.trim()) continue;
+		winners.set(decl.property, decl.value);
+	}
+}
+
+/**
+ * Reproduces the page's interactive-state rules on the clone by copying their authored
+ * declarations. This is the fallback used only when live measurement did not run; it cannot
+ * follow a relationship a framework buries in `:is()`/group-hover grammar.
+ *
+ * @param captured - clone is mutated in place (markers + an appended <style>)
+ */
+function applyCopied(captured: Captured): Captured {
 	const pairs = pairedSubtrees(captured.root, captured.clone);
 	const originalToClone = new Map<Element, Element>(pairs.map(([original, clone]) => [original, clone]));
 
