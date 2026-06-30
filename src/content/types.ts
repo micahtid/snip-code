@@ -93,10 +93,13 @@ export interface MeasuredStateDecl {
 	value: string;
 }
 
-/** One element the forced state restyled, with the properties that changed. */
+/** One layer of one element the forced state restyled, with the properties that changed. */
 export interface MeasuredAffected {
 	/** The original (live) element; reconcile maps it to its clone via pairedSubtrees. */
 	element: Element;
+	/** The layer the delta lives on: '' for the element box, '::before'/'::after' for a generated
+	 * box whose own computed style changed (a glow/underline/reveal a pseudo-element carries). */
+	pseudoElement?: string;
 	/** The properties whose computed value differs from rest under the forced state. */
 	decls: MeasuredStateDecl[];
 }

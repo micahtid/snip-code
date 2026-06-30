@@ -105,10 +105,12 @@ export function apply(captured: Captured): Captured {
 
 /**
  * Emits the measured states: each is already a list of concrete computed deltas keyed to the
- * original elements, so this maps those to clones, marks them, builds the marker selector with
- * a safe generalized combinator, denoises against the resting baked value, and emits the rest
- * !important. No cascade merge and no var() survival remain — the engine resolved both when
- * the value was measured.
+ * original elements (and their generating pseudo layers), so this maps those to clones, marks
+ * them, builds the marker selector with a safe generalized combinator and the layer's
+ * pseudo-element, denoises against the resting baseline, and emits the rest !important. A pinned
+ * endpoint also gets a coherent transition re-emitted on the element's resting rule so it animates
+ * in both directions rather than snapping on the way out. No cascade merge and no var() survival
+ * remain — the engine resolved both when the value was measured.
  *
  * @param captured - clone is mutated in place (markers + an appended <style>)
  * @param measuredStates - the per-(trigger, state) computed deltas from capture/states-measure.ts
@@ -132,6 +134,9 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 	// triples produce distinct marker selectors, so a group is normally one triple; the merge is
 	// just the natural home for its denoised declarations.
 	const groups = new Map<string, Map<string, string>>();
+	// The element-box props each affected clone pins across all its states, plus its live original,
+	// so one coherent resting transition can be emitted per element below.
+	const pinned = new Map<Element, { original: Element; props: Set<string> }>();
 	for (const unit of units) {
 		const selector = buildMeasuredSelector(unit, markerIds);
 		if (!selector) {
@@ -139,8 +144,20 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 			continue;
 		}
 		const winners = groups.get(selector) ?? new Map<string, string>();
-		denoiseMeasured(unit.decls, captured.bakedStyles.get(unit.affectedClone), winners);
+		// A pseudo layer is denoised against its own resting pseudo (already shed at capture by the
+		// per-pseudo diff), not the element's baked map, which describes a different box; the element
+		// box keeps its baked-value baseline.
+		const resting = unit.pseudoElement ? undefined : captured.bakedStyles.get(unit.affectedClone);
+		denoiseMeasured(unit.decls, resting, winners);
 		groups.set(selector, winners);
+		// Collect the element box's pinned props; a coherent transition over them is emitted on the
+		// resting rule below. Pseudo layers are excluded: a pseudo's own resting transition (shipped
+		// on its pseudo rule) already governs its fade in both directions.
+		if (!unit.pseudoElement) {
+			const entry = pinned.get(unit.affectedClone) ?? { original: unit.affectedOriginal, props: new Set<string>() };
+			for (const prop of winners.keys()) entry.props.add(prop);
+			pinned.set(unit.affectedClone, entry);
+		}
 	}
 
 	const rules: string[] = [];
@@ -148,15 +165,31 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 		const lines = [...winners].map(([prop, value]) => `\t${prop}: ${value} !important;`);
 		if (lines.length > 0) rules.push(`${selector} {\n${lines.join('\n')}\n}`);
 	}
+	// Re-emit a coherent transition on each affected element's resting rule (not its state rule), so
+	// the pinned endpoints animate when both entering AND leaving the state. A transition lives on
+	// the base rule by spec: the engine reads timing from the after-change style, which is the
+	// hovered state on the way in and the resting state on the way out — so a transition placed only
+	// on the :hover rule animates the entry and snaps the exit. The base rule governs both. This is
+	// render-neutral: a transition produces no pixels at rest, so the resting render is unchanged.
+	for (const [clone, { original, props }] of pinned) {
+		const id = markerIds.get(clone);
+		if (id === undefined || props.size === 0) continue;
+		const transition = broadenedTransition(original, props);
+		if (transition) rules.push(`[${MARKER}="${id}"] {\n\ttransition: ${transition} !important;\n}`);
+	}
 	appendSynthesizedRules(captured, rules);
 	return captured;
 }
 
-/** One emit unit: a trigger clone forced into `states`, and one affected clone's measured delta. */
+/** One emit unit: a trigger clone forced into `states`, and one affected clone layer's measured delta. */
 interface MeasuredUnit {
 	triggerClone: Element;
 	states: string[];
 	affectedClone: Element;
+	/** The affected layer: '' for the element box, '::after'/'::before' for a generated box. */
+	pseudoElement: string;
+	/** The affected original element, for reading its resting transition live at emit time. */
+	affectedOriginal: Element;
 	decls: MeasuredStateDecl[];
 }
 
@@ -175,7 +208,14 @@ function resolveMeasuredUnits(measuredStates: MeasuredState[], originalToClone: 
 		for (const affected of ms.affected) {
 			const affectedClone = originalToClone.get(affected.element);
 			if (!affectedClone) continue;
-			units.push({ triggerClone, states: ms.states, affectedClone, decls: affected.decls });
+			units.push({
+				triggerClone,
+				states: ms.states,
+				affectedClone,
+				pseudoElement: affected.pseudoElement ?? '',
+				affectedOriginal: affected.element,
+				decls: affected.decls,
+			});
 		}
 	}
 	return units;
@@ -203,7 +243,9 @@ function assignMeasuredMarkers(pairs: Array<[Element, Element]>, units: Measured
 /**
  * Builds the output selector for one unit: the trigger marker carrying its state pseudos, then
  * (when the affected element is not the trigger itself) the generalized combinator and the
- * affected marker. Returns null when the relationship is not expressible by a single combinator.
+ * affected marker. The affected layer's pseudo-element (if any) is appended to the subject —
+ * `[marker]:hover::after` when the trigger is the subject, `[trigger]:hover [affected]::after`
+ * for a descendant. Returns null when the relationship is not expressible by a single combinator.
  *
  * @param unit - the emit unit
  * @param markerIds - the assigned marker id per clone element
@@ -213,10 +255,10 @@ function buildMeasuredSelector(unit: MeasuredUnit, markerIds: Map<Element, numbe
 	const affectedId = markerIds.get(unit.affectedClone);
 	if (triggerId === undefined || affectedId === undefined) return null;
 	const triggerPart = `[${MARKER}="${triggerId}"]${unit.states.join('')}`;
-	if (unit.triggerClone === unit.affectedClone) return triggerPart;
+	if (unit.triggerClone === unit.affectedClone) return `${triggerPart}${unit.pseudoElement}`;
 	const combinator = generalize(unit.triggerClone, unit.affectedClone);
 	if (!combinator) return null;
-	const affectedPart = `[${MARKER}="${affectedId}"]`;
+	const affectedPart = `[${MARKER}="${affectedId}"]${unit.pseudoElement}`;
 	return combinator === ' ' ? `${triggerPart} ${affectedPart}` : `${triggerPart} ${combinator} ${affectedPart}`;
 }
 
@@ -266,6 +308,73 @@ function denoiseMeasured(decls: MeasuredStateDecl[], resting: Map<string, string
 		if (forcedColor !== undefined && CURRENT_COLOR_TRACKERS.has(decl.property) && decl.value.trim() === forcedColor.trim()) continue;
 		winners.set(decl.property, decl.value);
 	}
+}
+
+/**
+ * The transition to broaden onto an affected element's resting rule so its pinned endpoints
+ * animate coherently in both directions, or null when none is needed. Reads the element's resting
+ * transition live from the original (the measurement shim suppressed it, so it is only readable
+ * here, at emit, with the page at rest). Returns null when the element has no real resting
+ * transition — the live element snaps too, so adding motion would be wrong — or when the resting
+ * transition already covers every changed property, in which case the resting baked transition
+ * shipped at rest governs the animation and re-emitting would be redundant. Otherwise broadens to
+ * `all` with the element's longest-running timing, so a property the resting transition does not
+ * cover (the dot's colors-only timing vs our pinned width) animates in step rather than snapping.
+ * This is the deliberate approximation: coordinated motion at the element's rhythm, not exact
+ * per-property timing.
+ *
+ * @param original - the affected live element, read at rest
+ * @param changed - the property names the state rules pin on the element
+ */
+function broadenedTransition(original: Element, changed: Set<string>): string | null {
+	const cs = getComputedStyle(original);
+	const properties = splitCommas(cs.getPropertyValue('transition-property'));
+	const durations = splitCommas(cs.getPropertyValue('transition-duration'));
+	const timings = splitCommas(cs.getPropertyValue('transition-timing-function'));
+	const delays = splitCommas(cs.getPropertyValue('transition-delay'));
+	// Pair each transitioned property with its timing, repeating the shorter lists as the cascade
+	// does; keep only the ones that actually animate (a real, positive duration).
+	const entries = properties
+		.map((property, i) => ({
+			property,
+			duration: durations[i % durations.length] ?? '0s',
+			timing: timings[i % timings.length] ?? 'ease',
+			delay: delays[i % delays.length] ?? '0s',
+		}))
+		.filter((e) => e.property !== 'none' && durationSeconds(e.duration) > 0);
+	if (entries.length === 0) return null;
+	const coversAll = entries.some((e) => e.property === 'all');
+	const covered = (prop: string): boolean => coversAll || entries.some((e) => e.property === prop);
+	if ([...changed].every(covered)) return null;
+	const rep = entries.reduce((a, b) => (durationSeconds(b.duration) > durationSeconds(a.duration) ? b : a));
+	return `all ${rep.duration} ${rep.timing} ${rep.delay}`;
+}
+
+/** Seconds for a CSS <time> (`0.3s`, `300ms`, `0s`); 0 for anything unparseable. */
+function durationSeconds(value: string): number {
+	const v = value.trim();
+	if (v.endsWith('ms')) return parseFloat(v) / 1000 || 0;
+	if (v.endsWith('s')) return parseFloat(v) || 0;
+	return parseFloat(v) || 0;
+}
+
+/** Splits a comma list at top level, so a `cubic-bezier(…, …)` timing function stays one entry. */
+function splitCommas(value: string): string[] {
+	const out: string[] = [];
+	let cur = '';
+	let depth = 0;
+	for (const ch of value) {
+		if (ch === '(') depth++;
+		else if (ch === ')') depth--;
+		else if (ch === ',' && depth === 0) {
+			out.push(cur.trim());
+			cur = '';
+			continue;
+		}
+		cur += ch;
+	}
+	if (cur.trim() !== '') out.push(cur.trim());
+	return out;
 }
 
 /**

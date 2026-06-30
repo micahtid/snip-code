@@ -23,6 +23,13 @@
  * inheritance-resolved literals, so the reconcile emit (features/states.ts) is a pure transform
  * with no var() survival or per-property cascade merge left to do.
  *
+ * Each scoped element is read on two layers: its own box, and any ::before/::after that
+ * generates a box at rest (the common hover idiom of a glow/underline/reveal that lives
+ * entirely on a generated box, whose own element style never changes). A pseudo layer is
+ * diffed against its own resting baseline and emitted as its own affected entry, so reconcile
+ * can re-anchor it as `[marker]:hover::after { … }` over the resting pseudo the pseudo pass
+ * already ships.
+ *
  * The forcing is privileged and lives here, beside capture/cdp.ts's other CDP paths, for the
  * same reason: only the background can attach the debugger (chrome.debugger is background-
  * only) and only the live capture phase has the element, its ancestor chain, and
@@ -91,9 +98,19 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 		scopes.set(trigger, scope);
 		for (const el of scope) toBaseline.add(el);
 	}
-	// Likewise bound the computed-style reads (one per scoped element).
-	if (toBaseline.size > MAX_MEASURED_SCOPE) {
-		captured.warnings.push(`states: ${toBaseline.size} elements in interactive-state scope exceed the measurement budget; falling back to copying authored rules`);
+	// Likewise bound the computed-style reads. A generating ::before/::after adds a read at the
+	// baseline and under every forced state, so each is weighted toward the bound — a budget sized
+	// for element-only reads would otherwise be undercounted on a pseudo-heavy snip. The generating
+	// layers are resolved once here (content does not depend on the shim) and reused for every read.
+	const generating = new Map<Element, string[]>();
+	let scopeCost = 0;
+	for (const el of toBaseline) {
+		const pseudos = generatingPseudos(el);
+		if (pseudos.length > 0) generating.set(el, pseudos);
+		scopeCost += 1 + pseudos.length;
+	}
+	if (scopeCost > MAX_MEASURED_SCOPE) {
+		captured.warnings.push(`states: ${scopeCost} element/pseudo layers in interactive-state scope exceed the measurement budget; falling back to copying authored rules`);
 		captured.measuredStates = null;
 		return;
 	}
@@ -102,8 +119,8 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 	try {
 		// The resting baseline is read under the same shim as the forced endpoints, so a
 		// steady-state animation cannot read as a spurious change between the two.
-		const baseline = new Map<Element, Map<string, string>>();
-		for (const el of toBaseline) baseline.set(el, readMeasuredProps(el));
+		const baseline = new Map<Element, MeasuredBaseline>();
+		for (const el of toBaseline) baseline.set(el, readMeasuredLayers(el, generating.get(el)));
 
 		const began = await beginForce();
 		if (!began) {
@@ -222,7 +239,7 @@ async function measureAll(
 	triggers: Map<Element, Map<string, string[]>>,
 	tags: Map<Element, string>,
 	scopes: Map<Element, Element[]>,
-	baseline: Map<Element, Map<string, string>>,
+	baseline: Map<Element, MeasuredBaseline>,
 	captured: Captured,
 ): Promise<MeasuredState[]> {
 	const measured: MeasuredState[] = [];
@@ -261,32 +278,78 @@ function triggerScope(trigger: Element, subtree: Set<Element>): Element[] {
 	return scope;
 }
 
+/** One scoped element's resting computed values, split by layer: the element box and each
+ * generating pseudo (so a pseudo delta is diffed against its own baseline, not the element's). */
+interface MeasuredBaseline {
+	element: Map<string, string>;
+	pseudos: Map<string, Map<string, string>>;
+}
+
 /**
- * Reads each scoped element's computed values under the currently-forced state and returns
- * those that differ from the resting baseline. The trigger itself is included when its own
- * style changed; an element whose style is unchanged contributes nothing.
+ * Reads one scoped element's resting computed values across its layers: the element box always,
+ * plus each ::before/::after that generates a box at rest (passed in, pre-resolved). Run under
+ * the shim, so the values match the forced reads they will be diffed against.
+ *
+ * @param el - the element to read
+ * @param pseudos - the generating pseudo layers for this element, or undefined if none
+ */
+function readMeasuredLayers(el: Element, pseudos: string[] | undefined): MeasuredBaseline {
+	const layers: MeasuredBaseline = { element: readMeasuredProps(el), pseudos: new Map() };
+	if (pseudos) for (const pseudo of pseudos) layers.pseudos.set(pseudo, readMeasuredProps(el, pseudo));
+	return layers;
+}
+
+/**
+ * Reads each scoped element's computed values under the currently-forced state and returns the
+ * layers that differ from the resting baseline. The element box is one entry; each generating
+ * pseudo is its own entry diffed against its own baseline. The trigger itself is included when
+ * one of its layers changed; a layer whose style is unchanged contributes nothing.
  *
  * @param scope - the trigger's re-anchorable scope (see triggerScope)
- * @param baseline - the resting computed values, read under the shim
- * @returns one entry per changed element, with the changed properties and forced values
+ * @param baseline - each scoped element's resting layers, read under the shim
+ * @returns one entry per changed (element, layer), with the changed properties and forced values
  */
-function collectAffected(scope: Element[], baseline: Map<Element, Map<string, string>>): MeasuredAffected[] {
+function collectAffected(scope: Element[], baseline: Map<Element, MeasuredBaseline>): MeasuredAffected[] {
 	const affected: MeasuredAffected[] = [];
 	for (const el of scope) {
-		const rest = baseline.get(el);
-		if (!rest) continue;
-		const forced = readMeasuredProps(el);
-		const decls: MeasuredStateDecl[] = [];
-		for (const [property, value] of forced) {
-			if (rest.get(property) !== value) decls.push({ property, value });
+		const base = baseline.get(el);
+		if (!base) continue;
+		const elementDecls = diffMeasured(base.element, readMeasuredProps(el));
+		if (elementDecls.length > 0) affected.push({ element: el, decls: elementDecls });
+		for (const [pseudo, rest] of base.pseudos) {
+			const pseudoDecls = diffMeasured(rest, readMeasuredProps(el, pseudo));
+			if (pseudoDecls.length > 0) affected.push({ element: el, pseudoElement: pseudo, decls: pseudoDecls });
 		}
-		if (decls.length > 0) affected.push({ element: el, decls });
 	}
 	return affected;
 }
 
+/** The properties whose forced value differs from the resting baseline, one declaration each. */
+function diffMeasured(rest: Map<string, string>, forced: Map<string, string>): MeasuredStateDecl[] {
+	const decls: MeasuredStateDecl[] = [];
+	for (const [property, value] of forced) if (rest.get(property) !== value) decls.push({ property, value });
+	return decls;
+}
+
 /**
- * Reads the measurable computed properties of one element into a property->value map. The
+ * The ::before/::after layers that actually generate a box on this element at rest (content not
+ * `none`), the same test the resting pseudo pass (features/pseudo.ts) uses to decide a pseudo is
+ * worth shipping. Only these layers carry a resting rule for a hover override to ride on, so a
+ * pseudo that does not generate at rest is not measured.
+ *
+ * @param el - the element to test
+ */
+function generatingPseudos(el: Element): string[] {
+	const out: string[] = [];
+	for (const pseudo of ['::before', '::after']) {
+		const content = getComputedStyle(el, pseudo).getPropertyValue('content');
+		if (content !== '' && content !== 'none' && content !== 'normal') out.push(pseudo);
+	}
+	return out;
+}
+
+/**
+ * Reads the measurable computed properties of one element layer into a property->value map. The
  * indexed enumeration is the engine's own stable property list, so the read order — and thus
  * the recorded artifact — is deterministic. Excludes the timing metadata the shim
  * deliberately suppresses (the transition and animation longhands, which would otherwise read
@@ -294,9 +357,10 @@ function collectAffected(scope: Element[], baseline: Map<Element, Map<string, st
  * directly, so no var() ever needs resolving downstream).
  *
  * @param el - the element to read
+ * @param pseudo - the generated-box layer to read (`::before`/`::after`), or undefined for the element box
  */
-function readMeasuredProps(el: Element): Map<string, string> {
-	const cs = getComputedStyle(el);
+function readMeasuredProps(el: Element, pseudo?: string): Map<string, string> {
+	const cs = pseudo ? getComputedStyle(el, pseudo) : getComputedStyle(el);
 	const props = new Map<string, string>();
 	for (let i = 0; i < cs.length; i++) {
 		const name = cs[i];
