@@ -79,7 +79,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 				.catch((err) => {
 					const msg = String(err && err.message ? err.message : err);
 					const code = msg === 'NO_KEY_CONFIGURED' ? 'NO_KEY_CONFIGURED' : 'PROVIDER_ERROR_0';
-					sendResponse({ requestId: message.requestId, ok: false, error: { code, message: msg } });
+					const response = { requestId: message.requestId, ok: false, error: { code, message: msg } };
+					// A failed-but-billed reply (empty/non-json) carries usage; pass it through to be totalled.
+					if (err && err.usage) response.usage = err.usage;
+					sendResponse(response);
 				});
 			return true;
 		}
@@ -433,9 +436,10 @@ function rule_of(rm) {
 
 /**
  * Runs a byok llm polish request: reads the provider key from storage, calls the
- * provider, and parses a strict-json reply into { renameMap, hoverRules }. Throws
- * NO_KEY_CONFIGURED when no key is stored (caller skips the polish step). The key is read
- * here and attached to the request only; it is never logged or persisted elsewhere.
+ * provider, and parses a strict-json reply into { renameMap, hoverRules, usage },
+ * where usage is the provider-reported token count. Throws NO_KEY_CONFIGURED when no
+ * key is stored (caller skips the polish step). The key is read here and attached to
+ * the request only; it is never logged or persisted elsewhere.
  */
 async function llmRequest(provider, model, prompt) {
 	const stored = await chrome.storage.local.get('byok.' + provider);
@@ -445,13 +449,17 @@ async function llmRequest(provider, model, prompt) {
 	const req = buildGenerationRequest(provider, key, model, prompt);
 	const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) });
 	if (!res.ok) throw new Error('PROVIDER_ERROR_' + res.status);
-	const text = req.extract(await res.json());
+	const json = await res.json();
+	const text = req.extract(json);
+	const usage = req.usage(json);
 	// A 200 with no usable text (e.g. a reasoning model that spent its token
 	// budget thinking) or with no json object means the reply yields no edits.
 	// Throw so the caller surfaces the cause instead of returning silent empties.
-	if (!text || !text.trim()) throw new Error('EMPTY_COMPLETION');
-	if (!text.includes('{')) throw new Error('NON_JSON_REPLY');
-	return parseReply(text);
+	// The call still spent tokens, so the error carries usage for the session total.
+	if (!text || !text.trim()) throw usageError('EMPTY_COMPLETION', usage);
+	if (!text.includes('{')) throw usageError('NON_JSON_REPLY', usage);
+	// Attach the provider-reported token usage so the panel can total it for the session.
+	return { ...parseReply(text), usage };
 }
 
 /** Build a chat/generation request per provider (mirrors utils/byok.ts shapes). */
@@ -465,6 +473,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 				headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'Content-Type': json },
 				body: { model, max_tokens: MAX, messages: [{ role: 'user', content: prompt }] },
 				extract: (j) => (j.content && j.content[0] && j.content[0].text) || '',
+				usage: (j) => ({ input: (j.usage && j.usage.input_tokens) || 0, output: (j.usage && j.usage.output_tokens) || 0 }),
 			};
 		case 'google':
 			return {
@@ -472,6 +481,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 				headers: { 'Content-Type': json },
 				body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: MAX } },
 				extract: (j) => (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '',
+				usage: (j) => ({ input: (j.usageMetadata && j.usageMetadata.promptTokenCount) || 0, output: (j.usageMetadata && j.usageMetadata.candidatesTokenCount) || 0 }),
 			};
 		case 'openai':
 			return {
@@ -479,6 +489,7 @@ function buildGenerationRequest(provider, key, model, prompt) {
 				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
 				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
 				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
+				usage: (j) => ({ input: (j.usage && j.usage.prompt_tokens) || 0, output: (j.usage && j.usage.completion_tokens) || 0 }),
 			};
 		case 'openrouter':
 		default:
@@ -487,8 +498,16 @@ function buildGenerationRequest(provider, key, model, prompt) {
 				headers: { Authorization: 'Bearer ' + key, 'Content-Type': json },
 				body: { model, messages: [{ role: 'user', content: prompt }], max_tokens: MAX },
 				extract: (j) => (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '',
+				usage: (j) => ({ input: (j.usage && j.usage.prompt_tokens) || 0, output: (j.usage && j.usage.completion_tokens) || 0 }),
 			};
 	}
+}
+
+/** An Error carrying the tokens already spent, so a failed-but-billed call still counts. */
+function usageError(code, usage) {
+	const err = new Error(code);
+	err.usage = usage;
+	return err;
 }
 
 /** Extract the first json object from the model's text and parse it leniently. */

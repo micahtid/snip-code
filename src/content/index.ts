@@ -47,7 +47,7 @@ import { resolveVariables } from './resolve/vars';
 import { resolveFonts, appendGenericFallbacks } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
 import { inlineResources } from './resolve/inline';
-import type { OutputFormat } from './types';
+import type { OutputFormat, TokenUsage } from './types';
 import { emitHtml, composeDocument, type HtmlOutput } from './convert/html';
 import { emitTailwind } from './convert/tailwind';
 import { emitBem } from './convert/bem';
@@ -246,6 +246,9 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const classMarkup = format === 'html' || format === 'bem-css' || format === 'bem-scss' ? html : undefined;
 	let cleanedCss = cleanCss(css, captured, classMarkup);
 	let finalHtml = html;
+	// Token usage from the polish call (the only billed step); shipped so the panel
+	// can total it for the session. Undefined when polish is skipped or has no key.
+	let usage: TokenUsage | undefined;
 
 	// Polish phase (byok, optional). Additive class renames + hover rules from the
 	// user's own llm; silently no-ops without a key. Gated to class-based formats
@@ -255,6 +258,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		const polished = await polish(finalHtml, cleanedCss, prefs.activeProvider, model);
 		finalHtml = polished.html;
 		cleanedCss = polished.css;
+		usage = polished.usage;
 		// A configured-key polish failure surfaces as a warning (a missing key is a
 		// silent skip and returns none), so the sidebar reports why no edits landed.
 		if (polished.warning) captured.warnings.push(polished.warning);
@@ -278,7 +282,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// and data-uri images into their own referenced files so the panel can show them as
 	// switchable tabs. `output` (the inlined document) is kept for preview and storage.
 	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
-	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings });
+	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage });
 
 	// Persist the snippet (fifo, capped at 50). Best-effort; a storage failure
 	// never fails the snip.

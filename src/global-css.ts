@@ -29,7 +29,7 @@ const STYLE_ID = 'snipcode-global-css';
  * from v1's fonts.css so latin + latin-ext subsets load identically.
  */
 export const GLOBAL_CSS = `
-/* ---- fonts (self-hosted, served from the extension origin at /fonts) ---- */
+/* ---- Self-hosted fonts, served from the extension origin at /fonts. ---- */
 @font-face {
 	font-family: 'Montserrat';
 	font-style: normal;
@@ -63,7 +63,7 @@ export const GLOBAL_CSS = `
 	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
-/* ---- reset + global ---- */
+/* ---- Reset + global. ---- */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
@@ -75,14 +75,14 @@ body {
 	text-rendering: optimizeLegibility;
 }
 
-/* ---- cloud backdrop (geometry only; per-cloud values are inline in CloudBackdrop) ---- */
+/* ---- Cloud backdrop geometry only; per-cloud values are inline in CloudBackdrop. ---- */
 .cloud-backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; opacity: 0.4; }
 .cloud-sky { position: absolute; inset: 0; background: linear-gradient(to bottom, ${COLORS.sky0} 0%, ${COLORS.sky1} 45%, ${COLORS.sky2} 70%, ${COLORS.sky3} 100%); }
 .cloud-field { position: absolute; inset: 0; }
 .cloud-cluster { position: absolute; }
 .cloud-piece { position: absolute; border-radius: 50%; }
 
-/* ---- buttons (styled fully by class so pseudo-states win over no inline base) ---- */
+/* ---- Buttons, styled fully by class so pseudo-states win over no inline base. ---- */
 .sc-btn {
 	font-family: ${FONT_UI};
 	font-weight: 600;
@@ -112,46 +112,103 @@ body {
 }
 .sc-btn-secondary:hover:not(:disabled) { background: ${SURFACE.controlHover}; }
 .sc-btn-secondary:active:not(:disabled) { transform: scale(0.985); }
-/* Compact modifier for inline actions (e.g. test key) */
+/* Compact modifier for inline actions such as test key. */
 .sc-btn-sm { height: 34px; width: auto; padding: 0 14px; font-size: 13px; border-radius: ${RADIUS.md}px; }
 
-/* ---- mode toggle items (snip / assistive) ---- */
-.sc-mode {
-	flex: 1;
-	padding: 9px 10px;
-	border: 1px solid ${SURFACE.border};
-	border-radius: ${RADIUS.lg}px;
-	font-family: ${FONT_UI};
-	font-size: 13px;
-	font-weight: 600;
-	color: ${COLORS.slate600};
-	background: ${SURFACE.control};
-	cursor: pointer;
-	transition: background 0.12s ease, color 0.12s ease;
+/* ---- Split action in the capture footer: pick element + mode chevron. ---- */
+.sc-split {
+	display: flex;
+	align-items: stretch;
+	width: 100%;
+	height: 46px;
+	border-radius: ${RADIUS.xl}px;
+	overflow: hidden;
+	background: ${SURFACE.primary};
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: background 0.2s ${EASE_UI}, opacity 0.15s ${EASE_UI};
 }
-.sc-mode:hover { background: ${SURFACE.controlHover}; }
-.sc-mode:disabled { opacity: 0.5; cursor: not-allowed; }
-.sc-mode-active { color: ${COLORS.white}; background: ${STATE.modeActive}; border-color: transparent; }
-.sc-mode-active:hover { background: ${STATE.modeActive}; }
-
-/* ---- segmented nav tabs (capture / saved / settings) ---- */
-.sc-nav {
-	flex: 1;
-	padding: 8px;
+.sc-split:hover:not(.sc-split-disabled) { background: ${SURFACE.primaryHover}; }
+.sc-split-disabled { opacity: 0.5; }
+.sc-split-main, .sc-split-chevron {
 	border: none;
 	background: transparent;
+	color: rgba(255, 255, 255, 0.95);
+	cursor: pointer;
+	transition: background 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
+}
+.sc-split-main {
+	flex: 1;
+	font-family: ${FONT_UI};
+	font-size: 14px;
+	font-weight: 600;
+}
+.sc-split-main:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.sc-split-main:active:not(:disabled) { transform: scale(0.99); }
+.sc-split-main:disabled, .sc-split-chevron:disabled { cursor: not-allowed; }
+.sc-split-divider { width: 1px; margin: 9px 0; background: rgba(255, 255, 255, 0.18); }
+.sc-split-chevron {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 42px;
+}
+.sc-split-chevron:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.sc-split-chevron:active:not(:disabled) { transform: scale(0.94); }
+
+/* ---- Popover menu for the capture mode select; opens above the split action. ---- */
+.sc-menu {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(100% + 8px);
+	z-index: 20;
+	padding: 4px;
+	background: ${COLORS.white};
+	border: 1px solid ${SURFACE.borderStrong};
+	border-radius: ${RADIUS.lg}px;
+	box-shadow: ${SURFACE.shadow};
+}
+.sc-menu-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	padding: 9px 10px;
+	border: none;
+	background: transparent;
+	border-radius: ${RADIUS.sm}px;
 	font-family: ${FONT_UI};
 	font-size: 13px;
 	font-weight: 600;
-	color: ${COLORS.slate500};
+	color: ${COLORS.slate700};
+	text-align: left;
 	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	transition: color 0.15s ${EASE_UI}, border-color 0.15s ${EASE_UI};
+	transition: background 0.12s ${EASE_UI}, color 0.12s ${EASE_UI};
 }
-.sc-nav:hover { color: ${COLORS.slate700}; }
-.sc-nav-active { color: ${COLORS.slate900}; border-bottom-color: ${COLORS.slate900}; }
+.sc-menu-item:hover { background: ${STATE.iconBtnHover}; color: ${COLORS.slate900}; }
+.sc-menu-item-active { color: ${COLORS.slate900}; }
 
-/* ---- file tabs (index.html / icon-1.svg / image-1.png) ---- */
+/* ---- Icon nav for capture / history / settings; hover tooltips are native title attrs. ---- */
+.sc-navicon {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	padding: 0;
+	border: none;
+	border-radius: ${RADIUS.md}px;
+	background: transparent;
+	color: ${COLORS.slate900};
+	cursor: pointer;
+	transition: color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI};
+}
+.sc-navicon:hover { background: ${STATE.iconBtnHover}; }
+.sc-navicon-active { background: rgba(15, 23, 42, 0.08); }
+
+/* ---- File tabs for index.html, icon-1.svg, image-1.png. ---- */
 .sc-tab {
 	padding: 6px 10px;
 	border: none;
@@ -168,7 +225,7 @@ body {
 .sc-tab:hover { color: ${COLORS.slate700}; }
 .sc-tab-active { color: ${COLORS.slate900}; border-bottom-color: ${COLORS.slate900}; }
 
-/* ---- icon buttons (copy / save / more / overflow) ---- */
+/* ---- Icon buttons for copy, save, more, overflow. ---- */
 .sc-icon-btn {
 	display: inline-flex;
 	align-items: center;
@@ -188,9 +245,10 @@ body {
 .sc-icon-btn-saved { color: ${COLORS.accent}; cursor: default; }
 .sc-icon-btn-saved:hover { color: ${COLORS.accent}; background: transparent; }
 
-/* ---- inputs + selects ---- */
+/* ---- Inputs + selects. ---- */
 .sc-input {
 	width: 100%;
+	height: 36px;
 	padding: 7px 9px;
 	font-family: ${FONT_UI};
 	font-size: 13px;
@@ -204,7 +262,110 @@ body {
 .sc-input:focus { outline: none; border-color: ${COLORS.accent}; box-shadow: 0 0 0 3px ${STATE.focusRing}; }
 .sc-input::placeholder { color: ${COLORS.slate400}; }
 
-/* ---- thin scrollbar for the code display ---- */
+/* ---- Custom select for settings; opens in-flow so it pushes content below it down. ---- */
+.sc-select { position: relative; }
+.sc-select-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	height: 36px;
+	padding: 7px 9px;
+	font-family: ${FONT_UI};
+	font-size: 13px;
+	color: ${COLORS.slate800};
+	background: rgba(255, 255, 255, 0.7);
+	border: 1px solid ${SURFACE.borderStrong};
+	border-radius: ${RADIUS.md}px;
+	cursor: pointer;
+	transition: border-color 0.15s ${EASE_UI}, box-shadow 0.15s ${EASE_UI};
+}
+.sc-select-trigger:hover { border-color: ${COLORS.slate400}; }
+.sc-select-trigger-open { border-color: ${COLORS.accent}; box-shadow: 0 0 0 3px ${STATE.focusRing}; }
+.sc-select-panel {
+	position: relative;
+	z-index: 31;
+	margin-top: 6px;
+	padding: 4px;
+	background: ${SURFACE.card};
+	border: 1px solid ${SURFACE.borderStrong};
+	border-radius: ${RADIUS.md}px;
+	box-shadow: ${SURFACE.shadow};
+}
+.sc-select-option {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 9px;
+	border: none;
+	background: transparent;
+	border-radius: ${RADIUS.sm}px;
+	font-family: ${FONT_UI};
+	font-size: 13px;
+	font-weight: 500;
+	color: ${COLORS.slate700};
+	text-align: left;
+	cursor: pointer;
+	transition: background 0.12s ${EASE_UI}, color 0.12s ${EASE_UI};
+}
+.sc-select-option:hover { background: ${STATE.iconBtnHover}; color: ${COLORS.slate900}; }
+.sc-select-option-active { color: ${COLORS.accent}; font-weight: 600; }
+
+/* ---- Icon action button for the verify buttons beside the api/model inputs. ---- */
+.sc-icon-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 36px;
+	height: 36px;
+	border: 1px solid ${SURFACE.borderStrong};
+	border-radius: ${RADIUS.md}px;
+	background: ${SURFACE.control};
+	color: ${COLORS.slate600};
+	cursor: pointer;
+	transition: background 0.15s ${EASE_UI}, color 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
+}
+.sc-icon-action:hover:not(:disabled) { background: ${SURFACE.controlHover}; color: ${COLORS.slate900}; }
+.sc-icon-action:active:not(:disabled) { transform: scale(0.94); }
+.sc-icon-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Custom checkbox rows for assistive delivery. ---- */
+.sc-check-row {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	width: 100%;
+	padding: 7px 2px;
+	border: none;
+	background: transparent;
+	font-family: ${FONT_UI};
+	font-size: 13px;
+	color: ${COLORS.slate700};
+	text-align: left;
+	cursor: pointer;
+	transition: color 0.12s ${EASE_UI};
+}
+.sc-check-row:hover { color: ${COLORS.slate900}; }
+.sc-check-box {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 18px;
+	height: 18px;
+	border: 1px solid ${SURFACE.borderStrong};
+	border-radius: ${RADIUS.sm}px;
+	background: rgba(255, 255, 255, 0.7);
+	color: ${COLORS.white};
+	transition: background 0.12s ${EASE_UI}, border-color 0.12s ${EASE_UI};
+}
+.sc-check-box-on { background: ${COLORS.accent}; border-color: ${COLORS.accent}; }
+
+/* ---- Thin scrollbar for the code display. ---- */
 .sc-scroll { scrollbar-width: thin; scrollbar-color: ${STATE.scrollThumb} transparent; }
 .sc-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .sc-scroll::-webkit-scrollbar-track { background: transparent; }

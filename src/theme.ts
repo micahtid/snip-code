@@ -14,6 +14,7 @@
  * drifting over time. This module is the one place they live; both the inline
  * style objects and global-css.ts import from here so a palette change lands once.
  */
+import type { CSSProperties } from 'react';
 
 /** Font stacks. Montserrat for ui, jetbrains mono for emitted code (matches v1). */
 export const FONT_UI = "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
@@ -56,8 +57,8 @@ export const SURFACE = {
 	/** Hairline borders. */
 	border: 'rgba(226, 232, 240, 0.5)',
 	borderStrong: 'rgba(226, 232, 240, 0.8)',
-	/** Panel depth shadow. */
-	shadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+	/** Panel depth shadow, kept minimal: a faint hairline lift, not a drop shadow. */
+	shadow: '0 1px 2px rgba(15, 23, 42, 0.05)',
 	/** Code-header gradient. */
 	headerGradient: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
 	/** Primary action button gradient + its hover. */
@@ -75,7 +76,6 @@ export const STATE = {
 	focusRing: 'rgba(14, 165, 233, 0.15)',
 	scrollThumb: 'rgba(203, 213, 225, 0.5)',
 	scrollThumbHover: 'rgba(148, 163, 184, 0.6)',
-	modeActive: 'rgba(15, 23, 42, 0.92)',
 } as const;
 
 /** Corner radii (px) used across surfaces and controls. */
@@ -87,3 +87,19 @@ export const RADIUS = { sm: 6, md: 8, lg: 10, xl: 12 } as const;
  */
 export const EASE_UI = 'cubic-bezier(0.4, 0, 0.2, 1)';
 export const EASE_ELASTIC = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/**
+ * Shared view scaffolding so a view's primary action stays pinned while its body
+ * scrolls. A view fills the panel's main area as a {@link LAYOUT.column}; its
+ * {@link LAYOUT.scroll} region grows and scrolls, and an optional
+ * {@link LAYOUT.footer} sits below it and never moves. Consumed by the ViewLayout
+ * component so the capture, history, and settings views stay structurally in sync.
+ */
+export const LAYOUT: Record<'column' | 'scroll' | 'footer', CSSProperties> = {
+	/** A view that fills the main area as a vertical column. */
+	column: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+	/** The scrolling body of a view (grows; sits above any pinned footer). */
+	scroll: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px' },
+	/** A footer pinned below the scroll body (stays put while the body scrolls). */
+	footer: { flexShrink: 0, padding: '12px 14px', borderTop: `1px solid ${SURFACE.border}`, background: SURFACE.glass },
+};

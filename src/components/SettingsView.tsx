@@ -8,30 +8,87 @@
  * Principles applied: none (ui).
  *
  * Why this exists: the settings tab, provider dropdown, password-masked
- * api key, model override, test-key button, default output format, assistive
- * delivery, webhook url. Everything persists to chrome.storage.local via
+ * api key, model override, per-field verify buttons, default output format,
+ * assistive delivery, webhook url. Everything persists to chrome.storage.local via
  * utils/storage (never sync). The key is validated against the live provider
  * (utils/byok) and never logged. If no key is configured, polish silently
  * no-ops and the rest of the pipeline still produces output.
  */
 import { useEffect, useState } from 'react';
+import { Check, ChevronDown, ShieldCheck } from 'lucide-react';
 import type { OutputFormat, Provider, UserPreferences } from '../content/types';
 import { DEFAULT_MODELS, PROVIDER_LABELS, validateKey, type ValidationResult } from '../utils/byok';
 import { getKey, getPrefs, setKey, setPrefs } from '../utils/storage';
-import { COLORS, FONT_UI } from '../theme';
+import { ViewLayout } from './ViewLayout';
+import { COLORS } from '../theme';
 
 const PROVIDERS: Provider[] = ['openrouter', 'anthropic', 'openai', 'google'];
 // The html format emits self-contained markup with semantic bem classes and a
 // stylesheet (see emitFormat), so a separate bem-css option would be a duplicate.
 const FORMATS: OutputFormat[] = ['html', 'tailwind', 'bem-scss', 'jsx-tailwind', 'jsx-css', 'vue'];
 const DELIVERY: Array<'clipboard' | 'file' | 'webhook'> = ['clipboard', 'file', 'webhook'];
+/** Title-case labels for the assistive delivery options. */
+const DELIVERY_LABELS: Record<'clipboard' | 'file' | 'webhook', string> = { clipboard: 'Clipboard', file: 'File', webhook: 'Webhook' };
 
-const s = {
+const styles = {
 	field: { marginBottom: '16px' } as React.CSSProperties,
 	label: { display: 'block', fontWeight: 600, marginBottom: '6px', fontSize: '12px', color: COLORS.slate700 } as React.CSSProperties,
-	row: { display: 'flex', gap: '10px', alignItems: 'center' } as React.CSSProperties,
-	check: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: COLORS.slate700, marginBottom: '4px' } as React.CSSProperties,
+	/** An input paired with its verify button to the right. */
+	inputRow: { display: 'flex', gap: '8px', alignItems: 'center' } as React.CSSProperties,
 };
+
+/**
+ * A custom replacement for a native <select>. The options panel opens in the normal
+ * document flow (not as an overlay), so it pushes the fields below it down rather
+ * than floating over them. A fixed, transparent backdrop closes it on an outside
+ * click. Used here instead of the browser's select so the control matches the
+ * frosted-glass ui and stays consistent across platforms.
+ */
+function Select({ value, options, onChange }: {
+	value: string;
+	options: ReadonlyArray<{ value: string; label: string }>;
+	onChange: (value: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const current = options.find((o) => o.value === value);
+	return (
+		<div className="sc-select">
+			<button
+				type="button"
+				className={`sc-select-trigger${open ? ' sc-select-trigger-open' : ''}`}
+				aria-haspopup="listbox"
+				aria-expanded={open}
+				onClick={() => setOpen((o) => !o)}
+			>
+				<span>{current?.label ?? value}</span>
+				<ChevronDown size={15} style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+			</button>
+			{open && (
+				<>
+					<div style={{ position: 'fixed', inset: 0, zIndex: 30 }} onClick={() => setOpen(false)} />
+					<div className="sc-select-panel" role="listbox">
+						{options.map((o) => (
+							<button
+								key={o.value}
+								type="button"
+								role="option"
+								aria-selected={o.value === value}
+								className={`sc-select-option${o.value === value ? ' sc-select-option-active' : ''}`}
+								onClick={() => {
+									onChange(o.value);
+									setOpen(false);
+								}}
+							>
+								<span>{o.label}</span>
+								{o.value === value && <Check size={14} style={{ flexShrink: 0 }} />}
+							</button>
+						))}
+					</div>
+				</>
+			)}
+		</div>
+	);
+}
 
 export function SettingsView() {
 	const [prefs, setPrefsState] = useState<UserPreferences | null>(null);
@@ -48,7 +105,7 @@ export function SettingsView() {
 		})();
 	}, []);
 
-	if (!prefs) return <div style={{ color: COLORS.slate500 }}>Loading…</div>;
+	if (!prefs) return <ViewLayout><div style={{ color: COLORS.slate500 }}>Loading…</div></ViewLayout>;
 
 	/** Persist a preferences patch and update local state. */
 	const update = (patch: Partial<UserPreferences>): void => {
@@ -80,80 +137,84 @@ export function SettingsView() {
 	};
 
 	return (
-		<div>
-			<div style={s.field}>
-				<label style={s.label}>Provider</label>
-				<select className="sc-input" value={prefs.activeProvider} onChange={(e) => onProvider(e.target.value as Provider)}>
-					{PROVIDERS.map((p) => (
-						<option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
-					))}
-				</select>
-			</div>
-
-			<div style={s.field}>
-				<label style={s.label}>API key (stored locally only)</label>
-				<input
-					className="sc-input"
-					type="password"
-					value={key}
-					placeholder="Paste key"
-					onChange={(e) => setKeyState(e.target.value)}
-					onBlur={() => void setKey(prefs.activeProvider, key)}
+		<ViewLayout>
+			<div style={styles.field}>
+				<label style={styles.label}>Provider</label>
+				<Select
+					value={prefs.activeProvider}
+					options={PROVIDERS.map((p) => ({ value: p, label: PROVIDER_LABELS[p] }))}
+					onChange={(v) => onProvider(v as Provider)}
 				/>
 			</div>
 
-			<div style={s.field}>
-				<label style={s.label}>Model override</label>
-				<input
-					className="sc-input"
-					type="text"
-					value={prefs.modelOverrides[prefs.activeProvider] ?? ''}
-					placeholder={DEFAULT_MODELS[prefs.activeProvider]}
-					onChange={(e) =>
-						update({ modelOverrides: { ...prefs.modelOverrides, [prefs.activeProvider]: e.target.value || null } })
-					}
-				/>
-			</div>
-
-			<div style={s.field}>
-				<div style={s.row}>
-					<button className="sc-btn sc-btn-secondary sc-btn-sm" style={{ fontFamily: FONT_UI }} disabled={testing} onClick={() => void onTest()}>
-						{testing ? 'Testing…' : 'Test Key'}
+			{/* Each field has its own verify button; both run the same key+model validation. */}
+			<div style={styles.field}>
+				<label style={styles.label}>API Key (Local)</label>
+				<div style={styles.inputRow}>
+					<input
+						className="sc-input"
+						type="password"
+						value={key}
+						placeholder="Paste key"
+						onChange={(e) => setKeyState(e.target.value)}
+						onBlur={() => void setKey(prefs.activeProvider, key)}
+						style={{ flex: 1, minWidth: 0 }}
+					/>
+					<button className="sc-icon-action" type="button" title="Test Key" disabled={testing} onClick={() => void onTest()}>
+						<ShieldCheck size={18} />
 					</button>
-					{result && (
-						<span style={{ color: result.valid ? '#2e7d32' : '#c62828', fontSize: '12px' }}>
-							{result.valid ? `Valid (${result.modelEcho})` : `Invalid: ${result.error}`}
-						</span>
-					)}
 				</div>
 			</div>
 
-			<div style={s.field}>
-				<label style={s.label}>Default output format</label>
-				<select className="sc-input" value={prefs.defaultOutput} onChange={(e) => update({ defaultOutput: e.target.value as OutputFormat })}>
-					{FORMATS.map((f) => (
-						<option key={f} value={f}>{f}</option>
-					))}
-				</select>
+			<div style={styles.field}>
+				<label style={styles.label}>Model Override</label>
+				<div style={styles.inputRow}>
+					<input
+						className="sc-input"
+						type="text"
+						value={prefs.modelOverrides[prefs.activeProvider] ?? ''}
+						placeholder={DEFAULT_MODELS[prefs.activeProvider]}
+						onChange={(e) =>
+							update({ modelOverrides: { ...prefs.modelOverrides, [prefs.activeProvider]: e.target.value || null } })
+						}
+						style={{ flex: 1, minWidth: 0 }}
+					/>
+					<button className="sc-icon-action" type="button" title="Test Model" disabled={testing} onClick={() => void onTest()}>
+						<ShieldCheck size={18} />
+					</button>
+				</div>
+				{(testing || result) && (
+					<div style={{ marginTop: '8px', fontSize: '12px', color: testing ? COLORS.slate500 : result?.valid ? '#2e7d32' : '#c62828' }}>
+						{testing ? 'Testing…' : result?.valid ? `Valid (${result.modelEcho})` : `Invalid: ${result?.error}`}
+					</div>
+				)}
 			</div>
 
-			<div style={s.field}>
-				<label style={s.label}>Assistive delivery</label>
-				{DELIVERY.map((d) => (
-					<label key={d} style={s.check}>
-						<input
-							type="checkbox"
-							checked={prefs.assistiveDelivery.includes(d)}
-							onChange={() => toggleDelivery(d)}
-						/>
-						{d}
-					</label>
-				))}
+			<div style={styles.field}>
+				<label style={styles.label}>Default Output Format</label>
+				<Select
+					value={prefs.defaultOutput}
+					options={FORMATS.map((f) => ({ value: f, label: f.toUpperCase() }))}
+					onChange={(v) => update({ defaultOutput: v as OutputFormat })}
+				/>
+			</div>
+
+			<div style={styles.field}>
+				<label style={styles.label}>Assistive Delivery</label>
+				{DELIVERY.map((d) => {
+					const on = prefs.assistiveDelivery.includes(d);
+					return (
+						<button key={d} type="button" role="checkbox" aria-checked={on} className="sc-check-row" onClick={() => toggleDelivery(d)}>
+							<span className={`sc-check-box${on ? ' sc-check-box-on' : ''}`}>{on && <Check size={12} strokeWidth={3} />}</span>
+							{DELIVERY_LABELS[d]}
+						</button>
+					);
+				})}
 			</div>
 
 			{prefs.assistiveDelivery.includes('webhook') && (
-				<div style={s.field}>
-					<label style={s.label}>Webhook URL</label>
+				<div style={styles.field}>
+					<label style={styles.label}>Webhook URL</label>
 					<input
 						className="sc-input"
 						type="url"
@@ -163,6 +224,6 @@ export function SettingsView() {
 					/>
 				</div>
 			)}
-		</div>
+		</ViewLayout>
 	);
 }

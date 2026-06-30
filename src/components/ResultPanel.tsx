@@ -23,8 +23,9 @@
  * renders whichever format the pipeline produced (settings -> default output).
  */
 import { useEffect, useState } from 'react';
-import { Bookmark, Check, Copy, Download, Eye } from 'lucide-react';
-import type { AssetFile, OutputFormat } from '../content/types';
+import { Bookmark, Check, Copy, Download, Eye, MousePointer2 } from 'lucide-react';
+import type { AssetFile, OutputFormat, TokenUsage } from '../content/types';
+import { EmptyState } from './EmptyState';
 import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
 /** The snip output the content script ships to the panel (shipResult payload). */
@@ -39,6 +40,8 @@ export interface SnipResult {
 	files?: AssetFile[];
 	/** Emitted assistive json (assistive mode). */
 	json?: string;
+	/** Provider-reported token usage for the polish call, when one ran. */
+	usage?: TokenUsage;
 	warnings?: string[];
 	/** Set when the page is a blocked site builder (framer/wix/etc). */
 	unsupported?: boolean;
@@ -56,9 +59,9 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	// A new snip resets the viewer to its first file (the index document).
 	useEffect(() => setActive(0), [result]);
 
-	if (!result) {
-		return <div style={hint}>Pick an element to snip it. Output appears here.</div>;
-	}
+	// Before the first snip the capture view shows a quiet pointer placeholder above
+	// its pinned Pick Element action.
+	if (!result) return <EmptyState Icon={MousePointer2} />;
 
 	if (result.unsupported) {
 		return (
@@ -204,11 +207,11 @@ function triggerDownload(href: string, name: string): void {
 	a.click();
 	a.remove();
 }
-
-const hint: React.CSSProperties = { color: COLORS.slate500, fontSize: '12px', lineHeight: 1.5 };
 const container: React.CSSProperties = {
 	border: `1px solid ${SURFACE.border}`, borderRadius: `${RADIUS.xl}px`, background: COLORS.white,
 	display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: SURFACE.shadow,
+	// Fill the capture view's scroll region so the code body below grows to fit.
+	flex: 1, minHeight: 0,
 };
 const header: React.CSSProperties = {
 	display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px',
@@ -222,14 +225,15 @@ const tabBar: React.CSSProperties = {
 };
 const imageWrap: React.CSSProperties = {
 	display: 'flex', alignItems: 'center', justifyContent: 'center',
-	padding: '16px', maxHeight: '380px', overflow: 'auto', background: COLORS.slate50,
+	padding: '16px', flex: 1, minHeight: 0, overflow: 'auto', background: COLORS.slate50,
 };
-const imagePreview: React.CSSProperties = { maxWidth: '100%', maxHeight: '348px', objectFit: 'contain' };
+const imagePreview: React.CSSProperties = { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' };
 const display: React.CSSProperties = {
 	// Code never wraps: long lines scroll horizontally (overflow: auto) so the markup
 	// reads as emitted rather than reflowing mid-attribute. tabSize narrows the
 	// tab-indented output from the browser default of 8 columns so more fits per line.
-	margin: 0, padding: '14px 16px', maxHeight: '380px', overflow: 'auto', background: COLORS.white,
+	// flex: 1 lets the code body fill the remaining height of the result card.
+	margin: 0, padding: '14px 16px', flex: 1, minHeight: 0, overflow: 'auto', background: COLORS.white,
 	fontFamily: FONT_CODE, fontSize: '12px', lineHeight: 1.7, color: COLORS.slate800, whiteSpace: 'pre', tabSize: 2,
 };
 const warn: React.CSSProperties = { padding: '8px 12px', fontSize: '11px', color: COLORS.slate500, borderTop: `1px solid ${SURFACE.border}` };
