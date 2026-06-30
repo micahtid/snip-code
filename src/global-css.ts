@@ -188,6 +188,52 @@ body {
 }
 .sc-menu-item:hover { background: ${STATE.iconBtnHover}; color: ${COLORS.slate900}; }
 .sc-menu-item-active { color: ${COLORS.slate900}; }
+/* Hairline between the element-pick modes and the page-scan modes in the menu. */
+.sc-menu-divider { height: 1px; margin: 4px 6px; background: ${SURFACE.border}; }
+
+/* ---- Page-scoped inspector card grid (fonts / colors / assets). ---- */
+.sc-inspect-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	gap: 8px;
+	align-content: start;
+}
+.sc-inspect-card {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 9px 10px;
+	border: 1px solid ${SURFACE.border};
+	border-radius: ${RADIUS.lg}px;
+	background: ${SURFACE.card};
+	font-family: ${FONT_UI};
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI}, box-shadow 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
+}
+.sc-inspect-card:hover { border-color: ${SURFACE.borderStrong}; background: ${COLORS.white}; box-shadow: ${SURFACE.shadow}; }
+.sc-inspect-card:active { transform: scale(0.98); }
+/* Fixed-size preview box on the card's left: font sample, color swatch, or thumbnail. */
+.sc-inspect-preview {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	overflow: hidden;
+	border-radius: ${RADIUS.sm}px;
+	background: ${COLORS.slate50};
+}
+.sc-inspect-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-inspect-name { font-size: 12px; font-weight: 600; color: ${COLORS.slate800}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-inspect-meta { font-size: 11px; color: ${COLORS.slate500}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-font-preview { font-size: 19px; line-height: 1; color: ${COLORS.slate700}; }
+.sc-color-swatch { width: 100%; height: 100%; }
+.sc-asset-thumb { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sc-asset-svg { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.sc-asset-svg svg { max-width: 100%; max-height: 100%; }
 
 /* ---- Icon nav for capture / history / settings; hover tooltips are native title attrs. ---- */
 .sc-navicon {

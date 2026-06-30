@@ -10,9 +10,12 @@
  * Why this exists: chrome opens this document in the side panel. It is the only
  * react root in the extension. It owns top-level navigation between the three
  * sidebar views (capture / history / settings), hosts the picker control, and is
- * the panel-side terminus of two content-script signals:
+ * the panel-side terminus of the content-script signals:
  * - It listens for SNIP_RESULT, renders the emitted code in ResultPanel, and adds
  *   that snip's polish token usage to a running per-session total.
+ * - It listens for INSPECT_RESULT (a page scan) and renders it in InspectPanel; a
+ *   snip and a scan are mutually exclusive, so each clears the other, and both add
+ *   any byok token usage to the same per-session total.
  * - While a pick is in flight it owns the "picking" state and a window-level esc
  * handler that cancels the overlay even when keyboard focus is in the panel
  * (the picker's own esc handler only fires when the page holds focus).
@@ -25,28 +28,28 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { History, Scissors, Settings, type LucideIcon } from 'lucide-react';
-import { Picker } from './components/Picker';
+import { Picker, type Mode } from './components/Picker';
 import { ResultPanel, type SnipResult } from './components/ResultPanel';
+import { InspectPanel } from './components/inspect/InspectPanel';
 import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
 import { CloudBackdrop } from './components/CloudBackdrop';
 import { ViewLayout } from './components/ViewLayout';
+import { INSPECT_RESULT } from './content/types';
+import type { TokenUsage } from './content/types';
+import type { InspectResult } from './content/inspect/types';
 import { injectGlobalCss } from './global-css';
 import { COLORS, FONT_UI, SURFACE } from './theme';
 
 /** The three top-level sidebar views the nav switches between. */
 type View = 'capture' | 'history' | 'settings';
 
-/**
- * The two capture modes. Snip runs the whole pipeline and emits
- * code; assistive runs capture and emits a json document. The mode is owned here and
- * passed to the picker, whose chevron menu lets the user switch it.
- */
-type Mode = 'snip' | 'assistive';
-
 /** Content-script signals (mirror the ui-local consts in content/index.ts). */
 const SNIP_RESULT = 'SNIP_RESULT';
 const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
+
+/** A page scan ships its InspectResult with the same optional token usage a snip carries. */
+type InspectPayload = InspectResult & { usage?: TokenUsage };
 
 const styles = {
 	shell: {
@@ -100,13 +103,16 @@ function App() {
 	const [mode, setMode] = useState<Mode>('snip');
 	const [picking, setPicking] = useState(false);
 	const [result, setResult] = useState<SnipResult | null>(null);
+	const [inspect, setInspect] = useState<InspectResult | null>(null);
 	// Running token total for this panel session (resets when the side panel reloads).
 	const [sessionTokens, setSessionTokens] = useState(0);
 
 	// Inject the global stylesheet once (fonts, cloud geometry, control states).
 	useEffect(() => injectGlobalCss(), []);
 
-	// Listen for the content script's snip output; render it and leave select mode.
+	// Listen for the content script's output. A snip and a scan are mutually exclusive
+	// in the capture view, so each arriving result clears the other. Both forward any
+	// byok token usage into the running session total.
 	useEffect(() => {
 		const onMessage = (message: unknown): undefined => {
 			const type =
@@ -116,12 +122,21 @@ function App() {
 			if (type === SNIP_RESULT) {
 				const payload = (message as { payload?: SnipResult }).payload ?? null;
 				setResult(payload);
-				const usage = payload?.usage;
-				if (usage) setSessionTokens((total) => total + usage.input + usage.output);
+				setInspect(null);
+				addUsage(payload?.usage);
 				setView('capture');
 				setPicking(false);
+			} else if (type === INSPECT_RESULT) {
+				const payload = (message as { payload?: InspectPayload }).payload ?? null;
+				setInspect(payload);
+				setResult(null);
+				addUsage(payload?.usage);
+				setView('capture');
 			}
 			return undefined; // No async response; do not hold the channel open.
+		};
+		const addUsage = (usage?: TokenUsage): void => {
+			if (usage) setSessionTokens((total) => total + usage.input + usage.output);
 		};
 		chrome.runtime.onMessage.addListener(onMessage);
 		return () => chrome.runtime.onMessage.removeListener(onMessage);
@@ -140,10 +155,13 @@ function App() {
 		return () => window.removeEventListener('keydown', onKey);
 	}, [picking]);
 
-	/** enter/leave the in-flight pick state; a new pick clears the previous result. */
+	/** enter/leave the in-flight pick state; a new pick clears whichever result is showing. */
 	const onPickingChange = (next: boolean): void => {
 		setPicking(next);
-		if (next) setResult(null);
+		if (next) {
+			setResult(null);
+			setInspect(null);
+		}
 	};
 
 	return (
@@ -175,7 +193,7 @@ function App() {
 								</>
 							}
 						>
-							<ResultPanel result={result} />
+							{inspect ? <InspectPanel result={inspect} /> : <ResultPanel result={result} />}
 						</ViewLayout>
 					)}
 					{view === 'history' && <SnippetList />}

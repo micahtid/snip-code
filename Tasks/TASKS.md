@@ -22,6 +22,16 @@ the composed document only for the HTML-family formats.
 
 ## Notes / Decisions
 
+### Page-scoped inspectors: Colors, Fonts, Assets, Style JSON
+
+The picker's chevron menu now offers four whole-page scans alongside Snip / Assistive. Each reads the
+live DOM directly (no element pick, no pipeline) and ships one `INSPECT_RESULT` to the panel, which
+renders it via `src/components/inspect/`. Colors and Style JSON gain an optional BYOK AI pass (semantic
+color roles; design-system schema synthesis) routed through the existing background LLM broker, which
+now returns raw `{ text, usage }` so each caller parses its own shape. The extractors live in
+`src/content/inspect/` (`fonts.ts`, `assets.ts`, `colors.ts`, `ai.ts`, `prompts.ts`, `schema/*`). The
+source of truth for this work is `Tasks/FEATURES-PLAN.md`.
+
 ### Readable output: de-noise (reconcile) + formatter (convert)
 
 Snip output is now both de-noised and indented, deterministically, with no rendered-pixel change.

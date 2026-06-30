@@ -8,27 +8,32 @@
  * Principles applied: none (ui).
  *
  * Why this exists: the picker is triggered from the sidebar.
- * This is that trigger: a split action whose main segment starts a pick and whose
- * chevron segment opens a small menu above it to choose the capture mode (snip /
- * assistive). The main button's label is itself the active-mode indicator: it reads
- * "Snip Element" or "Assistive Element". Clicking pick asks the active tab's content
- * script to inject its highlight overlay so the user can choose an element. The
- * heavy lifting (the overlay, sticky arrow-climb, screenshot) lives in the content
- * script; this component owns the mode state and the start signal. While a pick is
- * in flight it reflects a "selecting" state and lifts that up via onPickingChange so
- * App can wire the panel-side esc-to-cancel (the page-side esc handler only fires
- * when the page, not the side panel, holds keyboard focus).
+ * This is that trigger: a split action whose main segment runs the active mode and
+ * whose chevron segment opens a small menu above it to choose the mode. Two groups
+ * of modes share the menu: the element picks (snip / assistive), which inject the
+ * page overlay so the user selects an element, and the page scans (colors / fonts /
+ * assets / style json), which read the whole page at once. The main button's label
+ * is the active-mode indicator. Element picks lift a "picking" state up via
+ * onPickingChange so App can wire the panel-side esc-to-cancel; page scans need no
+ * overlay, so they show a transient "Scanning…" instead. The heavy lifting (overlay
+ * + screenshot for picks, extraction for scans) lives in the content script; this
+ * component owns only the mode state and the start signal.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Check, ChevronUp } from 'lucide-react';
+import { START_SCAN } from '../content/types';
+import type { ScanKind } from '../content/inspect/types';
 import { FONT_UI } from '../theme';
 
 /** The ui-local message that wakes the content script's picker overlay. */
 const START_PICKER = 'SNIPCODE_START_PICKER' as const;
 
+/** Element picks run the snip pipeline; page scans inspect the whole page. */
+export type Mode = 'snip' | 'assistive' | ScanKind;
+
 interface PickerProps {
-	mode: 'snip' | 'assistive';
-	onModeChange: (mode: 'snip' | 'assistive') => void;
+	mode: Mode;
+	onModeChange: (mode: Mode) => void;
 	/** True while an element selection is in progress (owned by App). */
 	picking: boolean;
 	/** Report whether a pick is now in flight (true on start, false if start failed). */
@@ -36,13 +41,18 @@ interface PickerProps {
 }
 
 /**
- * The capture modes, in menu order. `label` names the mode in the menu; `action`
- * is the main button's label for that mode (so the button text is the active-mode
- * indicator).
+ * The modes, in menu order. `kind` splits the menu into an element-pick group and
+ * a page-scan group (a divider sits between them). `label` names the mode in the
+ * menu; `action` is the main button's label for that mode (so the button text is
+ * the active-mode indicator).
  */
-const MODES: ReadonlyArray<{ id: 'snip' | 'assistive'; label: string; action: string }> = [
-	{ id: 'snip', label: 'Snip', action: 'Snip Element' },
-	{ id: 'assistive', label: 'Assistive', action: 'Assistive Element' },
+const MODES: ReadonlyArray<{ id: Mode; label: string; action: string; kind: 'element' | 'page' }> = [
+	{ id: 'snip', label: 'Snip', action: 'Snip Element', kind: 'element' },
+	{ id: 'assistive', label: 'Assistive', action: 'Assistive Element', kind: 'element' },
+	{ id: 'colors', label: 'Colors', action: 'Scan Colors', kind: 'page' },
+	{ id: 'fonts', label: 'Fonts', action: 'Scan Fonts', kind: 'page' },
+	{ id: 'assets', label: 'Assets', action: 'Scan Assets', kind: 'page' },
+	{ id: 'schema', label: 'Style JSON', action: 'Scan Style JSON', kind: 'page' },
 ];
 
 const styles = {
@@ -53,45 +63,58 @@ const styles = {
 } satisfies Record<string, unknown>;
 
 /**
- * Sends the start-picker signal to the content script in the active tab.
+ * Sends a ui-local start signal to the content script in the active tab.
  *
- * The side panel runs in the extension context, so it must resolve the active
- * tab id before messaging it. Failures (no active tab, content script not yet
- * injected on a freshly loaded page) are surfaced to the console rather than
- * thrown, since a missing overlay is a recoverable user-retry, not a crash. The
- * boolean return drives the picking state: true once the overlay was asked for,
- * false if the page could not be messaged.
+ * The side panel runs in the extension context, so it must resolve the active tab
+ * id before messaging it. Failures (no active tab, content script not yet injected
+ * on a freshly loaded page) are surfaced to the console rather than thrown, since a
+ * missing overlay/scan is a recoverable user-retry, not a crash. The boolean return
+ * drives the in-flight state: true once the signal was delivered, false if the page
+ * could not be messaged.
  *
- * @param mode - the capture mode to run once an element is chosen
- * @returns whether the start signal was delivered
+ * @param message - the start-picker or start-scan signal to deliver
+ * @returns whether the signal was delivered
  */
-async function startPicker(mode: 'snip' | 'assistive'): Promise<boolean> {
+async function sendToActiveTab(message: Record<string, unknown>): Promise<boolean> {
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 	if (!tab?.id) {
-		console.warn('snipcode: no active tab to pick from');
+		console.warn('snipcode: no active tab to act on');
 		return false;
 	}
 	try {
-		await chrome.tabs.sendMessage(tab.id, { type: START_PICKER, mode });
+		await chrome.tabs.sendMessage(tab.id, message);
 		return true;
 	} catch (err) {
 		// The content script may not be loaded on chrome:// pages or just-opened
 		// tabs. Tell the user rather than failing silently.
-		console.warn('snipcode: could not start picker on this page', err);
+		console.warn('snipcode: could not reach this page', err);
 		return false;
 	}
 }
 
 export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
+	// A page scan shows a transient label on the main button (no overlay state to own).
+	const [scanning, setScanning] = useState(false);
 
-	const onPick = async (): Promise<void> => {
-		onPickingChange(true);
-		const started = await startPicker(mode);
-		if (!started) onPickingChange(false); // Could not reach the page; leave select mode.
+	const active = MODES.find((m) => m.id === mode) ?? MODES[0]!;
+
+	const onRun = async (): Promise<void> => {
+		if (active.kind === 'element') {
+			onPickingChange(true);
+			const started = await sendToActiveTab({ type: START_PICKER, mode });
+			if (!started) onPickingChange(false); // Could not reach the page; leave select mode.
+			return;
+		}
+		// Page scan: flash "Scanning…" until the content script ships its result (App
+		// swaps in the InspectPanel); clear the flash shortly after either way.
+		setScanning(true);
+		await sendToActiveTab({ type: START_SCAN, scan: mode as ScanKind });
+		setTimeout(() => setScanning(false), 1200);
 	};
 
-	const activeAction = MODES.find((m) => m.id === mode)?.action ?? 'Pick Element';
+	const busy = picking || scanning;
+	const mainLabel = picking ? 'Selecting… (Esc to cancel)' : scanning ? 'Scanning…' : active.action;
 
 	return (
 		<div style={styles.splitWrap as React.CSSProperties}>
@@ -99,33 +122,35 @@ export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerP
 				<>
 					<div style={styles.backdrop as React.CSSProperties} onClick={() => setMenuOpen(false)} />
 					<div className="sc-menu" role="listbox" aria-label="Capture mode">
-						{MODES.map((m) => (
-							<button
-								key={m.id}
-								role="option"
-								aria-selected={mode === m.id}
-								className={`sc-menu-item${mode === m.id ? ' sc-menu-item-active' : ''}`}
-								onClick={() => {
-									onModeChange(m.id);
-									setMenuOpen(false);
-								}}
-							>
-								{m.label}
-								{mode === m.id && <Check size={15} />}
-							</button>
+						{MODES.map((m, i) => (
+							<Fragment key={m.id}>
+								{i > 0 && MODES[i - 1]!.kind !== m.kind && <div className="sc-menu-divider" role="separator" />}
+								<button
+									role="option"
+									aria-selected={mode === m.id}
+									className={`sc-menu-item${mode === m.id ? ' sc-menu-item-active' : ''}`}
+									onClick={() => {
+										onModeChange(m.id);
+										setMenuOpen(false);
+									}}
+								>
+									{m.label}
+									{mode === m.id && <Check size={15} />}
+								</button>
+							</Fragment>
 						))}
 					</div>
 				</>
 			)}
 
-			<div className={`sc-split${picking ? ' sc-split-disabled' : ''}`}>
-				<button className="sc-split-main" disabled={picking} onClick={() => void onPick()} style={{ fontFamily: FONT_UI }}>
-					{picking ? 'Selecting… (Esc to cancel)' : activeAction}
+			<div className={`sc-split${busy ? ' sc-split-disabled' : ''}`}>
+				<button className="sc-split-main" disabled={busy} onClick={() => void onRun()} style={{ fontFamily: FONT_UI }}>
+					{mainLabel}
 				</button>
 				<div className="sc-split-divider" />
 				<button
 					className="sc-split-chevron"
-					disabled={picking}
+					disabled={busy}
 					aria-haspopup="listbox"
 					aria-expanded={menuOpen}
 					aria-label="Choose capture mode"

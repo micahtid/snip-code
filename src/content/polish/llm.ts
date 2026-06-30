@@ -23,11 +23,10 @@ import { buildPolishPrompt } from './prompts';
 import { applyRenames } from './rename';
 import { finalize } from './restore';
 
-/** The background's parsed llm reply. */
-interface LlmReply {
-	renameMap?: Record<string, string>;
-	hoverRules?: string[];
-	usage?: TokenUsage;
+/** The polish edits parsed out of the model's reply text. */
+interface PolishEdits {
+	renameMap: Record<string, string>;
+	hoverRules: string[];
 }
 
 /** The error code the broker returns when no key is stored for the provider. */
@@ -60,8 +59,8 @@ export async function polish(
 	const vaulted = vault.protect(`<style>${css}</style>\n${html}`);
 	const prompt = buildPolishPrompt(vaulted);
 
-	const { reply, error, usage } = await requestLlm(provider, model, prompt);
-	if (!reply) {
+	const { text, error, usage } = await requestLlm(provider, model, prompt);
+	if (text === null) {
 		// No key is the intended no-op; any other error means a configured key was
 		// present but the request failed, so surface it rather than hiding it. A
 		// failed-but-billed reply still reports usage, so pass it through to be counted.
@@ -73,36 +72,59 @@ export async function polish(
 		return { html, css };
 	}
 
-	const renamed = applyRenames(html, css, reply.renameMap ?? {});
-	const out = finalize(renamed.html, renamed.css, reply.hoverRules ?? [], vault);
-	return reply.usage ? { ...out, usage: reply.usage } : out;
+	const edits = parseReply(text);
+	const renamed = applyRenames(html, css, edits.renameMap);
+	const out = finalize(renamed.html, renamed.css, edits.hoverRules, vault);
+	return usage ? { ...out, usage } : out;
 }
 
 /**
- * Asks the background broker to call the provider and return the parsed reply.
+ * Asks the background broker to call the provider and return its raw reply text.
  * Content scripts are bound by the host page's csp and cannot reach provider
  * hosts directly, so the call is delegated. On any failure (no key, network,
- * provider, parse) the reply is null and the broker's error message is returned
- * alongside it so the caller can both skip cleanly and report the cause. A
- * failed-but-billed reply (empty/non-json) also returns its token usage so the
- * spent tokens still count toward the session total.
+ * provider, empty/non-json) the text is null and the broker's error message is
+ * returned alongside it so the caller can both skip cleanly and report the cause.
+ * A failed-but-billed reply also returns its token usage so the spent tokens
+ * still count toward the session total.
  */
 async function requestLlm(
 	provider: Provider,
 	model: string,
 	prompt: string,
-): Promise<{ reply: LlmReply | null; error?: string; usage?: TokenUsage }> {
+): Promise<{ text: string | null; error?: string; usage?: TokenUsage }> {
 	try {
 		const res = (await chrome.runtime.sendMessage({
 			type: 'LLM_REQUEST',
 			requestId: crypto.randomUUID(),
 			payload: { provider, model, prompt },
-		})) as { ok: boolean; result?: LlmReply; error?: { message?: string }; usage?: TokenUsage } | undefined;
-		if (res?.ok && res.result) return { reply: res.result };
+		})) as { ok: boolean; result?: { text?: string; usage?: TokenUsage }; error?: { message?: string }; usage?: TokenUsage } | undefined;
+		if (res?.ok && res.result) {
+			const text = res.result.text ?? '';
+			return res.result.usage ? { text, usage: res.result.usage } : { text };
+		}
 		const error = res?.error?.message ?? 'no response from background broker';
 		// A failed-but-billed reply (empty/non-json) still reports usage on the envelope.
-		return res?.usage ? { reply: null, error, usage: res.usage } : { reply: null, error };
+		return res?.usage ? { text: null, error, usage: res.usage } : { text: null, error };
 	} catch (err) {
-		return { reply: null, error: (err as Error).message };
+		return { text: null, error: (err as Error).message };
+	}
+}
+
+/**
+ * Parses the model's reply into the two additive polish edits. Lenient by design:
+ * a missing or malformed reply yields empty edits (a clean no-op) rather than
+ * throwing. Moved here from the background broker so polish owns its own shape.
+ */
+function parseReply(text: string): PolishEdits {
+	const match = text.match(/\{[\s\S]*\}/);
+	if (!match) return { renameMap: {}, hoverRules: [] };
+	try {
+		const parsed = JSON.parse(match[0]) as { renameMap?: unknown; hoverRules?: unknown };
+		return {
+			renameMap: parsed.renameMap && typeof parsed.renameMap === 'object' ? (parsed.renameMap as Record<string, string>) : {},
+			hoverRules: Array.isArray(parsed.hoverRules) ? (parsed.hoverRules as string[]) : [],
+		};
+	} catch {
+		return { renameMap: {}, hoverRules: [] };
 	}
 }
