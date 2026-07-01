@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (bakes container context)
+ * Writes to Captured: bakedStyles + clone, baking container context
  *
  * Extends the "ship what renders" approach to the containment context that
  * container queries resolve against.
@@ -11,9 +11,8 @@
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries
  * Detection criterion: an element whose computed container-type is not `normal`.
  * Early-returns per element otherwise.
- * Transform contract: bakes container-type (and container-name) onto the matching
- * clone element. Mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO, add later (container-query layout).
+ * Transform contract: bakes container-type, and container-name when set, onto the
+ * matching clone element. Mutates bakedStyles + clone inline styles only.
  *
  * Why this exists: @media is already flattened at capture, match.ts only admits
  * rules whose @media currently applies (matchMedia), so prefers-color-scheme,
@@ -37,7 +36,7 @@ export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const computed = getComputedStyle(original);
 		const containerType = computed.getPropertyValue('container-type');
-		// `normal` is the default (no containment); nothing to preserve.
+		// `normal` is the default, meaning no containment; nothing to preserve.
 		if (!containerType || containerType === 'normal') continue;
 
 		const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();

@@ -1,49 +1,50 @@
 /**
- * components/ResultPanel.tsx: snip output viewer (the code block)
+ * components/ResultPanel.tsx: snip output viewer, the code block
  *
- * Pipeline position: consumes convert/polish output (the emitted code)
- * Reads from Captured: n/a (renders the serialized SnipResult, not Captured)
+ * Pipeline position: consumes convert/polish output, the emitted code
+ * Reads from Captured: n/a. Renders the serialized SnipResult, not Captured.
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
  * Why this exists: after a snip completes the content script ships the generated
- * code to the side panel (App listens; see App.tsx). This renders it as v1's
- * code block, a gradient header with the format eyebrow, a copy action, a download
- * action that saves the file(s) to disk, and (for the self-contained html-shaped
- * formats) a preview action that opens the rendered output in a new tab,
+ * code to the side panel, where App listens; see App.tsx. This renders it as v1's
+ * code block, a gradient header holding a copy action, a download action that saves
+ * the files to disk, and, for the self-contained html-shaped formats, a preview
+ * action that opens the rendered output in a new tab,
  * over a monospace, scrollable code surface. Snip mode auto-persists the snippet in the
- * content script (storeSnippet), so the bookmark here is a "saved"
+ * content script via storeSnippet, so the bookmark here is a "saved"
  * indicator, not a second write. Assistive mode shows the emitted json; a
  * builder-gated page shows the static unsupported message.
  *
- * Note: live format switching (re-emitting all 7 formats without a re-snip) is a
+ * Note: live format switching, re-emitting all 7 formats without a re-snip, is a
  * deliberate follow-up, not wired here. `Captured` holds live dom and cannot be
  * shipped back to re-emit, and polish only applies to html/bem; the panel
- * renders whichever format the pipeline produced (settings -> default output).
+ * renders whichever format the pipeline produced from the settings default output.
  */
 import { useEffect, useState } from 'react';
 import { Bookmark, Check, Copy, Download, Eye, MousePointer2 } from 'lucide-react';
 import type { AssetFile, OutputFormat, TokenUsage } from '../content/types';
 import { EmptyState } from './EmptyState';
-import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../theme';
+import { triggerDownload } from '../utils/download';
+import { COLORS, FLASH_MS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
-/** The snip output the content script ships to the panel (shipResult payload). */
+/** The snip output the content script ships to the panel as the shipResult payload. */
 export interface SnipResult {
 	mode: 'snip' | 'assistive';
 	format?: OutputFormat;
 	html?: string;
 	css?: string;
-	/** Self-contained html document (snip mode); kept for preview + storage. */
+	/** Self-contained html document for snip mode; kept for preview + storage. */
 	output?: string;
-	/** Output split into referenced files (index.html + svgs/images); html-shaped snips only. */
+	/** Output split into referenced files: index.html plus svgs and images; html-shaped snips only. */
 	files?: AssetFile[];
-	/** Emitted assistive json (assistive mode). */
+	/** Emitted assistive json for assistive mode. */
 	json?: string;
 	/** Provider-reported token usage for the polish call, when one ran. */
 	usage?: TokenUsage;
 	warnings?: string[];
-	/** Set when the page is a blocked site builder (framer/wix/etc). */
+	/** Set when the page is a blocked site builder such as framer or wix. */
 	unsupported?: boolean;
 	builder?: string;
 	message?: string;
@@ -56,7 +57,7 @@ interface ResultPanelProps {
 export function ResultPanel({ result }: ResultPanelProps) {
 	const [copied, setCopied] = useState(false);
 	const [active, setActive] = useState(0);
-	// A new snip resets the viewer to its first file (the index document).
+	// A new snip resets the viewer to its first file, the index document.
 	useEffect(() => setActive(0), [result]);
 
 	// Before the first snip the capture view shows a quiet pointer placeholder above
@@ -73,19 +74,18 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	}
 
 	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
-	const eyebrow = result.mode === 'assistive' ? 'Assistive JSON' : (result.format ?? 'html').toUpperCase();
 
-	// The output as switchable files: the pipeline's split (index.html plus the lifted
-	// svg/image files) for html-shaped snips, else one synthetic file for json/other formats.
+	// The output as switchable files: the pipeline's split, index.html plus the lifted
+	// svg/image files, for html-shaped snips, else one synthetic file for json/other formats.
 	const files: AssetFile[] = result.files?.length
 		? result.files
 		: [{ name: result.mode === 'assistive' ? 'output.json' : 'output.html', language: result.mode === 'assistive' ? 'json' : 'html', text: code }];
-	const activeFile = files[Math.min(active, files.length - 1)]!; // files is never empty (fallback above)
+	const activeFile = files[Math.min(active, files.length - 1)]!; // files is never empty, per the fallback above
 	const copyText = activeFile.text ?? activeFile.dataUrl ?? '';
 
 	// Preview makes sense for the html-shaped formats, whose output is a self-contained
-	// document (markup plus an inline stylesheet) that renders on its own: the html
-	// format (semantic bem classes + css) and the bem-scss/legacy bem-css variants.
+	// document, markup plus an inline stylesheet, that renders on its own: the html
+	// format, semantic bem classes plus css, and the bem-scss/legacy bem-css variants.
 	// Tailwind/jsx/vue need a build step or a framework, so they would not render standalone.
 	const PREVIEWABLE: ReadonlySet<string> = new Set(['html', 'bem-css', 'bem-scss']);
 	// Preview renders the inlined self-contained document, so it works even though the
@@ -97,7 +97,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		try {
 			await navigator.clipboard.writeText(copyText);
 			setCopied(true);
-			setTimeout(() => setCopied(false), 1400);
+			setTimeout(() => setCopied(false), FLASH_MS);
 		} catch (err) {
 			console.warn('snipcode: copy failed', err);
 		}
@@ -113,7 +113,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	};
 
 	// Save a single file to disk. Image files carry a data: url that downloads
-	// directly; text files (html/svg/json) become a blob whose object url is revoked
+	// directly; text files such as html, svg, and json become a blob whose object url is revoked
 	// once the browser has read it.
 	const downloadFile = (file: AssetFile): void => {
 		if (file.language === 'image' && file.dataUrl) {
@@ -125,8 +125,8 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	};
 
-	// Download every file of a split snip (so index.html lands next to the svg/image
-	// files it references and renders standalone), or the single file otherwise.
+	// Download every file of a split snip, so index.html lands next to the svg/image
+	// files it references and renders standalone, or the single file otherwise.
 	const onDownload = (): void => {
 		if (files.length > 1) files.forEach(downloadFile);
 		else downloadFile(activeFile);
@@ -135,7 +135,6 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	return (
 		<div style={container}>
 			<div style={header}>
-				<span style={eyebrowStyle}>{eyebrow}</span>
 				<div style={actions}>
 					<button className="sc-icon-btn" title={copied ? 'Copied' : `Copy ${activeFile.name}`} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
@@ -184,29 +183,19 @@ export function ResultPanel({ result }: ResultPanelProps) {
 				</pre>
 			)}
 			{result.warnings && result.warnings.length > 0 && (
-				<div style={warn}>{result.warnings.length} warning{result.warnings.length > 1 ? 's' : ''} during capture</div>
+				<div style={warn}>{result.warnings.length} Warning{result.warnings.length > 1 ? 's' : ''}</div>
 			)}
 		</div>
 	);
 }
 
-/** The download mime type for a text file's language (image files use their data: url). */
+/** The download mime type for a text file's language; image files use their data: url instead. */
 function mimeFor(language: AssetFile['language']): string {
 	if (language === 'svg') return 'image/svg+xml';
 	if (language === 'json') return 'application/json';
 	return 'text/html';
 }
 
-/** Trigger a browser download of `href` saved as `name`, via a transient anchor click. */
-function triggerDownload(href: string, name: string): void {
-	const a = document.createElement('a');
-	a.href = href;
-	a.download = name;
-	a.rel = 'noopener';
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
-}
 const container: React.CSSProperties = {
 	border: `1px solid ${SURFACE.border}`, borderRadius: `${RADIUS.xl}px`, background: COLORS.white,
 	display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: SURFACE.shadow,
@@ -214,10 +203,9 @@ const container: React.CSSProperties = {
 	flex: 1, minHeight: 0,
 };
 const header: React.CSSProperties = {
-	display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px',
+	display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '9px 12px',
 	background: SURFACE.headerGradient, borderBottom: `1px solid ${SURFACE.border}`,
 };
-const eyebrowStyle: React.CSSProperties = { fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: COLORS.slate500 };
 const actions: React.CSSProperties = { display: 'flex', gap: '2px', alignItems: 'center' };
 const tabBar: React.CSSProperties = {
 	display: 'flex', gap: '2px', padding: '0 8px', overflowX: 'auto',

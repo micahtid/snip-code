@@ -1,17 +1,17 @@
 /**
  * inspect/assets.ts: page-wide asset extractor
  *
- * Pipeline position: inspect (page-scoped; reads the live dom directly, does not run the element pipeline)
- * Reads from DOM: document/window (live; page must be loaded)
- * Writes to: nothing (pure extraction, no side effects)
+ * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
+ * Reads from DOM: document/window; live, the page must be loaded
+ * Writes to: nothing; pure extraction, no side effects
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
  * Why this exists: the assets inspector lists every image, media file, css
  * background, favicon, and inline svg the page uses so the panel can preview each
- * and download it. Each record carries the original url (the card previews it with
- * a plain `<img>` and only fetches bytes on download); inline svgs have no url, so
- * their truncated markup rides along instead. Ported (rewritten) from v1
+ * and download it. Each record carries the original url, so the card previews it
+ * with a plain `<img>` and only fetches bytes on download; inline svgs have no url,
+ * so their truncated markup rides along instead. Ported by rewriting from v1
  * assets/asset-extractor.ts, dropping the class/logger ceremony and the mime /
  * byte-size / source-element fields the panel never showed.
  */
@@ -96,7 +96,7 @@ function collectMedia(addUrl: AddUrl): void {
 	}
 }
 
-/** Computed background-image url()s across the page (capped). */
+/** Computed background-image url()s across the page, capped. */
 function collectBackgrounds(addUrl: AddUrl): void {
 	const elements = document.querySelectorAll('*');
 	const limit = Math.min(elements.length, MAX_BG_ELEMENTS);
@@ -137,7 +137,7 @@ function collectFavicons(addUrl: AddUrl): void {
 	}
 }
 
-/** A dimensions object carrying only the values that are known (no undefined keys). */
+/** A dimensions object carrying only the values that are known, with no undefined keys. */
 function dims(width?: number, height?: number): { width?: number; height?: number } {
 	const out: { width?: number; height?: number } = {};
 	if (width) out.width = width;
@@ -155,7 +155,7 @@ function filenameOf(url: string): string {
 	}
 }
 
-/** The url of each srcset candidate (the first token of each comma-separated entry). */
+/** The url of each srcset candidate: the first token of each comma-separated entry. */
 function parseSrcset(srcset: string): string[] {
 	if (!srcset) return [];
 	return srcset.split(',').map((entry) => entry.trim().split(/\s+/)[0] ?? '').filter(Boolean);

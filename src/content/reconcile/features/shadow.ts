@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, inaccessible.closedShadowRoots
- * Writes to Captured: clone (flattens open shadow trees + styles), warnings
+ * Writes to Captured: clone, flattening open shadow trees + styles, and warnings
  *
  * A feature handler for the shadow dom encapsulation mechanism.
  *
@@ -11,18 +11,17 @@
  * Detection criterion: an element in the subtree exposing an open shadowRoot.
  * Early-returns when none do.
  * Transform contract: for each open shadow host, inlines the shadow's
- * adoptedStyleSheets + <style> css (with :host rescoped to a data-* marker on
- * the clone host) as a <style>, and appends a clone of the shadow tree to the
- * clone host so its rendered markup travels. Closed roots cannot be read from a
- * content script (only counted via cdp pierce at capture) and are surfaced as a
- * warning. Mutates clone only.
- * Test bundle: TODO, add later (open web-component).
+ * adoptedStyleSheets + <style> css as a <style>, with :host rescoped to a data-*
+ * marker on the clone host, and appends a clone of the shadow tree to the clone
+ * host so its rendered markup travels. Closed roots cannot be read from a content
+ * script, only counted via cdp pierce at capture, and are surfaced as a warning.
+ * Mutates clone only.
  *
  * Why this exists: cloneNode(true) does not copy shadow roots, so a web
  * component's entire rendered content and its scoped styles vanish from the clone.
- * Flattening the open shadow tree into light dom (with styles rescoped) keeps the
- * component visible standalone. Slot distribution is approximated (shadow content
- * is appended after the host's light children); ::part/::slotted styles are
+ * Flattening the open shadow tree into light dom, with styles rescoped, keeps the
+ * component visible standalone. Slot distribution is approximated: shadow content
+ * is appended after the host's light children; ::part/::slotted styles are
  * carried verbatim. Shadow content is appended last so match.pairedSubtrees keeps
  * the light-dom pairing aligned for downstream handlers.
  */
@@ -40,7 +39,7 @@ export function apply(captured: Captured): Captured {
 
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const shadow = (original as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-		if (!shadow) continue; // No open shadow root (closed roots read as null here)
+		if (!shadow) continue; // No open shadow root; closed roots read as null here
 		sawShadow = true;
 
 		const id = hostId++;
@@ -72,7 +71,7 @@ function collectShadowCss(shadow: ShadowRoot): string {
 		try {
 			for (const rule of Array.from(sheet.cssRules)) parts.push(rule.cssText);
 		} catch {
-			// Cross-origin constructable sheet (rare); skip.
+			// Cross-origin constructable sheet, rare; skip.
 		}
 	}
 	// Inline <style> blocks inside the shadow root.

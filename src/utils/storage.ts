@@ -1,11 +1,11 @@
 /**
  * utils/storage.ts: chrome.storage.local access
  *
- * Pipeline position: n/a (cross-cutting utility)
+ * Pipeline position: n/a; cross-cutting utility
  *
- * Why this exists: all persistent state (preferences, byok keys, snippets) lives
- * in chrome.storage.local and NEVER chrome.storage.sync, sync would replicate to
- * google's cloud, violating the local-only guarantee.
+ * Why this exists: all persistent state, such as preferences, byok keys, and
+ * snippets, lives in chrome.storage.local and NEVER chrome.storage.sync, sync
+ * would replicate to google's cloud, violating the local-only guarantee.
  * This is the single typed gateway to that store so the policy is enforced in one
  * place. Byok keys are stored under per-provider keys and are never logged.
  */
@@ -38,25 +38,25 @@ export async function setPrefs(patch: Partial<UserPreferences>): Promise<void> {
 	await chrome.storage.local.set({ [PREFS_KEY]: { ...current, ...patch } });
 }
 
-/** Read a provider's byok key (empty string if unset). Never logged. */
+/** Read a provider's byok key; empty string if unset. Never logged. */
 export async function getKey(provider: Provider): Promise<string> {
 	const stored = await chrome.storage.local.get(byokKey(provider));
 	return (stored[byokKey(provider)] as string | undefined) ?? '';
 }
 
-/** Store a provider's byok key under chrome.storage.local (never sync). */
+/** Store a provider's byok key under chrome.storage.local, never sync. */
 export async function setKey(provider: Provider, key: string): Promise<void> {
 	await chrome.storage.local.set({ [byokKey(provider)]: key });
 }
 
-/** Read the saved snippets (oldest first). */
+/** Read the saved snippets, oldest first. */
 export async function listSnippets(): Promise<SnippetRecord[]> {
 	const stored = await chrome.storage.local.get(SNIPPETS_KEY);
 	return (stored[SNIPPETS_KEY] as SnippetRecord[] | undefined) ?? [];
 }
 
 /**
- * Append a snippet, evicting the oldest beyond the 50-cap (fifo).
+ * Append a snippet, evicting the oldest beyond the 50-cap in fifo order.
  *
  * @param record - the snippet to store
  */

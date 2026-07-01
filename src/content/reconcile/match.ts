@@ -1,5 +1,5 @@
 /**
- * reconcile/match.ts: rule-to-element matching (the authored cascade)
+ * reconcile/match.ts: rule-to-element matching, the authored cascade
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, foundationRules, componentRules
@@ -11,12 +11,12 @@
  * Why this exists: a captured element's appearance is the sum of every rule that
  * matches it, resolved by the cascade. This module recreates that cascade from
  * the flattened CssRule[], for each live element in the picked subtree it finds
- * the matching rules (via the browser's own element.matches()), orders them by
+ * the matching rules via the browser's own element.matches(), orders them by
  * specificity, and merges their declarations into one authored value per
  * property. bake.ts then asks, per property, whether that authored value round-
  * trips to the computed value.
  *
- * Deliberately small (~150 lines): no specificity edge-case handling, no
+ * Deliberately small, about 150 lines: no specificity edge-case handling, no
  * layer-assignment expansions, no hand-curated property Sets. The probe in
  * bake.ts validates every decision against the real computed value, so a
  * slightly-imperfect cascade here cannot produce a wrong pixel, it can only
@@ -50,8 +50,8 @@ export function authoredCascade(captured: Captured): Map<Element, Map<string, st
 			if (!ruleApplies(rule, el)) continue;
 			mergeRule(rule, ranked, order++);
 		}
-		// Inline style attribute wins over any stylesheet rule (specificity 1,0,0,0
-		// equivalent); fold it in last at the highest rank.
+		// Inline style attribute wins over any stylesheet rule, equivalent to
+		// specificity 1,0,0,0; fold it in last at the highest rank.
 		foldInlineStyle(el, ranked, order++);
 		result.set(el, resolveWinners(ranked));
 	}
@@ -60,8 +60,8 @@ export function authoredCascade(captured: Captured): Map<Element, Map<string, st
 
 /**
  * Pairs each live original element with its clone counterpart, tolerant of nodes
- * that feature handlers inject into the clone (a pseudo <style>, an icons sprite
- * <svg>, etc.). Without this, index-based pairing drifts the moment any handler
+ * that feature handlers inject into the clone, such as a pseudo <style> or an icons
+ * sprite <svg>. Without this, index-based pairing drifts the moment any handler
  * mutates clone structure, and downstream handlers silently misalign.
  *
  * Walks both trees in lockstep, skipping injected clone-only children at each
@@ -97,9 +97,9 @@ export interface BakeSpec {
 
 /**
  * Shared helper for the "bake these computed properties when non-default" feature
- * handlers (tables, lists, forms, text micro-features). Pairs each live element
+ * handlers for tables, lists, forms, and text micro-features. Pairs each live element
  * with its clone, reads the live computed value, and bakes the non-default ones
- * onto the clone (inline + bakedStyles), skipping any already baked by the
+ * onto the clone, both inline and bakedStyles, skipping any already baked by the
  * per-element pass.
  *
  * Keeping the getComputedStyle read here, in the reconcile core, also keeps the
@@ -133,14 +133,14 @@ export function bakeNonDefaultProps(captured: Captured, specs: BakeSpec[]): void
  */
 export interface RedundancyContext {
 	/** The value a NON-inherited property falls back to with no declaration: the
-	 * per-tag ua default (denoise) or the css initial value (a pseudo-element).
+	 * per-tag ua default for denoise, or the css initial value for a pseudo-element.
 	 * Undefined when no baseline is available, which keeps the declaration. */
 	defaultValue: string | undefined;
 	/** The value an INHERITED property falls back to with no declaration: the
-	 * immediate parent's computed value (denoise) or the originating element's
-	 * computed value (a pseudo-element). Undefined when none, which keeps it. */
+	 * immediate parent's computed value for denoise, or the originating element's
+	 * computed value for a pseudo-element. Undefined when none, which keeps it. */
 	inheritedValue: string | undefined;
-	/** Whether this property inherits by default (see inheritsProperty). */
+	/** Whether this property inherits by default; see inheritsProperty. */
 	inherits: boolean;
 	/** Whether the element establishes a transform (transform/translate/rotate/scale). */
 	hasTransform: boolean;
@@ -150,9 +150,9 @@ export interface RedundancyContext {
 
 /**
  * Pure test for a declaration that can be dropped without changing rendering: it
- * either has no effect in this context (an inert transition, an orphan transform-
- * origin) or it merely restates the value the element falls back to anyway (the ua
- * default for a non-inherited property, the inherited value for an inherited one).
+ * either has no effect in this context, such as an inert transition or an orphan
+ * transform-origin, or it merely restates the value the element falls back to anyway,
+ * the ua default for a non-inherited property or the inherited value for an inherited one.
  *
  * Every drop is render-identical by construction, so the caller can remove the
  * declaration with zero pixel change. The match is exact-string against a value the
@@ -160,7 +160,7 @@ export interface RedundancyContext {
  * This is the same "validate against ground truth, never heuristics" stance bake.ts
  * takes; here it decides removal instead of baking.
  *
- * @param prop - the property name (longhand, or a shorthand we special-case)
+ * @param prop - the property name, a longhand or a shorthand we special-case
  * @param value - the declared value under test
  * @param ctx - the fallback values and transform context for this element
  * @returns true when the declaration is safe to drop
@@ -170,15 +170,15 @@ export function isRedundantDecl(prop: string, value: string, ctx: RedundancyCont
 	// Custom properties never enumerate in getComputedStyle and carry author intent.
 	if (prop.startsWith('--')) return false;
 	// An empty value does not serialize anyway, so keep it: removing it would mean
-	// calling removeProperty on the name, and for a shorthand (the `all` reset above
-	// all) that cascades to every longhand and wipes the element's whole inline style.
+	// calling removeProperty on the name, and for a shorthand, above all the `all`
+	// reset, that cascades to every longhand and wipes the element's whole inline style.
 	if (v === '') return false;
 	// A transition acts only on a state change, never at rest, so a zeroed one is
 	// pure noise. Real durations stay so a polish-added :hover still animates.
 	if (prop === 'transition') return isInertTransition(v);
 	if (prop.startsWith('transition-')) return false;
-	// transform-origin/perspective-origin resolve to per-element pixels (so a probe
-	// default is not comparable) and act only on a box that has a transform or
+	// transform-origin/perspective-origin resolve to per-element pixels, so a probe
+	// default is not comparable, and act only on a box that has a transform or
 	// perspective. Without one they render identically whether present or not.
 	if (prop === 'transform-origin') return !ctx.hasTransform;
 	if (prop === 'perspective-origin') return !ctx.hasTransform && !ctx.hasPerspective;
@@ -196,7 +196,7 @@ export function isRedundantDecl(prop: string, value: string, ctx: RedundancyCont
 }
 
 /**
- * Reads the transform/perspective context an element (or pseudo-element) establishes,
+ * Reads the transform/perspective context an element or pseudo-element establishes,
  * used to decide whether transform-origin/perspective-origin have any effect.
  *
  * @param cs - the element's computed style
@@ -212,8 +212,8 @@ export function transformContext(cs: CSSStyleDeclaration): { hasTransform: boole
 }
 
 /**
- * Whether a property inherits by default. This is a css-spec fact (the same one
- * bake.ts reads from the engine via a probe); it is listed here because the
+ * Whether a property inherits by default. This is a css-spec fact, the same one
+ * bake.ts reads from the engine via a probe; it is listed here because the
  * override-trap-safe redundancy test must know inheritance independent of any value,
  * which a value-based probe cannot answer when the value equals the default.
  *
@@ -223,7 +223,7 @@ export function inheritsProperty(prop: string): boolean {
 	return INHERITED.has(prop);
 }
 
-/** True for clone nodes a feature handler injected (no original counterpart). */
+/** True for clone nodes a feature handler injected, with no original counterpart. */
 export function isInjected(el: Element): boolean {
 	const tag = el.tagName.toLowerCase();
 	if (tag === 'style' || tag === 'script') return true;
@@ -234,8 +234,8 @@ export function isInjected(el: Element): boolean {
 	return false;
 }
 
-/** Depth-first list of element nodes in the subtree, root first. */
-function subtreeElements(root: Element): Element[] {
+/** Depth-first list of element nodes in the subtree, root first, in document order. */
+export function subtreeElements(root: Element): Element[] {
 	const out: Element[] = [];
 	const walk = (el: Element): void => {
 		out.push(el);
@@ -249,9 +249,9 @@ function subtreeElements(root: Element): Element[] {
  * Decides whether a rule contributes to an element's authored cascade.
  *
  * Uses the browser's live matcher so descendant/child combinators resolve
- * against the real ancestor chain. Excludes pseudo-element rules (they target
- * ::before/::marker, not the element, the pseudo handler owns those) and rules
- * gated by an @media query that does not currently apply. @container/@supports
+ * against the real ancestor chain. Excludes pseudo-element rules, which target
+ * ::before/::marker rather than the element and are owned by the pseudo handler, and
+ * rules gated by an @media query that does not currently apply. @container/@supports
  * are not gated here: the bake probe validates every property against the
  * captured computed value, so an over-included rule can only fall back to
  * computed, never corrupt output.
@@ -279,7 +279,7 @@ export function mediaApplies(query: string): boolean {
 	try {
 		return window.matchMedia(query).matches;
 	} catch {
-		return true; // Unparseable query: do not exclude (probe still guards bake)
+		return true; // Unparseable query: do not exclude, probe still guards bake
 	}
 }
 
@@ -322,7 +322,7 @@ function wins(a: RankedDecl, b: RankedDecl): boolean {
 	return a.order >= b.order;
 }
 
-/** Flatten the ranked map to plain prop→value winners. */
+/** Flatten the ranked map to plain prop->value winners. */
 function resolveWinners(ranked: Map<string, RankedDecl>): Map<string, string> {
 	const out = new Map<string, string>();
 	for (const [prop, decl] of ranked) out.set(prop, decl.value);
@@ -335,7 +335,7 @@ function isInertTransition(value: string): boolean {
 }
 
 /**
- * Properties whose computed value is a per-element used value (resolved pixels),
+ * Properties whose computed value is a per-element used value, resolved pixels,
  * which can never be compared against a probe default. Geometry is baked
  * deliberately by bake.ts, so it is kept rather than de-noised.
  */
@@ -347,8 +347,8 @@ const LAYOUT_PROPS = new Set([
 ]);
 
 /**
- * Properties that inherit by default, per the css cascade specs (CSS2.2 plus the
- * text/font/list/table modules and their webkit aliases). Over- or under-stating
+ * Properties that inherit by default, per the css cascade specs: CSS2.2 plus the
+ * text/font/list/table modules and their webkit aliases. Over- or under-stating
  * this set could drop a value that does not truly fall back, so it errs toward the
  * documented inherited list.
  */

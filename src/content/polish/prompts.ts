@@ -2,24 +2,24 @@
  * polish/prompts.ts: llm polish prompt template
  *
  * Pipeline position: polish
- * Reads from Captured: n/a (operates on the vaulted code string)
+ * Reads from Captured: n/a; operates on the vaulted code string
  * Writes to Captured: n/a
  *
- * Principles applied: none (text generation).
+ * Principles applied: none; text generation.
  *
  * Why this exists: the polish phase is text-only and bills per token, so the prompt is
  * deliberately minimal, it asks the model for two cheap, high-value edits and a
- * strict json reply, nothing that could corrupt the deterministic markup (which
- * is already pixel-correct from the earlier phases). Token-heavy values are vaulted
+ * strict json reply, nothing that could corrupt the deterministic markup, which
+ * is already pixel-correct from the earlier phases. Token-heavy values are vaulted
  * behind @@V*@@ placeholders before the model sees them, so it never touches
- * svgs/gradients/base64. Ported (rewritten) from marketing-website
- * generation-prompts.ts (the post-stage-3-exp-14 text-only template).
+ * svgs/gradients/base64. Ported and rewritten from marketing-website
+ * generation-prompts.ts, the post-stage-3-exp-14 text-only template.
  */
 
 /**
  * Builds the polish prompt for a vaulted code string.
  *
- * The model is asked ONLY to (1) propose semantic class renames and (2) add
+ * The model is asked ONLY to propose semantic class renames and add
  * hover/focus interaction rules, both purely additive, and to return strict
  * json so the result is machine-applicable. It must not rewrite the markup,
  * touch @@V*@@ placeholders, or change any geometry.

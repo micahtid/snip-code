@@ -1,15 +1,15 @@
 /**
  * components/inspect/InspectPanel.tsx: routes a page-scan result to its view
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a, ui only
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none, ui only.
  *
- * Why this exists: a page scan ships one discriminated InspectResult (App listens;
- * see App.tsx). This is the panel-side terminus: it selects the matching view by
- * `kind` (a card grid for fonts/colors/assets, a code block for the style json) and
+ * Why this exists: a page scan ships one discriminated InspectResult; App listens,
+ * see App.tsx. This is the panel-side terminus: it selects the matching view by
+ * `kind`, a card grid for fonts/colors/assets or a code block for the schema, and
  * shows a shared warnings line beneath it, so each view only renders its own cards.
  */
 import type { InspectResult } from '../../content/inspect/types';

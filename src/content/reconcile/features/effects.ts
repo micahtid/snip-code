@@ -3,19 +3,18 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (bakes non-default effect properties)
+ * Writes to Captured: bakedStyles + clone, baking non-default effect properties
  *
  * Principles applied: extends the "ship what renders" rule to visual-effect
  * properties the authored cascade often omits.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/filter
- * (also backdrop-filter, clip-path, mask, mix-blend-mode, box-shadow)
+ * also covers backdrop-filter, clip-path, mask, mix-blend-mode, box-shadow.
  * Detection criterion: an element with a non-default value for one of the effect
  * properties. Per-element early-return otherwise.
  * Transform contract: bakes those computed values onto the matching clone
- * element, absolutizing any url() (mask-image, clip-path: url(#...)). Mutates
- * bakedStyles + clone inline styles only.
- * Test bundle: TODO, add later (glassmorphism backdrop, clip-path hero).
+ * element, absolutizing any url(), for example in mask-image or clip-path:
+ * url(#...). Mutates bakedStyles + clone inline styles only.
  *
  * Why this exists: filter/backdrop-filter/clip-path/mask/mix-blend-mode and
  * multi-layer/inset box-shadow are central to a component's look but frequently
@@ -30,8 +29,8 @@ const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /**
  * The visual-effect properties this handler preserves, the bounded css-spec
- * surface for filters/masking/compositing (a feature-handler spec set, not a
- * hardcoded property list). Vendor-prefixed forms are included
+ * surface for filters/masking/compositing, a feature-handler spec set, not a
+ * hardcoded property list. Vendor-prefixed forms are included
  * because chrome still computes some masks/clips under -webkit-.
  */
 const EFFECT_PROPS = [
@@ -74,7 +73,7 @@ export function apply(captured: Captured): Captured {
 	return captured;
 }
 
-/** Rewrite relative url()s to absolute; keep fragment refs (clip-path: url(#x)) and data/blob. */
+/** Rewrite relative url()s to absolute; keep fragment refs like clip-path: url(#x) and data/blob. */
 function absolutizeUrls(value: string, base: string): string {
 	return value.replace(URL_IN_VALUE, (match, quote: string, url: string) => {
 		if (/^(data:|blob:|https?:|#)/i.test(url)) return match;

@@ -2,8 +2,8 @@
  * convert/bem.ts: inline styles -> bem classes + css/scss
  *
  * Pipeline position: convert
- * Reads from Captured: clone (inline-styled)
- * Writes to Captured: nothing (deep-copies the clone; canonical clone untouched)
+ * Reads from Captured: clone, inline-styled
+ * Writes to Captured: nothing; deep-copies the clone, canonical clone untouched
  *
  * A format transform of the baked result.
  *
@@ -12,15 +12,15 @@
  * identical declaration sets into shared bem-named classes (block + block__element)
  * and emits either a flat css ruleset or a nested scss block. Like the other
  * emitters it works on a copy of the clone so all 7 formats stay derivable from
- * one capture. Ported (rewritten) from v1 css-to-bem.ts (inline-to-class dedup),
- * dropping the per-case branches.
+ * one capture. Ported from v1 css-to-bem.ts, the inline-to-class dedup, rewritten
+ * and dropping the per-case branches.
  *
  * Beyond identical-set dedup, it factors a shared base class out of near-identical
- * rules (see factorBaseClasses): rules sharing a large declaration subset are split
+ * rules; see factorBaseClasses. Rules sharing a large declaration subset are split
  * into one base class holding the intersection and per-member modifier classes
  * carrying only the differences, so the common declarations ship once. The split is
- * render-neutral by construction (flat equal-specificity selectors, plus a family
- * guard that never separates a shorthand from an overlapping longhand) and fully
+ * render-neutral by construction, using flat equal-specificity selectors plus a family
+ * guard that never separates a shorthand from an overlapping longhand, and fully
  * deterministic, so the output stays byte-stable.
  */
 import type { Captured } from '../types';
@@ -45,7 +45,7 @@ export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 	const block = sanitize(firstClassOrTag(work)) || 'snip';
 	const elements = [work, ...Array.from(work.querySelectorAll('*'))] as HTMLElement[];
 
-	const byDecls = new Map<string, ClassRule>(); // declString -> class (dedup)
+	const byDecls = new Map<string, ClassRule>(); // declString -> class, for dedup
 	const rules: ClassRule[] = [];
 	const tagCounters = new Map<string, number>();
 
@@ -81,7 +81,7 @@ export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 /**
  * Read an element's inline declarations, snapping values for cleaner output. Parses
  * the serialized `style.cssText` rather than enumerating `style.item(i)`: a shorthand
- * set to a `var()` value (e.g. `border-color: var(--border)`, `margin: var(--gap)`) is
+ * set to a `var()` value, for example `border-color: var(--border)` or `margin: var(--gap)`, is
  * stored by the cssom as pending-substitution longhands whose `getPropertyValue` returns
  * the empty string, so item-enumeration would emit `border-top-color: ;` and the css
  * parser would silently drop the whole declaration. The serialized text preserves the
@@ -98,10 +98,10 @@ function readDecls(el: HTMLElement): Array<[string, string]> {
 
 /**
  * Splits a serialized inline-style string into `[property, value]` pairs. Splits on
- * top-level `;` and `:` only: a `;` or `:` inside parentheses (a `url(data:...;base64,)`
- * background, a nested function) or a quoted string is part of the value, never a
+ * top-level `;` and `:` only: a `;` or `:` inside parentheses, such as a `url(data:...;base64,)`
+ * background or a nested function, or a quoted string is part of the value, never a
  * separator. An `!important` priority is stripped, matching the prior getPropertyValue
- * read (the class rules carry no competing selectors, so priority changes nothing).
+ * read; the class rules carry no competing selectors, so priority changes nothing.
  *
  * @param cssText - the element's serialized inline style
  */
@@ -165,10 +165,10 @@ interface FactorGroup {
  * by the largest [prop, value] intersection they share and, for each group above the
  * overlap/size thresholds, emits a base class holding the intersection and demotes each
  * member to a modifier carrying only its remaining declarations. Every member element
- * then references `base base--modifier` (or just `base` when its modifier is empty).
+ * then references `base base--modifier`, or just `base` when its modifier is empty.
  *
  * Render-neutral by construction: all selectors are flat single classes of equal
- * specificity, and the family guard (see familyGuardedBase) never splits a
+ * specificity, and the family guard, see familyGuardedBase, never splits a
  * shorthand/longhand family across the base and a modifier, so no property appears in
  * both rules for one element and the base-then-modifier order cannot change a used
  * value. The element resolves to exactly its original declaration set.
@@ -240,11 +240,11 @@ function factorBaseClasses(
  * enough; otherwise its seed stays solo. Class-name ordering makes the result
  * deterministic.
  *
- * @param rules - the deduped class rules (root excluded from grouping)
+ * @param rules - the deduped class rules, with the root excluded from grouping
  * @returns the accepted groups, each with its guarded base and members
  */
 function buildGroups(rules: ClassRule[]): FactorGroup[] {
-	// Richest rules seed first so a dominant pattern (e.g. a button reset) forms its
+	// Richest rules seed first so a dominant pattern, for example a button reset, forms its
 	// group before a sparse rule can claim its members; ties break by class name so the
 	// order stays deterministic.
 	const candidates = rules
@@ -262,7 +262,7 @@ function buildGroups(rules: ClassRule[]): FactorGroup[] {
 			const shared = intersectDecls(base, candidate.decls);
 			// Admit a candidate only when the shared set is large enough AND covers most of
 			// the candidate's own declarations. A rule that overlaps by just a few generic
-			// declarations (a shared font-family, a transition duration) would otherwise
+			// declarations, say a shared font-family or a transition duration, would otherwise
 			// pollute the group and shrink the base to those few, leaving the real members
 			// duplicating their common declarations across modifiers.
 			if (shared.size >= MIN_SHARED_DECLS && shared.size >= candidate.decls.length * MIN_COHESION) {
@@ -297,18 +297,18 @@ function intersectDecls(base: Map<string, string>, decls: Array<[string, string]
  * declaration in the same member is render-significant, so hoisting it into the base
  * (which is emitted before every modifier) while its partner stays in a modifier could
  * reorder them and change the used value. Order matters exactly when two declarations
- * share a longhand: a shorthand and one of the longhands it sets (e.g. `border` and
- * `border-color`, `padding` and `padding-top`), where whichever comes later wins for the
+ * share a longhand: a shorthand and one of the longhands it sets, for example `border` and
+ * `border-color`, or `padding` and `padding-top`, where whichever comes later wins for the
  * shared longhand. When a member holds such a pair both properties are excluded from the
  * base and kept whole inside each modifier, preserving the member's original order.
  *
- * Order-sensitivity is read from the engine (see orderSensitive), never a hand-listed
- * shorthand table, so it covers every shorthand the browser knows (and any it gains
- * later) and never misclassifies independent properties. Identical independent
+ * Order-sensitivity is read from the engine; see orderSensitive. It is never a hand-listed
+ * shorthand table, so it covers every shorthand the browser knows, and any it gains
+ * later, and never misclassifies independent properties. Identical independent
  * declarations therefore still hoist to the base even when a sibling differs across
  * members. For the common case of computed-longhand-only rules the guard is a no-op.
  *
- * @param base - the pre-guard intersection (prop -> shared value)
+ * @param base - the pre-guard intersection, prop -> shared value
  * @param members - the rules sharing that intersection
  * @returns the subset of the base that is safe to hoist
  */
@@ -341,8 +341,8 @@ function familyGuardedBase(base: Map<string, string>, members: ClassRule[]): Map
  * sets them on a throwaway style in both orders and compares the resulting declaration
  * blocks. Equal blocks mean the two are independent and safe to separate; different
  * blocks mean they share a longhand one overrides, so order is significant. A false
- * positive only makes factoring more cautious, and the test has no false negatives (if
- * order genuinely matters the blocks differ), so the guard stays render-safe. Memoized
+ * positive only makes factoring more cautious, and the test has no false negatives, since
+ * if order genuinely matters the blocks differ, so the guard stays render-safe. Memoized
  * per value pair, since the same declarations recur across a group's members.
  *
  * @param probe - a throwaway element whose style is reused as the parser
@@ -362,8 +362,8 @@ function orderSensitive(probe: HTMLElement, memo: Map<string, boolean>, a: [stri
 
 /**
  * Sets two declarations in order on a throwaway style and returns its resulting set of
- * declarations, sorted so only an order-dependent difference (one declaration overriding
- * the other) shows up, not the insertion order itself.
+ * declarations, sorted so only an order-dependent difference, one declaration overriding
+ * the other, shows up, not the insertion order itself.
  *
  * @param probe - the element whose style is used as a throwaway parser
  * @param first - the declaration set first
@@ -434,7 +434,7 @@ function firstClassOrTag(el: Element): string {
 /**
  * Lowercase, hyphenate, and trim a token for use in a class name. A leading digit is
  * prefixed with an underscore: a css class selector cannot start with an unescaped
- * digit, so a hashed author class like `15kfc` (common in css-in-js) would otherwise
+ * digit, so a hashed author class like `15kfc`, common in css-in-js, would otherwise
  * emit the invalid selector `.15kfc`, which the browser silently ignores, leaving the
  * snip unstyled. Underscore is a valid identifier start, so `._15kfc` renders.
  */
@@ -458,8 +458,8 @@ const MIN_GROUP_SIZE = 2;
 
 /**
  * The minimum fraction of a candidate rule's declarations that the shared base must
- * cover for it to join a group. Below this a rule overlaps only incidentally (a common
- * font or transition timing), so admitting it would shrink the base to those few generic
+ * cover for it to join a group. Below this a rule overlaps only incidentally, on a common
+ * font or transition timing, so admitting it would shrink the base to those few generic
  * declarations and strand each member's real commonality in its modifier.
  */
 const MIN_COHESION = 0.5;

@@ -2,8 +2,8 @@
  * convert/tw-palette.ts: tailwind color palette matcher
  *
  * Pipeline position: convert
- * Reads from Captured: nothing (operates on color strings)
- * Writes to Captured: nothing (pure color matcher)
+ * Reads from Captured: nothing; operates on color strings
+ * Writes to Captured: nothing; a pure color matcher
  *
  * A lookup feeding the tailwind converter.
  *
@@ -11,13 +11,13 @@
  * To emit clean tailwind, an arbitrary captured color must map to the nearest
  * palette entry, but only when the match is perceptually faithful, else the
  * converter must fall back to an arbitrary value (bg-[#4287f5]) so brand colors
- * are not silently drifted. Matching uses ciede2000 (perceptual color distance),
+ * are not silently drifted. Matching uses ciede2000, a perceptual color distance,
  * with tight thresholds: <1 is exact, 1-2 is an acceptable nudge, >=2 forces an
- * arbitrary value. Ported (rewritten) from v1 tailwind-palette.ts, full module.
+ * arbitrary value. Ported from v1 tailwind-palette.ts, rewritten, full module.
  *
- * The palette table below is the tailwind v3 vocabulary (a finite output-format
+ * The palette table below is the tailwind v3 vocabulary: a finite output-format
  * data table, not a hardcoded list of styling properties or tags, so the
- * no-hardcoded-list rule does not apply to format vocabularies).
+ * no-hardcoded-list rule does not apply to format vocabularies.
  */
 
 /** Tailwind v3 palette: "family-shade" -> hex. */
@@ -52,20 +52,20 @@ const TAILWIND_COLORS: Record<string, string> = {
 const DELTA_E_EXACT = 1;
 const DELTA_E_CLOSE = 2;
 
-/** Lazily-computed lab values for every palette entry (perf: compute once). */
+/** Lazily-computed lab values for every palette entry, computed once for performance. */
 let labCache: Array<{ name: string; lab: [number, number, number] }> | null = null;
 
 /** The matched palette token plus whether it is perceptually exact. */
 export interface PaletteMatch {
-	name: string; // "Slate-700" (caller prefixes bg-/text-/border-)
+	name: string; // "Slate-700"; the caller prefixes bg-/text-/border-
 	exact: boolean;
 }
 
 /**
  * Finds the nearest tailwind palette token to a css color, or null if no token
- * is within perceptual tolerance (caller should emit an arbitrary value).
+ * is within perceptual tolerance, in which case the caller should emit an arbitrary value.
  *
- * @param colorValue - any css color string (hex/rgb/hsl; oklch returns null)
+ * @param colorValue - any css color string; hex, rgb, or hsl, while oklch returns null
  */
 export function matchColor(colorValue: string): PaletteMatch | null {
 	const hex = parseColor(colorValue);
@@ -89,7 +89,7 @@ export function matchColor(colorValue: string): PaletteMatch | null {
 
 /**
  * Parses a css color to a 6-digit #hex, or null for colors we cannot/should not
- * match (transparent, currentcolor, oklch/oklab, keywords). Alpha is dropped, 
+ * match, such as transparent, currentcolor, oklch/oklab, and keywords. Alpha is dropped,
  * the caller preserves opacity separately.
  *
  * @param value - the css color string
@@ -190,7 +190,7 @@ export function deltaE2000(lab1: [number, number, number], lab2: [number, number
 	);
 }
 
-/** Build (and cache) the lab value for every palette entry. */
+/** Build, and cache, the lab value for every palette entry. */
 function paletteLab(): Array<{ name: string; lab: [number, number, number] }> {
 	if (labCache) return labCache;
 	labCache = Object.entries(TAILWIND_COLORS).map(([name, hex]) => {

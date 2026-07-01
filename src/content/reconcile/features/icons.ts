@@ -2,26 +2,25 @@
  * features/icons.ts: svg sprite resolution
  *
  * Pipeline position: reconcile
- * Reads from Captured: root (source document), clone
- * Writes to Captured: clone (prepends a hidden <defs> sprite), warnings
+ * Reads from Captured: root, the source document, and clone
+ * Writes to Captured: clone, prepending a hidden <defs> sprite, and warnings
  *
  * Principles applied: none directly; a feature handler for the svg <use href>
  * mechanism.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use
  * Detection criterion: the clone contains at least one <use> with a local
- * (#fragment) href / xlink:href. Early-return otherwise.
+ * #fragment href / xlink:href. Early-return otherwise.
  * Transform contract: reads referenced <symbol>/element ids from the live source
  * document, clones them, and inlines them inside a hidden <svg><defs> at the
  * top of the clone so the <use> refs resolve locally. Modifies clone only;
  * never reads other handlers' fields.
- * Test bundle: TODO, add later (sprite-based icon set).
  *
  * Why this exists: design systems store icons as <symbol> definitions in a shared
  * sprite outside the picked subtree. Without resolving them at extraction time,
  * every <use href="#x"> renders as a blank 0x0 box once the snip is pasted
  * elsewhere. currentColor on fill/stroke keeps working because reconcile already
- * baked `color` onto the snip root. Ported (rewritten) from v1
+ * baked `color` onto the snip root. Ported and rewritten from v1
  * vision/_archive/context-builder.ts (resolveSvgSprites/collectUseRefs/
  * findSymbolInDocument).
  */
@@ -49,7 +48,7 @@ export function apply(captured: Captured): Captured {
 	const symbols: Element[] = [];
 	for (const id of wantedIds) {
 		// Symbols are global ids in the live document; getElementById finds them
-		// even when they live outside the picked subtree (the whole point).
+		// even when they live outside the picked subtree, which is the whole point.
 		const found = document.getElementById(id);
 		if (found) symbols.push(found.cloneNode(true) as Element);
 		else captured.warnings.push(`icons: sprite symbol #${id} not found in document`);

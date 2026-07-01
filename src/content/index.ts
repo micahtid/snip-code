@@ -1,18 +1,18 @@
 /**
  * content/index.ts: pipeline orchestrator + content-script entry point
  *
- * Pipeline position: spans the whole pipeline (this is the conductor, not a single phase)
- * Reads from Captured: constructs it (capture phase), reads it downstream
+ * Pipeline position: spans the whole pipeline; this is the conductor, not a single phase
+ * Reads from Captured: constructs it in the capture phase, reads it downstream
  * Writes to Captured: owns the lifecycle
  *
  * Why this exists: chrome injects exactly one content script per page. This file
  * is that script. It owns the message protocol and runs the phases in order:
  *
- * capture → content/capture/* (picker → dom clone → stylesheet discovery)
- * reconcile → content/reconcile/*
- * resolve → content/resolve/*
- * convert → content/convert/*
- * polish → content/polish/*
+ * capture -> content/capture/* : picker -> dom clone -> stylesheet discovery
+ * reconcile -> content/reconcile/*
+ * resolve -> content/resolve/*
+ * convert -> content/convert/*
+ * polish -> content/polish/*
  *
  * capture produces a Captured object, which the reconcile through convert phases
  * turn into clean code before it is emitted.
@@ -61,7 +61,7 @@ import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 import type { Provider } from './types';
-import { START_SCAN, INSPECT_RESULT } from './types';
+import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, SNIP_RESULT } from './types';
 import type { InspectResult, ScanKind } from './inspect/types';
 import { extractPageFonts } from './inspect/fonts';
 import { extractPageAssets } from './inspect/assets';
@@ -69,13 +69,6 @@ import { extractPageColors } from './inspect/colors';
 import { extractPageSchema } from './inspect/schema/extract';
 import { optimizeSchema } from './inspect/schema/optimize';
 import { enhanceColors, enhanceSchema } from './inspect/ai';
-
-/** Ui-local signals from the sidebar's picker control (components/Picker.tsx). */
-const START_PICKER = 'SNIPCODE_START_PICKER';
-/** Sent when the user presses esc with focus in the side panel (App.tsx). The
- * picker's own esc handler only fires when the page holds keyboard focus, so this
- * is the panel-side path that tears the overlay down regardless of focus. */
-const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
 
 /**
  * The reconcile-phase feature handlers, in apply order. Each handles
@@ -120,6 +113,39 @@ function runFeatures(captured: Captured): void {
 	}
 }
 
+/**
+ * Runs the reconcile, resolve, and self-containment transform that turns a captured
+ * snip into a self-contained clone. Shared by the live pipeline (runPipeline) and the
+ * headless grader path (runHeadless) so the phase order has one authoritative home:
+ * adding or reordering a phase happens here, never in two places that could drift.
+ */
+async function runCoreTransform(captured: Captured): Promise<void> {
+	// Reconcile phase. Authored and inherited styles bake onto the clone, the feature
+	// handlers run over the result with isolated failures, then de-noise drops the inert
+	// declarations they bake so every output format ships the smaller result.
+	reconcile(captured);
+	runFeatures(captured);
+	denoise(captured);
+
+	// Resolve phase. Var resolution in a single pass, @font-face absolutization,
+	// @keyframes pairing. Order: vars first, which may rewrite values, then
+	// fonts/keyframes which read the now-stable baked styles.
+	resolveVariables(captured);
+	resolveFonts(captured);
+	resolveAnimations(captured);
+
+	// Closing reconciliation: make the standalone artifact's own render the source of
+	// truth, baking the original's resolved value for any paint/box property that does
+	// not reproduce standalone: dangling tokens, lost inherited fonts, missing
+	// backgrounds. Runs last so it corrects anything resolve left dangling.
+	reconcileStandalone(captured);
+	// Self-containment: guarantee every font stack ends in a generic so text never
+	// falls back to the default serif when a custom font is unavailable, then inline the
+	// referenced fonts and images as data uris so the artifact does not depend on the origin.
+	appendGenericFallbacks(captured);
+	await inlineResources(captured);
+}
+
 /** Only one picker may be active at a time. */
 let activePicker: ElementPicker | null = null;
 
@@ -128,7 +154,7 @@ let activePicker: ElementPicker | null = null;
  * Captured object every later phase reads.
  *
  * @param root - the live element the user picked
- * @param screenshot - cropped png data url from the picker (may be empty)
+ * @param screenshot - cropped png data url from the picker; may be empty
  * @returns the populated Captured object
  */
 async function capture(root: Element, screenshot: string): Promise<Captured> {
@@ -165,20 +191,20 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 			closedShadowRoots: 0, // Cdp shadow-pierce fills this in.
 		},
 		bakedStyles: new Map(),
-		measuredStates: null, // measureInteractiveStates fills this in (null = not measured).
+		measuredStates: null, // measureInteractiveStates fills this in; null means not measured.
 		warnings: settled.warning ? [settled.warning] : [],
 	};
 
-	// Privileged augmentation (background-mediated). Both soft-fail: the snip
+	// Privileged augmentation, background-mediated. Both soft-fail: the snip
 	// proceeds on cssom-only data if cdp attach is refused or a fetch is blocked.
 	await augmentInheritedChainViaCDP(captured); // inherited cascade via cdp
 	await recoverCrossOriginSheets(captured); // Recover cors-blocked sheets by privileged re-fetch
-	// Fallback for the @font-face rules the re-fetch could not get (a cdn waf blocking the
-	// extension origin): read the sheet text the browser already parsed over cdp. This closes
+	// Fallback for the @font-face rules the re-fetch could not get, such as when a cdn waf blocks
+	// the extension origin: read the sheet text the browser already parsed over cdp. This closes
 	// the font-discovery gap cross-origin cdns leave behind the same-origin policy and bot rules.
 	await recoverCrossOriginFontsViaCDP(captured);
-	// Measure interactive states by forcing them live (soft-fails to copying authored rules
-	// if cdp is busy). Runs after the clone is taken, so the transient force/shim it applies
+	// Measure interactive states by forcing them live; soft-fails to copying authored rules
+	// if cdp is busy. Runs after the clone is taken, so the transient force/shim it applies
 	// to the live page never reaches the artifact. Sequential with the cdp paths above; each
 	// attaches and detaches fully before the next, so the debugger is never doubly attached.
 	await measureInteractiveStates(captured);
@@ -191,7 +217,7 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
  *
  * @param root - the picked element
  * @param screenshot - cropped png data url
- * @param mode - snip (code) or assistive (json)
+ * @param mode - snip for code, or assistive for json
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
 	// Builder gate: refuse framer/wix/etc before doing any capture
@@ -207,10 +233,10 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const captured = await capture(root, screenshot);
 
 	// Assistive mode stops at capture and emits metadata json. Snip mode runs the
-	// full pipeline (reconcile, resolve, convert, polish) and emits the styled clone.
+	// full pipeline of reconcile, resolve, convert, and polish, and emits the styled clone.
 	if (mode === 'assistive') {
 		// Assistive runs the capture phase only, then emits the assistive json and
-		// delivers it over the user's chosen channels (clipboard / file / webhook).
+		// delivers it over the user's chosen channels: clipboard, file, or webhook.
 		const doc = buildAssistiveJson(captured);
 		const prefs = await getPrefs();
 		const deliveryWarnings = await deliver(doc, prefs);
@@ -218,48 +244,27 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// Reconcile phase. Authored and inherited styles bake onto the clone, the feature
-	// handlers run over the result (isolated failures), then de-noise drops the inert
-	// declarations they bake so every output format ships the smaller result.
-	reconcile(captured);
-	runFeatures(captured);
-	denoise(captured);
-
-	// Resolve phase. Var resolution (single pass), @font-face absolutization,
-	// @keyframes pairing. Order: vars first (may rewrite values), then
-	// fonts/keyframes which read the now-stable baked styles.
-	resolveVariables(captured);
-	resolveFonts(captured);
-	resolveAnimations(captured);
-
-	// Closing reconciliation: make the standalone artifact's own render the source of
-	// truth, baking the original's resolved value for any paint/box property that does
-	// not reproduce standalone (dangling tokens, lost inherited fonts, missing
-	// backgrounds). Runs last so it corrects anything resolve left dangling.
-	reconcileStandalone(captured);
-	// Self-containment: guarantee every font stack ends in a generic so text never
-	// falls back to the default serif when a custom font is unavailable, then inline the
-	// referenced fonts and images as data uris so the artifact does not depend on the origin.
-	appendGenericFallbacks(captured);
-	await inlineResources(captured);
+	// Turn the captured snip into a self-contained clone: reconcile, resolve, and
+	// self-containment; see runCoreTransform for the authoritative phase order.
+	await runCoreTransform(captured);
 
 	// Convert phase. Emit the user's chosen format and run dead-code elimination
 	// over the emitted stylesheet.
 	const prefs = await getPrefs();
 	const format: OutputFormat = prefs.defaultOutput;
 	const { html, css } = emitFormat(captured, format);
-	// The bem emitters (now including the html format) put their generated classes on a
+	// The bem emitters, now including the html format, put their generated classes on a
 	// private copy, so the cleaner must match selectors against the emitted markup, not
-	// the inline-styled clone (which carries none of those classes). The tailwind/jsx/vue
+	// the inline-styled clone, which carries none of those classes. The tailwind/jsx/vue
 	// paths keep matching against the clone, their established, render-verified behavior.
 	const classMarkup = format === 'html' || format === 'bem-css' || format === 'bem-scss' ? html : undefined;
 	let cleanedCss = cleanCss(css, captured, classMarkup);
 	let finalHtml = html;
-	// Token usage from the polish call (the only billed step); shipped so the panel
+	// Token usage from the polish call, the only billed step; shipped so the panel
 	// can total it for the session. Undefined when polish is skipped or has no key.
 	let usage: TokenUsage | undefined;
 
-	// Polish phase (byok, optional). Additive class renames + hover rules from the
+	// Polish phase, byok and optional. Additive class renames + hover rules from the
 	// user's own llm; silently no-ops without a key. Gated to class-based formats
 	// so it never rewrites tailwind utilities or jsx.
 	if (format === 'html' || format === 'bem-css' || format === 'bem-scss') {
@@ -268,14 +273,14 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		finalHtml = polished.html;
 		cleanedCss = polished.css;
 		usage = polished.usage;
-		// A configured-key polish failure surfaces as a warning (a missing key is a
-		// silent skip and returns none), so the sidebar reports why no edits landed.
+		// A configured-key polish failure surfaces as a warning; a missing key is a
+		// silent skip and returns none, so the sidebar reports why no edits landed.
 		if (polished.warning) captured.warnings.push(polished.warning);
 	}
 
 	// Format phase. For html-shaped formats, lift the injected pseudo <style> into the
-	// single head stylesheet and pretty-print both markup and css (jsx/vue self-indent
-	// and keep composeDocument). Runs after polish so the formatting reflects exactly what
+	// single head stylesheet and pretty-print both markup and css; jsx/vue self-indent
+	// and keep composeDocument. Runs after polish so the formatting reflects exactly what
 	// ships, including any renamed classes.
 	let output: string;
 	if (isHtmlShaped(format)) {
@@ -289,11 +294,11 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 
 	// Delivery split: for the self-contained html-shaped output, lift the inline svgs
 	// and data-uri images into their own referenced files so the panel can show them as
-	// switchable tabs. `output` (the inlined document) is kept for preview and storage.
+	// switchable tabs. `output`, the inlined document, is kept for preview and storage.
 	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
 	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage });
 
-	// Persist the snippet (fifo, capped at 50). Best-effort; a storage failure
+	// Persist the snippet, fifo and capped at 50. Best-effort; a storage failure
 	// never fails the snip.
 	void storeSnippet({
 		id: crypto.randomUUID(),
@@ -321,7 +326,7 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 		case 'html':
 		case 'bem-css':
 			// The html format ships a self-contained document with semantic bem classes
-			// and a stylesheet (not inline styles), the most readable single-file output.
+			// and a stylesheet, not inline styles, the most readable single-file output.
 			// The legacy bem-css value resolves here too, so older snippets still emit.
 			return emitBem(captured, false);
 		case 'bem-scss':
@@ -333,8 +338,8 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 		case 'vue':
 			return emitVue(captured);
 		default:
-			// Inline-styled html: no longer user-selectable (the html format emits bem
-			// above) and no longer graded separately, kept as the safe fallback emitter.
+			// Inline-styled html: no longer user-selectable, since the html format emits bem
+			// above, and no longer graded separately, kept as the safe fallback emitter.
 			return emitHtml(captured);
 	}
 }
@@ -346,13 +351,13 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
  */
 function shipResult(payload: Record<string, unknown>): void {
 	chrome.runtime
-		.sendMessage({ type: 'SNIP_RESULT', requestId: crypto.randomUUID(), payload })
+		.sendMessage({ type: SNIP_RESULT, requestId: crypto.randomUUID(), payload })
 		.catch(() => {});
 }
 
 /**
  * Runs one page-scoped inspector and ships its result to the sidebar. Each
- * inspector reads the live dom directly (no element pick, no screenshot). A hard
+ * inspector reads the live dom directly, with no element pick and no screenshot. A hard
  * failure is isolated here: an empty result of the right kind ships with the cause
  * as a warning, so the panel renders something rather than nothing.
  *
@@ -370,8 +375,8 @@ async function runScan(scan: ScanKind): Promise<void> {
 }
 
 /**
- * Builds the result for one scan. Colors and style json run the optional byok ai
- * pass inline before shipping (it skips silently without a key), mirroring how
+ * Builds the result for one scan. Colors and schema run the optional byok ai
+ * pass inline before shipping; it skips silently without a key, mirroring how
  * polish runs inline in a snip. The ai pass merges onto the raw extraction and
  * reports any configured-key failure as a warning plus its billed token usage.
  */
@@ -414,14 +419,14 @@ function emptyResult(scan: ScanKind, warnings: string[]): InspectResult {
 	}
 }
 
-/** The active byok provider and resolved model (override or default), from prefs. */
+/** The active byok provider and resolved model, override or default, from prefs. */
 async function activeModel(): Promise<{ provider: Provider; model: string }> {
 	const prefs = await getPrefs();
 	return { provider: prefs.activeProvider, model: prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider] };
 }
 
 /**
- * Ships a page-scan result to the sidebar (InspectPanel renders it). Like a snip
+ * Ships a page-scan result to the sidebar, where InspectPanel renders it. Like a snip
  * result, the sidebar may be closed, so a delivery failure is swallowed. The
  * optional token usage rides alongside so the panel can total it for the session.
  */
@@ -466,7 +471,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 });
 
 // ---------------------------------------------------------------------------
-// Headless test bridge (tests/run-pipeline.mjs, the HEADLESS_SNIP entry point).
+// Headless test bridge for tests/run-pipeline.mjs, the HEADLESS_SNIP entry point.
 // The grader drives a snip by css selector instead of the picker.
 // Page and content script share the document but live in separate js worlds, so
 // chrome.runtime messages and window.postMessage do not reach the page; a
@@ -486,12 +491,12 @@ document.addEventListener('snip-runner:snip', (ev) => {
 });
 
 /**
- * Runs the full pipeline for a selector (no picker, no screenshot) and returns a
+ * Runs the full pipeline for a selector, with no picker and no screenshot, and returns a
  * self-contained output.html string. This is the deterministic path the grader
  * measures, the byok llm polish phase is intentionally not run here.
  *
  * @param selector - css selector for the element to snip
- * @param mode - snip (code) or assistive (json)
+ * @param mode - snip for code, or assistive for json
  */
 async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promise<Record<string, unknown>> {
 	try {
@@ -503,40 +508,30 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 
 		const captured = await capture(el, '');
 		if (mode === 'assistive') {
-			// Headless assistive: emit the assistive json (no delivery side effects).
+			// Headless assistive: emit the assistive json with no delivery side effects.
 			return { ok: true, status: 'ok', assistive: buildAssistiveJson(captured), warnings: captured.warnings };
 		}
 
-		reconcile(captured);
-		runFeatures(captured);
-		denoise(captured);
-		resolveVariables(captured);
-		resolveFonts(captured);
-		resolveAnimations(captured);
-		// Closing reconciliation: bake the original's resolved value for any paint/box
-		// property that does not reproduce in the standalone clone.
-		reconcileStandalone(captured);
-		appendGenericFallbacks(captured);
-		await inlineResources(captured);
-		// Completeness probe (read-only): diff the reconciled clone's standalone render
+		await runCoreTransform(captured);
+		// Completeness probe, read-only: diff the reconciled clone's standalone render
 		// against the live original. After the reconciliation this should be near zero;
 		// a residual is the deterministic, drift-free signal of what still fails to
 		// reproduce. It mutates nothing.
 		const probe = await probeStandalone(captured);
-		// Emit the bem (class-based) output the default html format ships, deterministically:
-		// the byok polish phase stays out, so the classes are the generated block__tag-n names
-		// (irrelevant to rendering). Assemble it the same way the sidebar does (lift pseudo
-		// styles into one stylesheet, pretty-print markup + css, compose), then the grader
+		// Emit the bem class-based output the default html format ships, deterministically:
+		// the byok polish phase stays out, so the classes are the generated block__tag-n names,
+		// which are irrelevant to rendering. Assemble it the same way the sidebar does: lift pseudo
+		// styles into one stylesheet, pretty-print markup + css, compose, then the grader
 		// scores it as output.html. The inline-styled emitter rendered identically once the
 		// css cleaner landed, so it is no longer emitted as a separate reference.
 		const bem = emitFormat(captured, 'bem-css');
 		const cleanedCss = cleanCss(bem.css, captured, bem.html);
 		const doc = assembleHtmlDocument(bem.html, cleanedCss, captured.warnings);
 
-		// Emitted-artifact probe (read-only): diff the shipped BEM artifact's own
-		// standalone render against the live original (delta A) and the inline-clone
-		// render (delta B). This classifies each residual as an emit-cascade loss (delta B),
-		// an absent-at-bake gap (delta A absent from the css), or another render-time
+		// Emitted-artifact probe, read-only: diff the shipped BEM artifact's own
+		// standalone render against the live original, delta A, and the inline-clone
+		// render, delta B. This classifies each residual as an emit-cascade loss, delta B,
+		// an absent-at-bake gap where delta A is absent from the css, or another render-time
 		// mechanism. Measured on the cleaned css that actually ships.
 		const emittedProbe = probeEmitted(captured, bem.html, cleanedCss);
 

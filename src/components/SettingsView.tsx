@@ -1,21 +1,21 @@
 /**
  * components/SettingsView.tsx: byok + preferences settings tab
  *
- * Pipeline position: n/a (configures polish + assistive delivery)
+ * Pipeline position: n/a. Configures polish + assistive delivery.
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
  * Why this exists: the settings tab, provider dropdown, password-masked
  * api key, model override, per-field verify buttons, default output format,
  * assistive delivery, webhook url. Everything persists to chrome.storage.local via
- * utils/storage (never sync). The key is validated against the live provider
- * (utils/byok) and never logged. If no key is configured, polish silently
+ * utils/storage, never sync. The key is validated against the live provider
+ * through utils/byok and never logged. If no key is configured, polish silently
  * no-ops and the rest of the pipeline still produces output.
  */
 import { useEffect, useState } from 'react';
-import { Check, ChevronDown, ShieldCheck } from 'lucide-react';
+import { Check, ChevronDown, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import type { OutputFormat, Provider, UserPreferences } from '../content/types';
 import { DEFAULT_MODELS, PROVIDER_LABELS, validateKey, type ValidationResult } from '../utils/byok';
 import { getKey, getPrefs, setKey, setPrefs } from '../utils/storage';
@@ -24,7 +24,7 @@ import { COLORS } from '../theme';
 
 const PROVIDERS: Provider[] = ['openrouter', 'anthropic', 'openai', 'google'];
 // The html format emits self-contained markup with semantic bem classes and a
-// stylesheet (see emitFormat), so a separate bem-css option would be a duplicate.
+// stylesheet, produced by emitFormat, so a separate bem-css option would be a duplicate.
 const FORMATS: OutputFormat[] = ['html', 'tailwind', 'bem-scss', 'jsx-tailwind', 'jsx-css', 'vue'];
 const DELIVERY: Array<'clipboard' | 'file' | 'webhook'> = ['clipboard', 'file', 'webhook'];
 /** Title-case labels for the assistive delivery options. */
@@ -39,7 +39,7 @@ const styles = {
 
 /**
  * A custom replacement for a native <select>. The options panel opens in the normal
- * document flow (not as an overlay), so it pushes the fields below it down rather
+ * document flow instead of as an overlay, so it pushes the fields below it down rather
  * than floating over them. A fixed, transparent backdrop closes it on an outside
  * click. Used here instead of the browser's select so the control matches the
  * frosted-glass ui and stays consistent across platforms.
@@ -95,6 +95,10 @@ export function SettingsView() {
 	const [key, setKeyState] = useState('');
 	const [result, setResult] = useState<ValidationResult | null>(null);
 	const [testing, setTesting] = useState(false);
+	// The key is masked by default; the in-field eye toggles it and only appears while
+	// the field is active, meaning focused or holding a key, never on an untouched empty field.
+	const [showKey, setShowKey] = useState(false);
+	const [keyFocused, setKeyFocused] = useState(false);
 
 	// Load prefs + the active provider's key on mount.
 	useEffect(() => {
@@ -151,15 +155,35 @@ export function SettingsView() {
 			<div style={styles.field}>
 				<label style={styles.label}>API Key (Local)</label>
 				<div style={styles.inputRow}>
-					<input
-						className="sc-input"
-						type="password"
-						value={key}
-						placeholder="Paste key"
-						onChange={(e) => setKeyState(e.target.value)}
-						onBlur={() => void setKey(prefs.activeProvider, key)}
-						style={{ flex: 1, minWidth: 0 }}
-					/>
+					<div className="sc-key-field">
+						<input
+							className="sc-input"
+							type={showKey ? 'text' : 'password'}
+							value={key}
+							placeholder="Paste key"
+							onChange={(e) => setKeyState(e.target.value)}
+							onFocus={() => setKeyFocused(true)}
+							onBlur={() => {
+								setKeyFocused(false);
+								setShowKey(false); // Re-mask on leave so the key is never left exposed.
+								void setKey(prefs.activeProvider, key);
+							}}
+							style={{ paddingRight: '38px' }}
+						/>
+						{(keyFocused || key.length > 0) && (
+							<button
+								type="button"
+								className="sc-key-reveal"
+								title={showKey ? 'Hide key' : 'Show key'}
+								aria-label={showKey ? 'Hide key' : 'Show key'}
+								// Keep focus in the input so the toggle stays visible through the click.
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={() => setShowKey((v) => !v)}
+							>
+								{showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+							</button>
+						)}
+					</div>
 					<button className="sc-icon-action" type="button" title="Test Key" disabled={testing} onClick={() => void onTest()}>
 						<ShieldCheck size={18} />
 					</button>
@@ -184,7 +208,7 @@ export function SettingsView() {
 					</button>
 				</div>
 				{(testing || result) && (
-					<div style={{ marginTop: '8px', fontSize: '12px', color: testing ? COLORS.slate500 : result?.valid ? '#2e7d32' : '#c62828' }}>
+					<div style={{ marginTop: '8px', fontSize: '12px', color: testing ? COLORS.slate500 : result?.valid ? COLORS.success : COLORS.danger }}>
 						{testing ? 'Testing…' : result?.valid ? `Valid (${result.modelEcho})` : `Invalid: ${result?.error}`}
 					</div>
 				)}

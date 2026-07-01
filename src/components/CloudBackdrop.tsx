@@ -1,22 +1,22 @@
 /**
  * components/CloudBackdrop.tsx: decorative cloud-sky backdrop
  *
- * Pipeline position: n/a (ui chrome, not a pipeline phase)
+ * Pipeline position: n/a. Ui chrome, not a pipeline phase.
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
  * Why this exists: v1's signature look is a soft procedural cloud sky behind the
- * frosted-glass panel. This reproduces it (the user asked for the same background
- * design). Clouds are generated deterministically from fixed shape/anchor data so
- * the layout is stable across renders (no Math.random flicker) and identical to
+ * frosted-glass panel. This reproduces it because the user asked for the same background
+ * design. Clouds are generated deterministically from fixed shape/anchor data so
+ * the layout is stable across renders, with no Math.random flicker, and identical to
  * v1's. The geometry classes (.cloud-*) live in global-css.ts; per-cloud and
  * per-piece position/blur/opacity are inline because they are data, not style.
  * Static by design: v1's backdrop does not animate, so neither does this.
  */
 
-/** One soft white blob within a cloud cluster (fractions of the cluster box). */
+/** One soft white blob within a cloud cluster, in fractions of the cluster box. */
 interface CloudPiece {
 	x: number;
 	y: number;
@@ -27,7 +27,7 @@ interface CloudPiece {
 	rotation: number;
 }
 
-/** A positioned cluster of pieces (percentages of the viewport). */
+/** A positioned cluster of pieces, in percentages of the viewport. */
 interface Cloud {
 	id: number;
 	left: number;
@@ -44,8 +44,8 @@ const clamp = (v: number, min: number, max: number): number => Math.min(max, Mat
 /**
  * Indexes into a non-empty template list, wrapping with modulo so any id maps to a
  * real entry. The throw is unreachable for the constant lists below but lets the
- * type checker prove the result is defined without a non-null assertion (the rest
- * of the codebase avoids `!`).
+ * type checker prove the result is defined without a non-null assertion; the rest
+ * of the codebase avoids `!`.
  *
  * @param list - a non-empty constant template list
  * @param i - any index; wrapped into range
@@ -119,7 +119,7 @@ const GRADIENTS = [
 
 /**
  * The eight cloud anchors: horizontal position, size, and depth/blur/opacity that
- * place each cluster along a gentle horizon curve (back clouds higher + blurrier).
+ * place each cluster along a gentle horizon curve, with back clouds higher and blurrier.
  */
 const ANCHORS = [
 	{ x: -12, size: 120, lift: 16, template: 2, puff: 1, variant: 2, opacity: 0.16, blur: 34, ratio: 0.28, base: 6, depth: 34, baseW: 1.2, baseH: 1.35, baseShift: 0.08 },
@@ -134,7 +134,7 @@ const ANCHORS = [
 
 /**
  * Expands one anchor into a positioned cluster of pieces. Integer seeds drive the
- * jitter (deterministic, so the sky is identical every render). The horizon curve
+ * jitter deterministically, so the sky is identical every render. The horizon curve
  * lifts edge clouds and seats centre clouds lower for a domed sky.
  */
 function buildCloud(anchor: (typeof ANCHORS)[number], id: number): Cloud {

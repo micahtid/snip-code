@@ -1,18 +1,18 @@
 /**
  * inspect/schema/types.ts: the page-schema contracts
  *
- * Pipeline position: inspect (page-scoped; the shape the schema extractor emits)
- * Reads from DOM: nothing (type definitions)
- * Writes to: nothing (type definitions)
+ * Pipeline position: inspect, page-scoped; the shape the schema extractor emits
+ * Reads from DOM: nothing; type definitions
+ * Writes to: nothing; type definitions
  *
- * Principles applied: none (type definitions).
+ * Principles applied: none; type definitions.
  *
- * Why this exists: the style-json inspector walks the page and produces a
+ * Why this exists: the schema inspector walks the page and produces a
  * compressed design-system schema, the PageSchema below. Defining its shape and
  * every sub-type in one place lets the extractor, the optimizer, and the ai pass
- * agree on the contract. Ported from v1 schema/types.ts (the output types only;
- * v1's re-exports of capture-side types are dropped, the extractor reads the live
- * dom directly).
+ * agree on the contract. Ported from v1 schema/types.ts, the output types only;
+ * v1's re-exports of capture-side types are dropped, and the extractor reads the live
+ * dom directly.
  */
 
 /** One color the page uses, with the css contexts it appears in and a usage count. */
@@ -30,23 +30,22 @@ export interface FontEntry {
 	usage: string;
 }
 
-/** One node in the compressed structure tree (style ref + optional repeat/text). */
+/** One node in the compressed structure tree: style ref plus optional repeat/text. */
 export interface SchemaNode {
 	tag: string;
 	role: string;
-	s?: string; // Style map reference (e.g. "s1").
+	s?: string; // Style map reference, e.g. "s1".
 	children?: SchemaNode[];
 	repeat?: number; // Collapsed sibling count.
 	text?: string; // Placeholder like "{h1}", "{p}", "{btn}".
 }
 
-/** A repeated element pattern (3+ identical role+style elements). */
+/** A repeated element pattern: 3+ identical role+style elements. */
 export interface ComponentPattern {
 	name: string;
 	role: string;
 	count: number;
 	structure: SchemaNode;
-	styleRefs: string[];
 }
 
 /** One interactive-state rule lifted from the stylesheets. */
@@ -83,7 +82,7 @@ export interface SectionBlueprint {
 	padding?: string;
 }
 
-/** A recurring element grouping across sections (e.g. "heading+text+cta"). */
+/** A recurring element grouping across sections, e.g. "heading+text+cta". */
 export interface ContentGrouping {
 	pattern: string;
 	occurrences: number;

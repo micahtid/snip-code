@@ -2,16 +2,16 @@
  * capture/dom.ts: dom clone + element metadata extraction
  *
  * Pipeline position: capture
- * Reads from Captured: root (the live element)
- * Writes to Captured: clone, element (metadata block)
+ * Reads from Captured: root, the live element
+ * Writes to Captured: clone, element, the metadata block
  *
  * Why this exists: the pipeline mutates a detached copy of the picked subtree so
  * the live page is never touched. This module produces that copy and the element
- * metadata block (selectors, xpath, bounding box, ancestors) that both snip and
+ * metadata block of selectors, xpath, bounding box, and ancestors that both snip and
  * assistive modes consume. It also promotes lazy-loaded image
- * sources at clone time so images render when the snip is pasted elsewhere
- * (ported from v1 extraction-pipeline cloneElement). Shadow piercing is added
- * later (cdp); this is the cssom/light-dom baseline.
+ * sources at clone time so images render when the snip is pasted elsewhere,
+ * ported from v1 extraction-pipeline cloneElement. Shadow piercing is added
+ * later via cdp; this is the cssom/light-dom baseline.
  */
 import type { Captured } from '../types';
 
@@ -26,7 +26,7 @@ const LAZY_SRC_ATTRS = ['data-src', 'data-lazy-src', 'data-original', 'data-srcs
  * Deep-clones the picked subtree into a detached node and promotes lazy images.
  *
  * cloneNode(true) already copies every attribute and child; the extra work here
- * is replacing placeholder `src`s (1x1 gifs, data-uri spacers) with the real url
+ * is replacing placeholder `src`s, such as 1x1 gifs or data-uri spacers, with the real url
  * stashed in a data-* attribute, so a pasted snip shows the image immediately
  * instead of waiting for the host page's lazy-load script that no longer runs.
  *
@@ -58,8 +58,8 @@ function isPlaceholderSrc(src: string): boolean {
  * Builds the element metadata block.
  *
  * Both modes need this: snip uses the tag/box, assistive emits the whole block
- * as json. Emits two selectors, `selector` (shortest unique) and
- * `robustSelector` (prefers stable data-attributes or ids over class hashes) so a
+ * as json. Emits two selectors: `selector`, the shortest unique one, and
+ * `robustSelector`, which prefers stable data-attributes or ids over class hashes, so a
  * downstream agent can re-find the element even if class hashes churn.
  *
  * @param root - the live picked element
@@ -87,7 +87,7 @@ export function buildElementMetadata(root: Element): Captured['element'] {
 	};
 }
 
-/** Serializes the (already reconciled) clone to an html string. */
+/** Serializes the already-reconciled clone to an html string. */
 export function serializeRaw(clone: Element): string {
 	return clone.outerHTML;
 }
@@ -168,7 +168,7 @@ function ancestorsOf(el: Element): Array<{ tagName: string; selector: string; ro
 		out.push({
 			tagName: node.tagName.toLowerCase(),
 			selector: shortestSelector(node),
-			// Omit the key entirely when absent (exactOptionalPropertyTypes).
+			// Omit the key entirely when absent, per exactOptionalPropertyTypes.
 			...(role ? { role } : {}),
 		});
 		node = node.parentElement;

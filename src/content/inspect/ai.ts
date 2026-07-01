@@ -1,30 +1,29 @@
 /**
- * inspect/ai.ts: the optional byok ai pass for colors and style json
+ * inspect/ai.ts: the optional byok ai pass for colors and schema
  *
- * Pipeline position: inspect (page-scoped; the optional byok finishing pass)
- * Reads from DOM: nothing (operates on the already-extracted reports)
- * Writes to: nothing (returns enhanced reports)
+ * Pipeline position: inspect, page-scoped; the optional byok finishing pass
+ * Reads from DOM: nothing; operates on the already-extracted reports
+ * Writes to: nothing; returns enhanced reports
  *
- * Principles applied: none (orchestration).
+ * Principles applied: none; orchestration.
  *
  * Why this exists: two inspectors gain an optional ai pass. Colors asks the user's
- * own llm to assign a semantic role to each extracted color; style json asks it to
+ * own llm to assign a semantic role to each extracted color; schema asks it to
  * synthesize the raw page schema into a design-system json. This mirrors
- * polish/llm.ts exactly: build a prompt, delegate to the background broker (content
- * scripts cannot reach provider hosts under the page csp), parse the reply, and
- * forward the provider's token usage. A missing key is a silent no-op that returns
+ * polish/llm.ts exactly: build a prompt, delegate to the background broker, parse
+ * the reply, and forward the provider's token usage. The broker makes the call
+ * because content scripts cannot reach provider hosts under the page csp. A missing
+ * key is a silent no-op that returns
  * the raw input unchanged; a configured-key failure returns the raw input plus a
  * warning so the panel can say why no roles/synthesis landed. There is no
  * double-ship and no state machine, the same shape polish already proved.
  */
 import type { Provider, TokenUsage } from '../types';
+import { requestLlm, NO_KEY } from '../llm';
 import type { ColorReport } from './types';
 import { buildColorsPrompt, buildSchemaPrompt } from './prompts';
 
-/** The error code the broker returns when no key is stored for the provider. */
-const NO_KEY = 'NO_KEY_CONFIGURED';
-
-/** Output-token ceiling for schema synthesis (the broker clamps it per provider). */
+/** Output-token ceiling for schema synthesis; the broker clamps it per provider. */
 const SCHEMA_MAX_TOKENS = 8000;
 
 /** A color inspector result after the optional role-assignment pass. */
@@ -35,7 +34,7 @@ export interface EnhancedColors {
 	warning?: string;
 }
 
-/** A style-json result after the optional synthesis pass. */
+/** A schema result after the optional synthesis pass. */
 export interface EnhancedSchema {
 	json: string;
 	aiEnhanced: boolean;
@@ -47,10 +46,10 @@ export interface EnhancedSchema {
  * Assigns a semantic role to each color via the byok llm, merging the roles onto
  * the raw extraction. Returns the colors unchanged when no key is configured.
  *
- * @param colors - the raw extracted colors (most-used first)
+ * @param colors - the raw extracted colors, most-used first
  * @param cssVariables - color-valued css custom properties, the designer's named tokens
  * @param provider - the active byok provider
- * @param model - the model to use (resolved by the caller)
+ * @param model - the model to use, resolved by the caller
  */
 export async function enhanceColors(
 	colors: ColorReport[],
@@ -78,11 +77,11 @@ export async function enhanceColors(
 /**
  * Synthesizes the raw page schema into a design-system json via the byok llm.
  * Returns the raw schema json unchanged when no key is configured, or when the
- * reply is not parseable json (it degrades to the raw input with a warning).
+ * reply is not parseable json, in which case it degrades to the raw input with a warning.
  *
  * @param schemaJson - the optimized page schema, serialized as json
  * @param provider - the active byok provider
- * @param model - the model to use (resolved by the caller)
+ * @param model - the model to use, resolved by the caller
  */
 export async function enhanceSchema(schemaJson: string, provider: Provider, model: string): Promise<EnhancedSchema> {
 	const { text, error, usage } = await requestLlm(provider, model, buildSchemaPrompt(schemaJson), SCHEMA_MAX_TOKENS);
@@ -96,34 +95,6 @@ export async function enhanceSchema(schemaJson: string, provider: Provider, mode
 		return withMeta({ json: schemaJson, aiEnhanced: false }, 'schema ai reply was not valid json', usage);
 	}
 	return withMeta({ json: JSON.stringify(synthesized, null, 2), aiEnhanced: true }, undefined, usage);
-}
-
-/**
- * Asks the background broker to call the provider and return its raw reply text.
- * Identical in spirit to polish's requestLlm: on any failure the text is null and
- * the broker's error message and any billed usage come back alongside it.
- */
-async function requestLlm(
-	provider: Provider,
-	model: string,
-	prompt: string,
-	max?: number,
-): Promise<{ text: string | null; error?: string; usage?: TokenUsage }> {
-	try {
-		const res = (await chrome.runtime.sendMessage({
-			type: 'LLM_REQUEST',
-			requestId: crypto.randomUUID(),
-			payload: { provider, model, prompt, max },
-		})) as { ok: boolean; result?: { text?: string; usage?: TokenUsage }; error?: { message?: string }; usage?: TokenUsage } | undefined;
-		if (res?.ok && res.result) {
-			const text = res.result.text ?? '';
-			return res.result.usage ? { text, usage: res.result.usage } : { text };
-		}
-		const error = res?.error?.message ?? 'no response from background broker';
-		return res?.usage ? { text: null, error, usage: res.usage } : { text: null, error };
-	} catch (err) {
-		return { text: null, error: (err as Error).message };
-	}
 }
 
 /** A configured-key failure is worth a warning; a missing key is an intended silent skip. */

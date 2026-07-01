@@ -1,22 +1,22 @@
 /**
  * components/EmptyState.tsx: centered icon placeholder for an empty view
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a. Ui only.
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
  * Why this exists: the capture and history views both show a quiet placeholder
- * before there is anything to display (no snip taken yet / no saved snippets): a
+ * before there is anything to display, whether no snip taken yet or no saved snippets: a
  * single muted icon. Centralizing it here keeps the two empty states identical and
  * lets each view pass only the lucide icon that fits its context. The icon fills the
- * scroll region and sits just above its vertical center (paddingBottom biases it up).
+ * scroll region and sits just above its vertical center, where paddingBottom biases it up.
  */
 import type { LucideIcon } from 'lucide-react';
 import { COLORS } from '../theme';
 
-/** A single muted icon, centered (slightly high) in the scroll region. */
+/** A single muted icon, centered slightly high in the scroll region. */
 export function EmptyState({ Icon }: { Icon: LucideIcon }) {
 	return (
 		<div style={wrap}>

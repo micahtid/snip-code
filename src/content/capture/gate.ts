@@ -1,17 +1,17 @@
 /**
  * capture/gate.ts: website-builder gate
  *
- * Pipeline position: capture (final step; refuses unsupported pages)
- * Reads from Captured: root (runs before Captured exists, on the live element)
- * Writes to Captured: n/a (gates the pipeline before it builds Captured)
+ * Pipeline position: capture; final step, refuses unsupported pages
+ * Reads from Captured: root; runs before Captured exists, on the live element
+ * Writes to Captured: n/a; gates the pipeline before it builds Captured
  *
  * Why this exists: framer / wix / webflow / elementor / readymag render runtime-
- * dependent, non-portable markup (scale-to-fit transforms, hashed class soups,
- * sprite refs to document-root <symbol>s). Snipping them produces broken output,
+ * dependent, non-portable markup: scale-to-fit transforms, hashed class soups,
+ * sprite refs to document-root <symbol>s. Snipping them produces broken output,
  * so v2 refuses with a static "unsupported" message instead of degrading
  * silently. Detection is purely structural: data-*
  * rendering-chrome attributes and class-name fingerprints, sampled from a
- * bounded subtree walk. Ported (rewritten) from v1 vision/builder-detection.ts;
+ * bounded subtree walk. Ported, rewritten, from v1 vision/builder-detection.ts;
  * the v1 version routed to a vision model, v2 drops that path and blocks.
  *
  * Note: the runtime Set in collectSampleClassNames dedups sampled class names; it
@@ -38,17 +38,17 @@ export interface GateResult {
 	message?: string;
 }
 
-// A single strong rendering-chrome signal (weight 0.4-0.5) clears this, so one
+// A single strong rendering-chrome signal, weight 0.4-0.5, clears this, so one
 // unambiguous fingerprint is enough to block. Mirrors v1's routing threshold.
 const BLOCK_THRESHOLD = 0.4;
-// The dominant builder must own at least this much weight to be named (vs noise).
+// The dominant builder must own at least this much weight to be named, versus noise.
 const NAME_THRESHOLD = 0.3;
 
 /**
  * Classifies the picked element's page and decides whether to refuse the snip.
  *
  * Sums weighted fingerprints per builder, takes the dominant family, and blocks
- * when its confidence clears BLOCK_THRESHOLD. Cheap enough (one bounded dom walk)
+ * when its confidence clears BLOCK_THRESHOLD. Cheap enough, one bounded dom walk,
  * to run unconditionally on every snip.
  *
  * @param root - the live picked element
@@ -151,7 +151,7 @@ function detectElementor(root: Element, classes: string[]): GateSignal[] {
 	return signals;
 }
 
-/** Readymag: rmgs-/rmgr- class prefixes (readymag-only convention). */
+/** Readymag: rmgs-/rmgr- class prefixes, a readymag-only convention. */
 function detectReadymag(classes: string[]): GateSignal[] {
 	if (classes.some((c) => /^rmgs-/.test(c) || /^rmgr-/.test(c))) {
 		return [{ id: 'readymag-class-prefix', description: 'rmgs-/rmgr- class prefix', weight: 0.5 }];

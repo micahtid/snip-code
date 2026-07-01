@@ -1,16 +1,16 @@
 /**
  * assistive/assets.ts: asset extraction
  *
- * Pipeline position: capture (assistive runs the capture phase only)
+ * Pipeline position: capture; assistive runs the capture phase only
  * Reads from Captured: root
- * Writes to Captured: n/a (returns an asset manifest)
+ * Writes to Captured: n/a; returns an asset manifest
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
  * Why this exists: assistive mode lists the images and icons a component depends
- * on so an agent can fetch or re-reference them. This collects <img> sources
- * (resolved currentSrc), css background-image urls, and inline svg icons across
- * the subtree, absolutized. Ported (rewritten) from v1 assets/asset-extractor.ts.
+ * on so an agent can fetch or re-reference them. This collects <img> sources,
+ * resolved from currentSrc, css background-image urls, and inline svg icons across
+ * the subtree, absolutized. Ported and rewritten from v1 assets/asset-extractor.ts.
  */
 import { toAbsoluteUrl } from '../../utils/url';
 
@@ -50,8 +50,8 @@ export function extractAssets(root: Element): AssetManifest {
 		}
 	}
 
-	// Inline svgs are icons; record a count-distinguishable marker (their outer
-	// markup is in the snip itself, so a stable id/use ref is the useful signal).
+	// Inline svgs are icons; record a count-distinguishable marker. Their outer
+	// markup is in the snip itself, so a stable id/use ref is the useful signal.
 	for (const svg of Array.from(root.querySelectorAll('svg'))) {
 		const use = svg.querySelector('use');
 		const ref = use?.getAttribute('href') ?? use?.getAttribute('xlink:href');

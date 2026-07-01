@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: clone (img src/srcset, <picture>), bakedStyles (bg urls), warnings
+ * Writes to Captured: clone for img src/srcset and <picture>, bakedStyles for bg urls, and warnings
  *
  * A feature handler for image url resolution.
  *
@@ -11,18 +11,17 @@
  * and https://developer.mozilla.org/en-US/docs/Web/CSS/background-image
  * Detection criterion: an <img> with srcset / inside <picture>, or a baked
  * background-image with a relative url(). Early-returns when none apply.
- * Transform contract: pins each <img> to the browser-resolved currentSrc (the
- * image that actually rendered at the captured viewport) and drops srcset/sizes
+ * Transform contract: pins each <img> to the browser-resolved currentSrc, the
+ * image that actually rendered at the captured viewport, and drops srcset/sizes
  * + <source>s so it renders deterministically; absolutizes background-image
  * url()s. Mutates clone + bakedStyles only; no network (handler contract).
- * Test bundle: TODO, add later (srcset + background-image hero).
  *
  * Why this exists: srcset/<picture> pick a source from viewport + dpr at render
- * time; reparented, the browser may pick a different one (or none), changing the
+ * time; reparented, the browser may pick a different one, or none, changing the
  * pixels. Pinning currentSrc locks the captured-viewport image. Background-image
  * urls are usually relative to the source page and 404 when pasted; absolutizing
- * fixes that. Cross-origin image urls render fine without cors (only canvas reads
- * need it), so no base64 inline is required for fidelity, and feature handlers
+ * fixes that. Cross-origin image urls render fine without cors, since only canvas
+ * reads need it, so no base64 inline is required for fidelity, and feature handlers
  * may not fetch anyway; truly unreachable assets get a warning instead.
  */
 import type { Captured } from '../../types';

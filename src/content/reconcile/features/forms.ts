@@ -3,20 +3,19 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone
- * Writes to Captured: bakedStyles + clone (appearance/accent-color + live state)
+ * Writes to Captured: bakedStyles + clone, the appearance/accent-color + live state
  *
  * Principles applied: extends the "ship what renders" rule to form-control
  * styling and preserves the live control state cloneNode drops.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/appearance
- * (also accent-color; ::file-selector-button is emitted by features/pseudo)
- * Detection criterion: an element matching the form-control selector (the form-
- * element spec surface expressed as a selector, not a tag Set).
+ * also covers accent-color; ::file-selector-button is emitted by features/pseudo.
+ * Detection criterion: an element matching the form-control selector, the form-
+ * element spec surface expressed as a selector, not a tag Set.
  * Transform contract: bakes non-default appearance/-webkit-appearance/accent-color
  * onto matching clone controls, and mirrors live value/checked/selected state
  * onto the clone as attributes so the rendered control matches the capture.
  * bakedStyles + clone only.
- * Test bundle: TODO, add later (custom checkbox/range/file input).
  *
  * Why this exists: appearance: none is how authors replace native control chrome
  * with custom styling, lost, the control snaps back to the os widget. Accent-

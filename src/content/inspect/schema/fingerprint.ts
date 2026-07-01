@@ -1,18 +1,18 @@
 /**
  * inspect/schema/fingerprint.ts: compact style fingerprints + abbreviations
  *
- * Pipeline position: inspect (page-scoped; reads the live dom directly, does not run the element pipeline)
- * Reads from DOM: document/window (live; per-element computed styles)
- * Writes to: nothing (pure computation)
+ * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
+ * Reads from DOM: document/window; live, per-element computed styles
+ * Writes to: nothing; pure computation
  *
- * Principles applied: none (computation).
+ * Principles applied: none; computation.
  *
  * Why this exists: the schema collapses elements that look identical into a single
  * style-map entry. A fingerprint is the sorted, abbreviated list of an element's
  * non-default design properties; two elements with the same fingerprint share a
  * style. The abbreviations keep the style map compact, and they must match the
  * abbreviation legend in inspect/prompts.ts so the ai pass can decode them. Ported
- * (rewritten) from v1 schema/style-fingerprint.ts.
+ * by rewriting from v1 schema/style-fingerprint.ts.
  */
 
 /** The design-relevant properties a fingerprint is built from. */
@@ -65,7 +65,7 @@ const DEFAULT_VALUES: Record<string, Set<string>> = {
 	'cursor': new Set(['auto']),
 };
 
-/** Property-name abbreviations for compact style-map entries (legend mirrored in the prompt). */
+/** Property-name abbreviations for compact style-map entries; the legend is mirrored in the prompt. */
 export const PROP_ABBREVIATIONS: Record<string, string> = {
 	'display': 'd', 'position': 'p', 'width': 'w', 'height': 'h',
 	'max-width': 'mw', 'max-height': 'mh',

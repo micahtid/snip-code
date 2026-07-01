@@ -1,19 +1,19 @@
 /**
  * reconcile/synthesized.ts: the shared synthesized-<style> carrier
  *
- * Pipeline position: reconcile (a shared helper for the feature handlers)
+ * Pipeline position: reconcile; a shared helper for the feature handlers
  * Reads from Captured: clone, warnings
- * Writes to Captured: clone (one appended <style>), warnings
+ * Writes to Captured: clone, one appended <style>, and warnings
  *
  * Why this exists: two feature handlers express what an inline style cannot, and so
  * both ship a real css rule rather than a property: pseudo.ts materializes
  * ::before/::marker content, and states.ts reproduces :hover/:focus/:active. Each
- * needs the identical plumbing — a marker re-anchored rule appended to a <style> on
+ * needs the identical plumbing: a marker re-anchored rule appended to a <style> on
  * the clone, later lifted into the document head by convert/format.ts. Rather than
- * each handler create and manage its own <style> (the v1-era copy-paste), they share
+ * each handler create and manage its own <style>, the v1-era copy-paste, they share
  * one carrier here: a single appended <style> collects every synthesized rule, which
  * also gives the resolve phase one place to find and rewrite those rules' url()/var()
- * references (resolve/inline.ts, resolve/vars.ts).
+ * references; see resolve/inline.ts and resolve/vars.ts.
  *
  * The carrier is tagged with a data-* attribute so the resolve passes can locate it
  * and convert/format.ts strips it on lift; it never reaches the emitted markup.
@@ -24,7 +24,7 @@ import type { Captured } from '../types';
 const SYNTH_MARKER = 'data-snip-synth';
 
 /**
- * Void elements serialize no child nodes (`<input>` has no closing tag), so a <style>
+ * Void elements serialize no child nodes, since `<input>` has no closing tag, so a <style>
  * appended to a void snip root would be silently dropped by outerHTML. The handlers warn
  * rather than lose the rules without trace.
  */
@@ -93,8 +93,8 @@ interface SynthesizedRule {
 
 /**
  * Walks every declaration in the synthesized <style>, read-only. The resolve passes use
- * this to gather the url()/var() references the synthesized rules carry (which the
- * resting bake never sees, because these rules live in a <style>, not in bakedStyles).
+ * this to gather the url()/var() references the synthesized rules carry, which the
+ * resting bake never sees because these rules live in a <style>, not in bakedStyles.
  *
  * @param captured - the capture whose synthesized <style> is read
  * @param fn - called once per declaration
@@ -118,7 +118,7 @@ export function forEachSynthesizedDeclaration(captured: Captured, fn: (decl: Syn
  *
  * This is the single place the resolve phase mutates synthesized rules: resolve/inline.ts
  * rewrites their url() to data uris, and resolve/vars.ts drops a declaration whose var()
- * is defined outside the snip (it cannot be resolved by copying — see resolve/vars.ts).
+ * is defined outside the snip, which cannot be resolved by copying; see resolve/vars.ts.
  *
  * @param captured - the capture whose synthesized <style> is rewritten in place
  * @param transform - maps a declaration's value to a new value, or null to drop it
@@ -145,7 +145,7 @@ export function rewriteSynthesizedDeclarations(
 /**
  * Parses the synthesized <style> text into rules and declarations. The text is always in
  * the handlers' own one-declaration-per-line shape, so a line parser is exact and avoids
- * the cssom's shorthand-with-var() loss (see rewriteSynthesizedDeclarations).
+ * the cssom's shorthand-with-var() loss; see rewriteSynthesizedDeclarations.
  *
  * @param style - the synthesized <style> element
  */
@@ -168,7 +168,7 @@ function parseSynthesized(style: HTMLStyleElement): SynthesizedRule[] {
 	return rules;
 }
 
-/** Parse one `prop: value;` (or `prop: value !important;`) declaration line. */
+/** Parse one `prop: value;` or `prop: value !important;` declaration line. */
 function parseDeclaration(selector: string, line: string): SynthesizedDeclaration | null {
 	const text = line.replace(/;$/, '');
 	const colon = text.indexOf(':'); // The first colon; a url(http:) in the value cannot precede it.

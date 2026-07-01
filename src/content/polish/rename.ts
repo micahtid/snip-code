@@ -2,16 +2,16 @@
  * polish/rename.ts: class rename application
  *
  * Pipeline position: polish
- * Reads from Captured: n/a (operates on html + css strings)
+ * Reads from Captured: n/a; operates on html + css strings
  * Writes to Captured: n/a
  *
- * Principles applied: none (text transform).
+ * Principles applied: none; text transform.
  *
  * Why this exists: when the llm proposes semantic class names, both the markup's
  * class attributes and the css selectors must be renamed in lockstep or the
  * styles detach. This applies a renameMap to html class attributes and css class
- * selectors together, matching whole class tokens only (so "btn" never rewrites
- * inside "btn-primary"). Ported (rewritten) from v1 class-rename-sync.ts.
+ * selectors together, matching whole class tokens only, so "btn" never rewrites
+ * inside "btn-primary". Ported and rewritten from v1 class-rename-sync.ts.
  */
 
 /**

@@ -1,22 +1,22 @@
 /**
  * inspect/types.ts: the contracts the page-scoped inspectors share
  *
- * Pipeline position: inspect (page-scoped; the shape every inspector emits, runs no element pipeline phase)
- * Reads from DOM: nothing (type definitions)
- * Writes to: nothing (type definitions)
+ * Pipeline position: inspect, page-scoped; the shape every inspector emits, runs no element pipeline phase
+ * Reads from DOM: nothing; type definitions
+ * Writes to: nothing; type definitions
  *
- * Principles applied: none (type definitions).
+ * Principles applied: none; type definitions.
  *
- * Why this exists: the four inspectors (fonts, assets, colors, style json) each
- * scan the whole page and ship one result to the side panel. Defining the report
+ * Why this exists: each of the four inspectors, fonts, assets, colors, and schema,
+ * scans the whole page and ships one result to the side panel. Defining the report
  * records and the tagged InspectResult union in one place is what lets the content
  * script, the message ship, and the panel views agree on a shape without importing
  * each other. These are the v2-named, trimmed equivalents of v1's FontInfo /
- * AssetInfo / color cluster: only the fields a panel actually renders survive
- * (v1's extractionTime / totalElements / per-element debug lists are dropped).
+ * AssetInfo / color cluster: only the fields a panel actually renders survive;
+ * v1's extractionTime / totalElements / per-element debug lists are dropped.
  */
 
-// The style-json schema shape lives with its extractor; re-exported here so panel-
+// The schema shape lives with its extractor; re-exported here so panel-
 // side code can name a PageSchema without reaching into the schema subfolder.
 export type { PageSchema } from './schema/types';
 
@@ -38,11 +38,11 @@ export interface FontReport {
 	variants: FontVariant[];
 }
 
-/** The asset kinds the page-wide scan distinguishes (favicon, media, svg, etc). */
+/** The asset kinds the page-wide scan distinguishes: favicon, media, svg, and so on. */
 export type AssetType = 'image' | 'css-bg' | 'inline-svg' | 'favicon' | 'video' | 'audio';
 
 /**
- * One visual asset. `src` is the original (absolutized) url so the card can
+ * One visual asset. `src` is the original url, absolutized, so the card can
  * preview it with a plain `<img>` and only fetch bytes on download; inline svgs
  * have no url and instead carry their truncated `markup`.
  */
@@ -52,7 +52,7 @@ export interface AssetReport {
 	filename: string;
 	width?: number;
 	height?: number;
-	/** Serialized inline-svg markup (truncated for the thumbnail); inline svgs only. */
+	/** Serialized inline-svg markup, truncated for the thumbnail; inline svgs only. */
 	markup?: string;
 }
 
@@ -64,9 +64,9 @@ export interface ColorReport {
 }
 
 /**
- * The discriminated result one scan ships to the panel (sibling to SnipResult,
- * not part of the broker Envelope/Response union). The `kind` selects the view.
- * `aiEnhanced` records whether the optional byok pass ran (colors / schema only).
+ * The discriminated result one scan ships to the panel; it is a sibling to
+ * SnipResult, not part of the broker Envelope/Response union. The `kind` selects the
+ * view. `aiEnhanced` records whether the optional byok pass ran, for colors and schema only.
  */
 export type InspectResult =
 	| { kind: 'fonts'; fonts: FontReport[]; warnings: string[] }

@@ -3,44 +3,42 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (bakes non-default font settings)
+ * Writes to Captured: bakedStyles + clone, baking non-default font settings
  *
  * Principles applied: extends the "ship what renders" rule to font properties
  * that the authored cascade often omits.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings
- * (also font-feature-settings, font-optical-sizing, font-stretch)
+ * also covers font-feature-settings, font-optical-sizing, font-stretch.
  * Detection criterion: an element whose computed value for one of the font-metric
  * properties is non-default. Early-returns per element otherwise.
  * Transform contract: bakes those computed font values onto the matching clone
  * element. Reads getComputedStyle of the live original; mutates bakedStyles +
  * clone inline styles only.
- * Test bundle: TODO, add later (variable-font specimen).
  *
  * Why this exists: variable-font axis settings and opentype feature settings are
  * frequently applied by a font's own @font-face or a high-level shorthand and do
  * not appear as explicit authored declarations on each element, so the
  * per-element pass never bakes them and they revert to default when the snip is
- * reparented (wrong weight/width,
- * lost ligatures). Baking the computed value is pixel-safe: it reproduces exactly
- * what already rendered. The matching @font-face descriptors (size-adjust,
- * ascent/descent/line-gap-override, unicode-range, font-display) travel via
- * resolve/fonts.ts.
+ * reparented, giving the wrong weight or width and lost ligatures. Baking the
+ * computed value is pixel-safe: it reproduces exactly what already rendered. The
+ * matching @font-face descriptors (size-adjust, ascent/descent/line-gap-override,
+ * unicode-range, font-display) travel via resolve/fonts.ts.
  *
- * The text micro-features below, text-overflow
- * (ellipsis), text-decoration-skip-ink, word-break, overflow-wrap, hyphens,
+ * The text micro-features below, text-overflow with ellipsis,
+ * text-decoration-skip-ink, word-break, overflow-wrap, hyphens,
  * text-wrap, white-space-collapse, change how text wraps and truncates, which
  * shifts line breaks and visible content; baking the non-default values keeps the
- * captured text layout. (Writing-mode lives in features/units with the logical
- * properties it governs.)
+ * captured text layout. Writing-mode lives in features/units with the logical
+ * properties it governs.
  */
 import type { Captured } from '../../types';
 import { bakeNonDefaultProps } from '../match';
 
 /**
  * The font + text properties this handler preserves, the bounded css-spec
- * surface for variable/opentype fonts and text layout (a feature-handler spec
- * set, not a hardcoded property list).
+ * surface for variable/opentype fonts and text layout, a feature-handler spec
+ * set, not a hardcoded property list.
  */
 const FONT_AND_TEXT_PROPS = [
 	// Variable + opentype font metrics.

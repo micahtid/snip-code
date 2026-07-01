@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, foundationRules, componentRules
- * Writes to Captured: bakedStyles (per clone element), clone (inline styles), warnings
+ * Writes to Captured: bakedStyles per clone element, clone inline styles, and warnings
  *
  * Principles applied: prefers authored CSS values that round-trip to the same
  * computed value; bakes inherited values that diverge from defaults; bakes
@@ -13,7 +13,7 @@
  * travel with the snip. This module bakes the winning value of every authored
  * property onto each element so the snip renders standalone.
  *
- * - Per element: if the authored value (from match.ts) reproduces the captured
+ * - Per element: if the authored value, from match.ts, reproduces the captured
  * computed value when forced onto the live element, ship the authored string,
  * preserving var()/clamp()/%/oklch()/calc(). Otherwise ship computed so pixel
  * fidelity is locked at the capture viewport.
@@ -21,7 +21,7 @@
  * diverges from the document default are baked onto the root, so they survive
  * when the snip loses its ancestor chain. Children inherit from the root
  * automatically, so only the root needs them. The inherited-property list is
- * read dynamically from the browser (a parent/child probe), never hardcoded;
+ * read dynamically from the browser via a parent/child probe, never hardcoded;
  * the engine is the authoritative source of which properties inherit anyway.
  * - Snip root only: if the root was a flex/grid item of a parent outside the
  * snip, its box size came from that vanished context; we bake the root's
@@ -48,7 +48,7 @@ export function reconcile(captured: Captured): void {
 	const originals = subtreeElements(captured.root);
 	const clones = subtreeElements(captured.clone);
 	if (originals.length !== clones.length) {
-		// Structural divergence should be impossible (clone is cloneNode(true)),
+		// Structural divergence should be impossible since the clone is cloneNode(true),
 		// but if a feature mutated structure earlier, fail soft and bail rather
 		// than mis-pair styles onto the wrong nodes.
 		captured.warnings.push('bake: clone/original structure diverged; skipping reconcile');
@@ -66,7 +66,7 @@ export function reconcile(captured: Captured): void {
 	}
 
 	// The inherited-divergence and escaped-layout passes act only on the snip
-	// root (index 0): inherited values flow down to children automatically, and
+	// root at index 0: inherited values flow down to children automatically, and
 	// the escaped-layout box belongs to the root.
 	const rootOriginal = originals[0];
 	const rootClone = clones[0];
@@ -156,8 +156,8 @@ function isInherited(parent: HTMLElement, child: Element, prop: string, value: s
  * the root keeps its size standalone. No synthetic wrapper is created.
  *
  * width/height are named explicitly here because they are the specific geometry
- * a flex/grid container imposes on its items (a bounded css-spec mechanism, not a
- * curated heuristic Set), and only when the escaped-context condition holds.
+ * a flex/grid container imposes on its items, a bounded css-spec mechanism rather than
+ * a curated heuristic Set, and only when the escaped-context condition holds.
  *
  * @param original - the live root
  * @param baked - the root's baked map, extended in place
@@ -179,9 +179,9 @@ function bakeEscapedLayout(original: Element, baked: Map<string, string>): void 
 
 /**
  * Applies the per-element authored-vs-computed test to one element, returning
- * its baked prop→value map.
+ * its baked prop->value map.
  *
- * @param original - the live element (has document context for getComputedStyle)
+ * @param original - the live element, which has document context for getComputedStyle
  * @param authored - its winning authored values from the cascade
  */
 function bakeElement(original: Element, authored: Map<string, string>): Map<string, string> {
@@ -207,8 +207,8 @@ function bakeElement(original: Element, authored: Map<string, string>): Map<stri
 
 /**
  * Tests whether forcing `value` onto the element's inline style reproduces the
- * captured computed value, in the element's real context (so rem/%/var resolve
- * correctly). Transiently mutates then restores the live inline style within the
+ * captured computed value, in the element's real context, so rem/%/var resolve
+ * correctly. Transiently mutates then restores the live inline style within the
  * same synchronous frame, so the page never visibly changes.
  *
  * @returns true when the authored value round-trips
@@ -229,7 +229,7 @@ function reproducesComputed(el: Element, prop: string, value: string, computed: 
 	}
 }
 
-/** Write a baked prop→value map onto a clone element as inline styles. */
+/** Write a baked prop->value map onto a clone element as inline styles. */
 function writeInline(clone: Element, baked: Map<string, string>): void {
 	const style = (clone as HTMLElement).style;
 	if (!style) return;

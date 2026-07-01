@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (resolves viewport/container units)
+ * Writes to Captured: bakedStyles + clone, resolving viewport/container units
  *
  * Locks pixel fidelity at the capture viewport.
  *
@@ -12,12 +12,11 @@
  * vmin/vmax) or container (cqw/cqh/cqi/cqb/...) length. Early-returns otherwise.
  * Transform contract: replaces such values with the live element's computed
  * literal (px). Mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO, add later (vh hero + container-query card).
  *
  * Why this exists: viewport and container units resolve against the viewport /
  * containment context, which change when the snip is reparented, a 50vw hero
- * becomes half of whatever viewport it lands in. An alternative (wrap the
- * snip in a captured-viewport container) cannot work for a standalone element
+ * becomes half of whatever viewport it lands in. An alternative, wrapping the
+ * snip in a captured-viewport container, cannot work for a standalone element
  * crop: the grader renders output.html at the element's own dimensions, so a
  * viewport-sized wrapper would clip. Resolving to the captured computed literal
  * locks the pixels exactly as preferring the computed value does when an authored
@@ -27,14 +26,14 @@
  * - Logical properties: logical props (margin-inline, inset-inline-
  * start,...) survive as the authored value when authored, but they resolve against the
  * element's direction/writing-mode, which must be baked when non-default for
- * rtl + vertical text (material v6 / tailwind v4 lean on logical props).
+ * rtl + vertical text; material v6 / tailwind v4 lean on logical props.
  * - Aspect-ratio: the aspect-ratio property and intrinsic <img
  * width/height> attributes, baked so the box keeps its ratio standalone.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
 
-// Viewport-percentage and container-query length units (the dynamic ones).
+// Viewport-percentage and container-query length units, the dynamic ones.
 const DYNAMIC_UNIT = /\b\d*\.?\d+(?:vw|vh|vi|vb|vmin|vmax|dvw|dvh|svw|svh|lvw|lvh|cqw|cqh|cqi|cqb|cqmin|cqmax)\b/i;
 
 /**

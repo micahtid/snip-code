@@ -1,20 +1,20 @@
 /**
  * inspect/schema/extract.ts: the page-schema extractor
  *
- * Pipeline position: inspect (page-scoped; reads the live dom directly, does not run the element pipeline)
- * Reads from DOM: document/window (live; the whole page must be loaded)
- * Writes to: nothing (pure extraction, returns a PageSchema)
+ * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
+ * Reads from DOM: document/window; live, the whole page must be loaded
+ * Writes to: nothing; pure extraction, returns a PageSchema
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
- * Why this exists: the style-json inspector turns a whole page into a compressed
- * design-system schema. It walks the visible dom (stratified by section so a long
- * page samples evenly), collects the color / font / spacing / radius / shadow
+ * Why this exists: the schema inspector turns a whole page into a compressed
+ * design-system schema. It walks the visible dom, stratified by section so a long
+ * page samples evenly, collects the color / font / spacing / radius / shadow
  * tokens, dedupes elements into a style map and a structure tree, lifts
- * interactive-state rules from the readable stylesheets, and detects section and
- * component (button / card / nav) blueprints plus the page's decorative and
- * responsive language. The result is optimized (inspect/schema/optimize.ts) and,
- * with a key, synthesized by the ai pass (inspect/ai.ts). Ported (rewritten) from
+ * interactive-state rules from the readable stylesheets, and detects section
+ * blueprints and the button, card, and nav component blueprints plus the page's
+ * decorative and responsive language. The result is optimized (inspect/schema/optimize.ts) and,
+ * with a key, synthesized by the ai pass (inspect/ai.ts). Ported by rewriting from
  * v1 schema/schema-extractor.ts as plain functions, dropping the class/logger
  * ceremony and v1's discarded root-variable pass; cross-origin stylesheets are read
  * only when same-origin-readable, matching the other page-scoped inspectors.
@@ -44,7 +44,32 @@ interface WalkedElement {
 const COLOR_PROPS = ['color', 'background-color', 'border-color', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
 const SPACING_PROPS = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'gap'];
 
-/** Selectors for third-party widgets (chat, cookie, analytics) to skip during the walk. */
+/** A button element or a link styled as a button; shared across the button-detection passes. */
+const BUTTON_SELECTOR = 'button, a[class*="btn"], a[class*="button"]';
+
+/** Whether a normalized color value is fully transparent, painting nothing. */
+function isTransparentColor(value: string): boolean {
+	return value === 'transparent' || value === 'rgba(0, 0, 0, 0)';
+}
+
+/** The four-side padding shorthand read off a computed style. */
+function paddingShorthand(computed: CSSStyleDeclaration): string {
+	return paddingShorthand(computed);
+}
+
+/** Groups items by a string key, preserving insertion order within each group. */
+function groupBy<T>(items: T[], keyOf: (item: T) => string): Map<string, T[]> {
+	const groups = new Map<string, T[]>();
+	for (const item of items) {
+		const key = keyOf(item);
+		const group = groups.get(key) || [];
+		group.push(item);
+		groups.set(key, group);
+	}
+	return groups;
+}
+
+/** Selectors for third-party widgets, such as chat, cookie, and analytics, to skip during the walk. */
 const THIRD_PARTY_BLOCKLIST = [
 	'[class*="intercom"]', '[id*="cookie"]', '[data-ad]', '[class*="grecaptcha"]',
 	'[class*="hotjar"]', '[id*="onetrust"]', '[class*="drift"]', '[class*="hubspot"]',
@@ -135,7 +160,7 @@ function readableRules(): CSSRule[] {
 }
 
 // ---------------------------------------------------------------------------
-// DOM walk (stratified, visible elements only)
+// DOM walk: stratified, visible elements only
 // ---------------------------------------------------------------------------
 
 /**
@@ -226,7 +251,7 @@ function walkDOM(): WalkedElement[] {
 	return elements;
 }
 
-/** Colors painted by an element's ::before / ::after content (when it has content). */
+/** Colors painted by an element's ::before / ::after content, when it has content. */
 function extractPseudoColors(el: Element): string[] {
 	const colors: string[] = [];
 	for (const pseudo of ['::before', '::after'] as const) {
@@ -236,12 +261,12 @@ function extractPseudoColors(el: Element): string[] {
 			if (!content || content === 'none' || content === '""' || content === "''" || content === '') continue;
 
 			const bg = style.backgroundColor;
-			if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+			if (bg && !isTransparentColor(bg)) {
 				const normalized = normalizeColor(bg);
 				if (normalized) colors.push(normalized);
 			}
 			const color = style.color;
-			if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+			if (color && !isTransparentColor(color)) {
 				const normalized = normalizeColor(color);
 				if (normalized) colors.push(normalized);
 			}
@@ -256,7 +281,7 @@ function extractPseudoColors(el: Element): string[] {
 // Token collection
 // ---------------------------------------------------------------------------
 
-/** Collects the page's colors (paint props + pseudo-element colors), Oklab-clustered. */
+/** Collects the page's colors, from paint props and pseudo-element colors, Oklab-clustered. */
 function collectColors(walked: WalkedElement[]): ColorEntry[] {
 	const colorMap = new Map<string, { contexts: Set<string>; count: number }>();
 	const add = (value: string, context: string): void => {
@@ -273,7 +298,7 @@ function collectColors(walked: WalkedElement[]): ColorEntry[] {
 		const computed = window.getComputedStyle(el.element);
 		for (const prop of COLOR_PROPS) {
 			const value = computed.getPropertyValue(prop).trim();
-			if (!value || value === 'rgba(0, 0, 0, 0)' || value === 'transparent') continue;
+			if (!value || isTransparentColor(value)) continue;
 			const normalized = normalizeColor(value);
 			if (normalized) add(normalized, prop);
 		}
@@ -288,9 +313,9 @@ function collectColors(walked: WalkedElement[]): ColorEntry[] {
 }
 
 /**
- * Clusters colors by Oklab perceptual distance (merge below 0.04), keeping the
+ * Clusters colors by Oklab perceptual distance, merging below 0.04, keeping the
  * most frequent member as the representative and a frequency-weighted centroid.
- * Non-hex colors (e.g. rgba with alpha) are kept as singleton clusters.
+ * Non-hex colors, for example rgba with alpha, are kept as singleton clusters.
  */
 function clusterColorsOklab(colors: ColorEntry[]): ColorEntry[] {
 	if (colors.length <= 1) return colors;
@@ -366,7 +391,7 @@ function collectFonts(walked: WalkedElement[]): FontEntry[] {
 	}));
 }
 
-/** Collects the distinct non-zero spacing values, sorted ascending (top 20). */
+/** Collects the distinct non-zero spacing values, sorted ascending, top 20. */
 function collectSpacing(walked: WalkedElement[]): string[] {
 	const spacingSet = new Set<string>();
 	for (const el of walked) {
@@ -423,7 +448,7 @@ function analyzeSpacingBaseUnit(spacing: string[]): { baseUnit: number; gridComp
 	return { baseUnit: bestBase, gridCompliance: Math.round(bestScore * 100) / 100, offGrid: offGrid.slice(0, 10) };
 }
 
-/** Fits the page's font sizes to the closest modular type scale (null if no good fit). */
+/** Fits the page's font sizes to the closest modular type scale, or null if no good fit. */
 function detectTypographyScale(fonts: FontEntry[]): { ratio: number; name: string; base: number; deviation: number } | null {
 	const allSizes = new Set<number>();
 	for (const font of fonts) {
@@ -496,18 +521,12 @@ function analyzeConsistency(
 // ---------------------------------------------------------------------------
 
 /**
- * Groups elements by role+fingerprint to find repeated component patterns (3+ of a
- * non-generic role), and produces a run-length-collapsed list where consecutive
+ * Groups elements by role+fingerprint to find repeated component patterns, meaning
+ * 3+ of a non-generic role, and produces a run-length-collapsed list where consecutive
  * identical elements carry a `repeat` count instead of repeating.
  */
 function detectPatterns(walked: WalkedElement[]): { deduplicated: WalkedElement[]; components: ComponentPattern[] } {
-	const groups = new Map<string, WalkedElement[]>();
-	for (const el of walked) {
-		const key = `${el.role}:${el.fingerprint}`;
-		const group = groups.get(key) || [];
-		group.push(el);
-		groups.set(key, group);
-	}
+	const groups = groupBy(walked, (el) => `${el.role}:${el.fingerprint}`);
 
 	const components: ComponentPattern[] = [];
 	for (const group of groups.values()) {
@@ -518,7 +537,6 @@ function detectPatterns(walked: WalkedElement[]): { deduplicated: WalkedElement[
 				role: rep.role,
 				count: group.length,
 				structure: { tag: rep.tag, role: rep.role },
-				styleRefs: [],
 			});
 		}
 	}
@@ -589,7 +607,7 @@ function extractStates(rules: CSSRule[], walked: WalkedElement[]): StateRule[] {
 // Style map + structure tree
 // ---------------------------------------------------------------------------
 
-/** Builds the deduped style map (one entry per fingerprint) and the structure tree. */
+/** Builds the deduped style map, one entry per fingerprint, and the structure tree. */
 function assemble(walked: WalkedElement[]): { styles: Record<string, Record<string, string>>; structure: SchemaNode[] } {
 	const styleMap: Record<string, Record<string, string>> = {};
 	const fingerprintToId = new Map<string, string>();
@@ -682,7 +700,7 @@ function extractSections(): SectionBlueprint[] {
 		}
 
 		if (computed.gap && computed.gap !== 'normal' && computed.gap !== '0px') blueprint.gap = computed.gap;
-		const padding = `${computed.paddingTop} ${computed.paddingRight} ${computed.paddingBottom} ${computed.paddingLeft}`;
+		const padding = paddingShorthand(computed);
 		if (padding !== '0px 0px 0px 0px') blueprint.padding = padding;
 
 		sections.push(blueprint);
@@ -701,7 +719,7 @@ function classifySectionType(el: Element): SectionType {
 	if (tag === 'footer') return 'footer';
 
 	const headings = el.querySelectorAll('h1, h2, h3');
-	const buttons = el.querySelectorAll('button, a[class*="btn"], a[class*="button"]');
+	const buttons = el.querySelectorAll(BUTTON_SELECTOR);
 	const images = el.querySelectorAll('img');
 	const cards = el.querySelectorAll('[class*="card"]');
 	const paragraphs = el.querySelectorAll('p');
@@ -727,7 +745,7 @@ function classifySectionType(el: Element): SectionType {
 	if (cards.length >= 2) {
 		const sampleCard = cards[0]!;
 		const hasPriceIndicator = /\$|€|£|\/mo|\/yr|\/month|\/year|price/i.test(sampleCard.textContent || '');
-		if (hasPriceIndicator && sampleCard.querySelector('ul, ol, [class*="feature"]') && sampleCard.querySelector('button, a[class*="btn"], a[class*="button"]')) return 'pricing';
+		if (hasPriceIndicator && sampleCard.querySelector('ul, ol, [class*="feature"]') && sampleCard.querySelector(BUTTON_SELECTOR)) return 'pricing';
 	}
 
 	const hasAccordion = el.querySelectorAll('details, [class*="accordion"], [data-accordion]').length > 0;
@@ -769,7 +787,7 @@ function classifySectionType(el: Element): SectionType {
 	return 'content';
 }
 
-/** Reads a section's layout pattern from its (or its inner container's) flex/grid. */
+/** Reads a section's layout pattern from its own or its inner container's flex/grid. */
 function detectLayoutPattern(el: Element): LayoutPattern {
 	const targets = [el];
 	const inner = el.querySelector('[class*="container"], [class*="wrapper"], [class*="inner"], [class*="content"], [class*="grid"]');
@@ -845,7 +863,7 @@ function catalogSectionElements(section: Element): string[] {
 			addOnce('image');
 		} else if (tag === 'button' || (tag === 'a' && isButtonLike(el))) {
 			addOnce('button');
-			const siblings = el.parentElement?.querySelectorAll('button, a[class*="btn"], a[class*="button"]');
+			const siblings = el.parentElement?.querySelectorAll(BUTTON_SELECTOR);
 			if (siblings && siblings.length >= 2 && !seen.has('button-pair')) {
 				elements.pop(); // Replace the lone 'button' with 'button-pair'.
 				seen.delete('button');
@@ -873,7 +891,7 @@ function catalogSectionElements(section: Element): string[] {
 	return elements.slice(0, 12);
 }
 
-/** Counts recurring element groupings (e.g. "heading+text+button-pair") across sections. */
+/** Counts recurring element groupings, e.g. "heading+text+button-pair", across sections. */
 function extractContentPatterns(sections: SectionBlueprint[]): ContentGrouping[] {
 	const patternCounts = new Map<string, { count: number; elements: string[] }>();
 	for (const section of sections) {
@@ -919,12 +937,7 @@ function extractButtonBlueprints(walked: WalkedElement[], states: StateRule[]): 
 	const buttons = walked.filter((el) => el.role === 'button');
 	if (buttons.length === 0) return [];
 
-	const groups = new Map<string, WalkedElement[]>();
-	for (const btn of buttons) {
-		const group = groups.get(btn.fingerprint) || [];
-		group.push(btn);
-		groups.set(btn.fingerprint, group);
-	}
+	const groups = groupBy(buttons, (btn) => btn.fingerprint);
 	const sorted = Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length).slice(0, 4);
 
 	const pageBg = normalizeColor(window.getComputedStyle(document.body).backgroundColor) || '#ffffff';
@@ -952,13 +965,13 @@ function extractButtonBlueprints(walked: WalkedElement[], states: StateRule[]): 
 			styleTag = 'pressed-3d';
 		} else if (computed.backgroundImage && computed.backgroundImage !== 'none' && computed.backgroundImage.includes('gradient')) {
 			styleTag = 'gradient';
-		} else if (bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)') {
+		} else if (isTransparentColor(bg)) {
 			styleTag = border !== 'none' ? 'outline' : 'ghost';
 		} else if (shadow && shadow !== 'none') {
 			styleTag = 'elevated';
 		}
 
-		const isTransparent = bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)';
+		const isTransparent = isTransparentColor(bg);
 		const isWhiteOrLight = bg === '#ffffff' || bg === '#fff' || bg === pageBg;
 		let variant: string;
 		if (isTransparent && border === 'none') variant = 'ghost';
@@ -972,7 +985,7 @@ function extractButtonBlueprints(walked: WalkedElement[], states: StateRule[]): 
 			bg,
 			color,
 			borderRadius: computed.borderRadius,
-			padding: `${computed.paddingTop} ${computed.paddingRight} ${computed.paddingBottom} ${computed.paddingLeft}`,
+			padding: paddingShorthand(computed),
 			fontWeight: parseInt(computed.fontWeight) || 400,
 			fontSize: computed.fontSize,
 			border,
@@ -984,13 +997,13 @@ function extractButtonBlueprints(walked: WalkedElement[], states: StateRule[]): 
 	}
 
 	// Propagate the dominant non-flat style language to filled variants whose shadow
-	// the extraction missed (a capture gap reads as flat, not as intentional flatness).
+	// the extraction missed; a capture gap reads as flat, not as intentional flatness.
 	const tagCounts = new Map<string, number>();
 	for (const bp of blueprints) tagCounts.set(bp.styleTag, (tagCounts.get(bp.styleTag) || 0) + 1);
 	const dominantTag = Array.from(tagCounts.entries()).filter(([tag]) => tag !== 'flat').sort((a, b) => b[1] - a[1])[0];
 	if (dominantTag && dominantTag[1] >= 2) {
 		for (const bp of blueprints) {
-			const isFilled = bp.bg !== 'transparent' && bp.bg !== 'rgba(0, 0, 0, 0)';
+			const isFilled = !isTransparentColor(bp.bg);
 			if (isFilled && bp.styleTag === 'flat' && (!bp.shadow || bp.shadow === 'none')) bp.styleTag = dominantTag[0];
 		}
 	}
@@ -1010,12 +1023,7 @@ function extractCardBlueprints(walked: WalkedElement[], states: StateRule[]): Ca
 	const cards = walked.filter((el) => el.role === 'card');
 	if (cards.length === 0) return [];
 
-	const groups = new Map<string, WalkedElement[]>();
-	for (const card of cards) {
-		const group = groups.get(card.fingerprint) || [];
-		group.push(card);
-		groups.set(card.fingerprint, group);
-	}
+	const groups = groupBy(cards, (card) => card.fingerprint);
 	const sorted = Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length).slice(0, 3);
 
 	const blueprints: CardBlueprint[] = [];
@@ -1033,7 +1041,7 @@ function extractCardBlueprints(walked: WalkedElement[], states: StateRule[]): Ca
 			borderRadius: computed.borderRadius,
 			shadow: computed.boxShadow !== 'none' ? computed.boxShadow : 'none',
 			border: computed.borderWidth !== '0px' && computed.borderStyle !== 'none' ? `${computed.borderWidth} ${computed.borderStyle} ${computed.borderColor}` : 'none',
-			padding: `${computed.paddingTop} ${computed.paddingRight} ${computed.paddingBottom} ${computed.paddingLeft}`,
+			padding: paddingShorthand(computed),
 			hover,
 			innerLayout: detectCardInnerLayout(rep.element),
 		});
@@ -1059,7 +1067,7 @@ function detectCardInnerLayout(el: Element): string {
 	return parts.length > 0 ? parts.join(' + ') : 'unknown';
 }
 
-/** Extracts the page navigation's spec (bg, position, blur, border, layout, link count). */
+/** Extracts the page navigation's spec: bg, position, blur, border, layout, and link count. */
 function extractNavBlueprint(): NavBlueprint | null {
 	const nav = document.querySelector('nav') || document.querySelector('header nav') || document.querySelector('[role="navigation"]');
 	if (!nav) return null;
@@ -1179,7 +1187,7 @@ function extractResponsiveInfo(rules: CSSRule[]): ResponsiveInfo {
 // Shared utilities
 // ---------------------------------------------------------------------------
 
-/** A text placeholder token for an element's role (e.g. "{h1}", "{btn}", "{img 200x80}"). */
+/** A text placeholder token for an element's role, e.g. "{h1}", "{btn}", "{img 200x80}". */
 function getTextPlaceholder(el: WalkedElement): string | undefined {
 	switch (el.role) {
 		case 'heading': return `{${el.tag}}`;
@@ -1195,7 +1203,7 @@ function getTextPlaceholder(el: WalkedElement): string | undefined {
 	}
 }
 
-/** Infers a font's role (heading / body / ui / mixed) from the roles it appears in. */
+/** Infers a font's role, heading / body / ui / mixed, from the roles it appears in. */
 function inferFontUsage(roles: Set<string>): string {
 	if (roles.has('heading')) return 'heading';
 	if (roles.has('paragraph') || roles.has('text')) return 'body';
@@ -1205,7 +1213,7 @@ function inferFontUsage(roles: Set<string>): string {
 
 /** Normalizes a paint value to hex when opaque, keeps rgba when translucent, null if absent. */
 function normalizeColor(value: string): string | null {
-	if (value === 'transparent' || value === 'rgba(0, 0, 0, 0)') return null;
+	if (isTransparentColor(value)) return null;
 	const rgbMatch = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
 	if (rgbMatch) {
 		const [, r, g, b, a] = rgbMatch;
@@ -1215,7 +1223,7 @@ function normalizeColor(value: string): string | null {
 	return value;
 }
 
-/** True when an anchor is styled like a button (btn/button/cta in its class list). */
+/** True when an anchor is styled like a button, with btn/button/cta in its class list. */
 function isButtonLike(el: Element): boolean {
 	return /btn|button|cta/.test(classNameOf(el));
 }
@@ -1233,7 +1241,7 @@ function srgbToLinear(c: number): number {
 	return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
 
-/** RGB to Oklab (the perceptually uniform model color clustering measures distance in). */
+/** RGB to Oklab, the perceptually uniform model color clustering measures distance in. */
 function rgbToOklab(r: number, g: number, b: number): { L: number; a: number; b: number } {
 	const lr = srgbToLinear(r);
 	const lg = srgbToLinear(g);

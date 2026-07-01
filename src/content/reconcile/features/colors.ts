@@ -3,7 +3,7 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (consolidates currentColor)
+ * Writes to Captured: bakedStyles + clone, consolidating currentColor
  *
  * Principles applied: authored color syntax is preserved when it round-trips;
  * this handler only rewrites a literal back to the equivalent currentColor.
@@ -13,27 +13,26 @@
  * element's resolved `color`. Early-returns per element otherwise.
  * Transform contract: rewrites such literals to the `currentColor` keyword.
  * Mutates bakedStyles + clone inline styles only.
- * Test bundle: TODO, add later (oklch palette + currentColor icons).
  *
  * Why this exists: oklch/oklab/color()/color-mix() already survive serialization
  * because reconcile keeps the authored value when it round-trips and otherwise
- * ships the computed value (which chrome serializes in the same color space), so this
+ * ships the computed value, which chrome serializes in the same color space, so this
  * handler does not need to touch them. What it does fix is currentColor: chrome's
  * getComputedStyle resolves currentColor on fill/stroke/border to the literal,
  * severing the link to `color`, so an icon that should recolor with its text no
  * longer does. Restoring currentColor where the literal matches `color` is
- * pixel-identical and keeps that link (it also matters once polish adds hover
- * rules). This consolidates the currentColor handling v1 spread across 3 places.
+ * pixel-identical and keeps that link; it also matters once polish adds hover
+ * rules. This consolidates the currentColor handling v1 spread across 3 places.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
 
 /**
  * Svg paint properties that default to currentColor, the bounded css-spec
- * surface for the icon-recolor mechanism (a feature-handler spec set, not a
- * hardcoded property list). border/outline color literals are
+ * surface for the icon-recolor mechanism, a feature-handler spec set, not a
+ * hardcoded property list. border/outline color literals are
  * deliberately left alone: rewriting them to currentColor risks serialization
- * drift for no rendering gain (the icon case is what matters).
+ * drift for no rendering gain, since the icon case is what matters.
  */
 const COLOR_PROPS = ['fill', 'stroke'];
 

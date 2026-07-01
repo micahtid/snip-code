@@ -1,8 +1,8 @@
 /**
- * capture/sheets.ts: stylesheet discovery (cssom)
+ * capture/sheets.ts: stylesheet discovery via cssom
  *
  * Pipeline position: capture
- * Reads from Captured: n/a (reads the live document.styleSheets)
+ * Reads from Captured: n/a; reads the live document.styleSheets
  * Writes to Captured: stylesheets, foundationRules, componentRules, variables,
  * fonts, keyframes, inaccessible.crossOriginStylesheets
  *
@@ -73,9 +73,9 @@ export function discoverStylesheets(): SheetDiscovery {
 		const fontsBefore = out.fonts.length;
 		walkRules(rules, {}, out, 'cssom');
 		// An @font-face src is relative to its own stylesheet, not the page, so absolutize
-		// the faces this sheet contributed against the sheet url (the document url for an
-		// inline <style>). A relative src on a sheet served from a sub-path (the next.js
-		// /_next/static/css shape) otherwise resolves against the page root and 404s.
+		// the faces this sheet contributed against the sheet url, or the document url for an
+		// inline <style>. A relative src on a sheet served from a sub-path, such as the next.js
+		// /_next/static/css shape, otherwise resolves against the page root and 404s.
 		absolutizeFontSrcs(out.fonts, fontsBefore, sheet.href || document.baseURI);
 		const after = out.foundationRules.length + out.componentRules.length;
 		out.stylesheets.push({ href: sheet.href, origin, ruleCount: after - before });
@@ -94,9 +94,9 @@ export function discoverStylesheets(): SheetDiscovery {
  *
  * @param cssText - the stylesheet text fetched by the background
  * @param source - provenance tag for the produced CssRule entries
- * @param base - the sheet url, to absolutize @font-face src against (relative to the
- *   sheet, not the page); omitted when the caller absolutizes itself
- * @returns the discovery deltas (rules, variables, fonts, keyframes)
+ * @param base - the sheet url to absolutize @font-face src against, since a src is relative to
+ *   the sheet, not the page; omitted when the caller absolutizes itself
+ * @returns the discovery deltas: rules, variables, fonts, keyframes
  */
 export async function parseCssText(cssText: string, source: CssRule['source'] = 'cssom', base?: string): Promise<SheetDiscovery> {
 	const out: SheetDiscovery = {
@@ -115,16 +115,16 @@ export async function parseCssText(cssText: string, source: CssRule['source'] = 
 	return out;
 }
 
-/** Matches each url() token in a css value (font src), quote-tolerant. */
+/** Matches each url() token in a css value, typically a font src, quote-tolerant. */
 const URL_IN_SRC = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /**
  * Rewrites the src of every face from index `start` onward to an absolute url against
- * `base` (the owning stylesheet's url). data:/blob:/already-absolute urls and local()
+ * `base`, the owning stylesheet's url. data:/blob:/already-absolute urls and local()
  * sources are left untouched, so the rewrite is idempotent.
  *
- * @param fonts - the discovered faces (mutated in place from `start`)
- * @param start - first index to rewrite (faces this sheet contributed)
+ * @param fonts - the discovered faces, mutated in place from `start`
+ * @param start - first index to rewrite, the faces this sheet contributed
  * @param base - the stylesheet url to resolve relative srcs against
  */
 function absolutizeFontSrcs(fonts: FontFace[], start: number, base: string): void {
@@ -179,8 +179,8 @@ function walkRules(rules: CSSRuleList, ctx: RuleContext, out: SheetDiscovery, so
 		} else if (isGroupingRule(rule)) {
 			// @layer {... } and @container... {... }. these are recent rule
 			// Types not always present in the dom lib; detect structurally and read
-			// their identifying field defensively (the layers/units handlers refine
-			// this later, here we just preserve the context).
+			// their identifying field defensively; the layers/units handlers refine
+			// this later, here we just preserve the context.
 			const layer = readField(rule, 'name');
 			const containerQuery = readField(rule, 'conditionText');
 			walkRules(rule.cssRules, {
@@ -275,7 +275,7 @@ function readField(rule: CSSRule, field: string): string {
  * (::before) count toward c, pseudo-classes (:hover) toward b.
  */
 export function specificityOf(selector: string): number {
-	// Score the most specific comma-branch (querySelector semantics).
+	// Score the most specific comma-branch, matching querySelector semantics.
 	let best = 0;
 	for (const branch of selector.split(',')) {
 		const s = branch.trim();

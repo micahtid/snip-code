@@ -1,16 +1,16 @@
 /**
  * assistive/colors.ts: color extraction
  *
- * Pipeline position: capture (assistive runs the capture phase only)
+ * Pipeline position: capture; assistive runs the capture phase only
  * Reads from Captured: root
- * Writes to Captured: n/a (returns a color list)
+ * Writes to Captured: n/a; returns a color list
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
  * Why this exists: assistive mode hands a coding agent a palette of the colors a
  * component actually uses, so it can match them. This walks the picked subtree's
  * computed styles and collects the distinct, non-transparent colors across the
- * paint properties, most-used first. Ported (rewritten) from v1
+ * paint properties, most-used first. Ported and rewritten from v1
  * colors/color-extractor.ts.
  */
 

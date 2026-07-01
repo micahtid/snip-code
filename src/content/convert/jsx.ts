@@ -1,21 +1,21 @@
 /**
- * convert/jsx.ts: html -> jsx (react)
+ * convert/jsx.ts: html -> jsx for react
  *
  * Pipeline position: convert
- * Reads from Captured: clone (via the tailwind/bem emitters)
+ * Reads from Captured: clone, via the tailwind and bem emitters
  * Writes to Captured: nothing
  *
  * A format transform of the baked result.
  *
  * Why this exists: the jsx-tailwind and jsx-css formats emit a
- * react component. Jsx is not html: attributes rename (class -> className, for ->
- * htmlFor, hyphenated svg attrs camelCase), void elements self-close, and inline
+ * react component. Jsx is not html: attributes rename, so class becomes className, for becomes
+ * htmlFor, and hyphenated svg attrs camelCase, void elements self-close, and inline
  * style strings become style objects. This builds on the tailwind emitter
- * (jsx-tailwind) or the bem-css emitter (jsx-css), then rewrites their html into
- * jsx and wraps it in a component. Ported (rewritten) from v1 html-to-jsx.ts
- * (full attribute transform table). Jsx lets any childless element self-close,
- * so there is no need to enumerate html void elements (which also avoids
- * hardcoding a tag list).
+ * for jsx-tailwind or the bem-css emitter for jsx-css, then rewrites their html into
+ * jsx and wraps it in a component. Ported from v1 html-to-jsx.ts, rewritten,
+ * with its full attribute transform table. Jsx lets any childless element self-close,
+ * so there is no need to enumerate html void elements, which also avoids
+ * hardcoding a tag list.
  */
 import type { Captured } from '../types';
 import { emitTailwind } from './tailwind';
@@ -24,8 +24,8 @@ import type { HtmlOutput } from './html';
 
 /**
  * The html attributes that rename to a non-camelCase react prop. This is the
- * react dom attribute vocabulary (a finite output-format table), not a hardcoded
- * list of styling properties. Hyphenated svg attrs are handled algorithmically (camelCase).
+ * react dom attribute vocabulary, a finite output-format table, not a hardcoded
+ * list of styling properties. Hyphenated svg attrs are handled algorithmically by camelCasing.
  */
 const REACT_ATTR: Record<string, string> = {
 	class: 'className',
@@ -52,7 +52,7 @@ const REACT_ATTR: Record<string, string> = {
  * Emits the snip as a react component plus its stylesheet.
  *
  * @param captured - read-only
- * @param variant - 'tailwind' (className utilities) or 'css' (bem classes + css)
+ * @param variant - 'tailwind' for className utilities or 'css' for bem classes + css
  */
 export function emitJsx(captured: Captured, variant: 'tailwind' | 'css'): HtmlOutput {
 	const base = variant === 'tailwind' ? emitTailwind(captured) : emitBem(captured, false);
@@ -63,7 +63,7 @@ export function emitJsx(captured: Captured, variant: 'tailwind' | 'css'): HtmlOu
 	return { html: component, css: base.css };
 }
 
-/** Recursively serialize an element (and its children) as indented jsx. */
+/** Recursively serialize an element, and its children, as indented jsx. */
 function elementToJsx(el: Element, depth: number): string {
 	const pad = '\t'.repeat(depth);
 	const tag = el.tagName.toLowerCase();
@@ -134,7 +134,7 @@ function camelCase(name: string): string {
 	return name.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
 }
 
-/** Escape a jsx attribute value (double-quoted). */
+/** Escape a jsx attribute value, which is double-quoted. */
 function escapeAttr(value: string): string {
 	return value.replace(/"/g, '&quot;');
 }

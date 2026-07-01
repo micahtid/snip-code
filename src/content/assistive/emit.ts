@@ -1,17 +1,17 @@
 /**
  * assistive/emit.ts: assistive json build + delivery
  *
- * Pipeline position: capture (assistive runs the capture phase, then emits)
+ * Pipeline position: capture; assistive runs the capture phase, then emits
  * Reads from Captured: page, capturedAt, element, screenshot, stylesheets, root
- * Writes to Captured: n/a (returns + delivers the json)
+ * Writes to Captured: n/a; returns and delivers the json
  *
- * Principles applied: none (serialization + io).
+ * Principles applied: none; serialization and io.
  *
  * Why this exists: assistive mode produces the json document a
  * coding agent can act on, page url, both selectors, bounding box, and the asset
  * manifest, instead of code. This builds that document verbatim to the assistive
- * schema and delivers it by the user's chosen channels (clipboard / file /
- * webhook). Delivery failures never throw; each channel is attempted
+ * schema and delivers it by the user's chosen channels: clipboard, file, or
+ * webhook. Delivery failures never throw; each channel is attempted
  * independently.
  */
 import type { Captured, UserPreferences } from '../types';
@@ -53,7 +53,7 @@ export function buildAssistiveJson(captured: Captured): AssistiveDoc {
  * channel is independent and best-effort; a failure is recorded, never thrown.
  *
  * @param doc - the assistive document
- * @param prefs - user preferences (delivery channels + webhook url)
+ * @param prefs - user preferences: delivery channels and webhook url
  * @returns the warnings accumulated across channels
  */
 export async function deliver(doc: AssistiveDoc, prefs: UserPreferences): Promise<string[]> {
@@ -86,7 +86,7 @@ function downloadJson(json: string): void {
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Post the json to the configured webhook (best-effort; page csp may block). */
+/** Post the json to the configured webhook; best-effort, since the page csp may block. */
 async function postWebhook(webhookUrl: string | null, json: string): Promise<void> {
 	if (!webhookUrl) throw new Error('no webhook url configured');
 	await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json });

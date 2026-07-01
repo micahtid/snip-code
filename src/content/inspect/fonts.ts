@@ -1,17 +1,17 @@
 /**
  * inspect/fonts.ts: page-wide font extractor
  *
- * Pipeline position: inspect (page-scoped; reads the live dom directly, does not run the element pipeline)
- * Reads from DOM: document/window (live; page must be loaded)
- * Writes to: nothing (pure extraction, no side effects)
+ * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
+ * Reads from DOM: document/window; live, the page must be loaded
+ * Writes to: nothing; pure extraction, no side effects
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
  * Why this exists: the fonts inspector lists every font family the page renders,
  * most-used first, so the panel can show an "Aa" preview, the web/system origin,
  * and the variant count. Web vs system is decided by the FontFaceSet
  * (`document.fonts`), which mirrors every @font-face the page declares; usage and
- * variants come from a single walk of the rendered text. Ported (rewritten) from
+ * variants come from a single walk of the rendered text. Ported by rewriting from
  * v1 fonts/font-extractor.ts, dropping the class/logger ceremony and the
  * @font-face url + load-state fields the panel never showed.
  */
@@ -56,7 +56,7 @@ export function extractPageFonts(): FontReport[] {
 }
 
 /**
- * The set of families declared as web fonts. `document.fonts` (the FontFaceSet)
+ * The set of families declared as web fonts. `document.fonts`, the FontFaceSet,
  * holds a FontFace for every @font-face the page declares, so membership here is
  * the web-vs-system signal without re-parsing stylesheets.
  */
@@ -117,7 +117,7 @@ function normalizeFamily(raw: string): string {
 	return raw.replace(/^["']|["']$/g, '').trim();
 }
 
-/** True for a generic css family keyword (not a real font name). */
+/** True for a generic css family keyword, not a real font name. */
 function isGeneric(family: string): boolean {
 	return GENERIC_FAMILIES.has(family.toLowerCase());
 }

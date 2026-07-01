@@ -1,11 +1,11 @@
 /**
  * components/inspect/InspectCard.tsx: the shared inspector card
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a, ui only
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none, ui only.
  *
  * Why this exists: the fonts, colors, and assets views are the same card shape, a
  * fixed preview slot beside a name and a meta line, with one click action that
@@ -15,15 +15,15 @@
  */
 import { useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
-import { COLORS } from '../../theme';
+import { COLORS, FLASH_MS } from '../../theme';
 
 interface InspectCardProps {
 	/** The fixed-size preview: a font sample, a color swatch, or a thumbnail. */
 	preview: ReactNode;
 	name: string;
-	/** The muted second line; pass '' to show none (e.g. a color with no ai role). */
+	/** The muted second line; pass '' to show none, such as a color with no ai role. */
 	meta: string;
-	/** Runs on click (copy or download); the card flashes `feedback` once it resolves. */
+	/** Runs on click, either a copy or a download; the card flashes `feedback` once it resolves. */
 	onActivate: () => void | Promise<void>;
 	/** The confirmation shown briefly after a successful action ("Copied" / "Downloaded"). */
 	feedback: string;
@@ -41,7 +41,7 @@ export function InspectCard({ preview, name, meta, onActivate, feedback, title }
 			return;
 		}
 		setFlashed(true);
-		setTimeout(() => setFlashed(false), 1300);
+		setTimeout(() => setFlashed(false), FLASH_MS);
 	};
 
 	return (

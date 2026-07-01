@@ -3,7 +3,7 @@
  *
  * Pipeline position: resolve
  * Reads from Captured: root, fonts
- * Writes to Captured: fonts (absolutized src, narrowed to the faces the snip renders)
+ * Writes to Captured: fonts, with absolutized src, narrowed to the faces the snip renders
  *
  * Travel-with-the-snip rule for fonts: a used custom font must carry its
  * @font-face and an absolute src so it loads from the snip's new home.
@@ -11,19 +11,19 @@
  * Why this exists: @font-face src urls are usually relative to the source page;
  * pasted elsewhere they 404. This resolves them to absolute urls and narrows the
  * captured @font-face list to the faces the snip actually renders. A source page
- * commonly ships every weight of a family (light through bold) while a snipped
+ * commonly ships every weight of a family, light through bold, while a snipped
  * component renders only one or two, so narrowing to the used family is not
  * enough: the other weights are dead @font-face rules and dead font downloads.
- * The narrowing therefore matches on the full (family, weight, style) that the
+ * The narrowing therefore matches on the full family, weight, and style that the
  * live subtree renders, resolved through the css-fonts-4 font-matching algorithm
- * so a request the family has no exact face for (e.g. weight 700 against a 600
- * bold) still keeps the face the browser substitutes. Requests are read from the
- * live computed styles (root subtree + the generated-content pseudo-elements),
- * which pairs each rendered family with the weight and style it renders at, the
+ * so a request the family has no exact face for, such as weight 700 against a 600
+ * bold, still keeps the face the browser substitutes. Requests are read from the
+ * live computed styles across the root subtree and the generated-content
+ * pseudo-elements, which pairs each rendered family with the weight and style it renders at, the
  * same "first family is the one that renders" ground truth assistive/fonts.ts
  * uses. Generic keywords (serif, system-ui,...) never match a captured
  * @font-face family, so they fall out naturally, no banned-keyword set needed.
- * Ported (rewritten) from v1 font-extractor.ts.
+ * Ported from v1 font-extractor.ts, rewritten.
  */
 import type { Captured, FontFace } from '../types';
 
@@ -32,7 +32,7 @@ const URL_IN_SRC = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 /**
  * The generated-content pseudo-elements whose own font can differ from the host
  * element's, mirroring the set features/pseudo.ts materializes. Sampling them
- * keeps a face that only a pseudo renders (e.g. an icon-font ::before).
+ * keeps a face that only a pseudo renders, for example an icon-font ::before.
  */
 const PSEUDO_ELEMENTS = ['::before', '::after', '::marker', '::placeholder', '::file-selector-button'];
 
@@ -50,10 +50,10 @@ const GENERIC_FAMILIES = new Set([
 
 /**
  * Guarantees every baked font-family stack ends in a generic family, so text never
- * falls back to the browser default serif (Times New Roman) when a custom font is
+ * falls back to the browser default serif, Times New Roman, when a custom font is
  * unavailable. A stack that already ends in a generic is left untouched; otherwise a
- * generic is appended, inferred from the first family's monospace hint, else sans-serif
- * (the overwhelmingly common case for ui type). Runs after the standalone
+ * generic is appended, inferred from the first family's monospace hint, else sans-serif,
+ * the overwhelmingly common case for ui type. Runs after the standalone
  * reconciliation has baked the resolved family stacks.
  *
  * @param captured - every baked font-family value is normalized in place
@@ -104,8 +104,8 @@ export function resolveFonts(captured: Captured): void {
  * picks for one of that family's requests. A family with no request never
  * renders, so all of its faces drop.
  *
- * unicode-range subsetting (a family split into latin / latin-ext / cyrillic / ... files,
- * the next.js and google-fonts shape) is honored: of the faces at the matched
+ * unicode-range subsetting is honored: a family split into latin, latin-ext, cyrillic,
+ * and further files, the next.js and google-fonts shape. Of the faces at the matched
  * (weight, style), only those whose range covers a codepoint the snip actually renders
  * survive, so a latin snip keeps the latin subset rather than an arbitrary first subset
  * that would render nothing and silently fall back.
@@ -130,16 +130,16 @@ function keptFaces(fonts: FontFace[], requests: Map<string, FaceRequest[]>, code
 	return fonts.filter((font) => keep.has(font));
 }
 
-/** The (family, weight, style) requests plus the codepoints the live subtree renders. */
+/** The family, weight, and style requests plus the codepoints the live subtree renders. */
 interface SubtreeFaces {
 	requests: Map<string, FaceRequest[]>;
 	codepoints: Set<number>;
 }
 
 /**
- * The (family, weight, style) triples the live subtree renders, keyed by lowercased
- * family, plus the set of codepoints it renders (so unicode-range narrowing can keep the
- * subset faces that actually cover the text). Reads element and generated-content text.
+ * The family, weight, and style triples the live subtree renders, keyed by lowercased
+ * family, plus the set of codepoints it renders, so unicode-range narrowing can keep the
+ * subset faces that actually cover the text. Reads element and generated-content text.
  */
 function faceRequests(root: Element): SubtreeFaces {
 	const requests = new Map<string, FaceRequest[]>();
@@ -166,7 +166,7 @@ function faceRequests(root: Element): SubtreeFaces {
 	return { requests, codepoints };
 }
 
-/** Adds every codepoint of a string to the set (iterating by code point, not utf-16 unit). */
+/** Adds every codepoint of a string to the set, iterating by code point, not utf-16 unit. */
 function addCodepoints(set: Set<number>, text: string): void {
 	for (const ch of text) {
 		const cp = ch.codePointAt(0);
@@ -174,7 +174,7 @@ function addCodepoints(set: Set<number>, text: string): void {
 	}
 }
 
-/** Which pseudo-elements actually generate a box on this element (so their font renders). */
+/** Which pseudo-elements actually generate a box on this element, so their font renders. */
 function renderedPseudos(el: Element): string[] {
 	const out: string[] = [];
 	for (const pseudo of ['::before', '::after'] as const) {
@@ -198,7 +198,7 @@ function renderedPseudos(el: Element): string[] {
  * algorithm picks one weight; every face at that matched (weight, style) whose
  * unicode-range covers a rendered codepoint is kept, because subset faces partition the
  * codepoint space and the snip may render glyphs from several subsets. If no subset
- * covers the text (an exotic repertoire, or an unparseable range), the weight winner is
+ * covers the text, whether an exotic repertoire or an unparseable range, the weight winner is
  * kept as a floor so the family still renders rather than vanishing.
  */
 function selectFaces(request: FaceRequest, faces: FontFace[], codepoints: Set<number>): FontFace[] {
@@ -219,8 +219,8 @@ function selectFaces(request: FaceRequest, faces: FontFace[], codepoints: Set<nu
 /**
  * Whether a face renders any codepoint the snip shows. A face with no unicode-range
  * descriptor covers the full repertoire, so it always qualifies; otherwise at least one
- * of its declared ranges must contain a rendered codepoint. An empty codepoint set (no
- * text) or an unparseable range qualifies too, so coverage never wrongly drops a face.
+ * of its declared ranges must contain a rendered codepoint. An empty codepoint set, meaning
+ * no text, or an unparseable range qualifies too, so coverage never wrongly drops a face.
  *
  * @param font - the captured face
  * @param codepoints - the codepoints the live subtree renders
@@ -304,7 +304,7 @@ function weightSearchOrder(desired: number, weights: number[]): number[] {
 	return [...heavier, ...lighter];
 }
 
-/** A face's [min, max] weight from its font-weight descriptor (a single value or a range). */
+/** A face's [min, max] weight from its font-weight descriptor, either a single value or a range. */
 function faceWeightRange(font: FontFace): [number, number] {
 	const parts = (font.descriptors['font-weight'] ?? '400').trim().split(/\s+/).map(normalizeWeight);
 	const lo = parts[0] ?? 400;
@@ -326,7 +326,7 @@ function normalizeWeight(raw: string): number {
 	return Number.isFinite(numeric) ? numeric : 400;
 }
 
-/** Collapse a css font-style value (which may carry an oblique angle) to its keyword. */
+/** Collapse a css font-style value, which may carry an oblique angle, to its keyword. */
 function normalizeStyle(raw: string): string {
 	const value = raw.trim().toLowerCase();
 	if (value.startsWith('italic')) return 'italic';

@@ -1,28 +1,28 @@
 /**
  * capture/settle.ts: bring the target to its settled, revealed state before capture
  *
- * Pipeline position: capture (runs first, before clone + computed read)
- * Reads from Captured: n/a (operates on the live root before Captured is built)
- * Writes to Captured: n/a (returns a warning string the caller records)
+ * Pipeline position: capture; runs first, before clone + computed read
+ * Reads from Captured: n/a; operates on the live root before Captured is built
+ * Writes to Captured: n/a; returns a warning string the caller records
  *
  * Why this exists: the capture path reads a transient frame. Many components enter
- * with a scroll-driven reveal, an element styled `opacity: 0` (plus a transform
- * offset) until an IntersectionObserver flips a class on scroll. If we clone and read
+ * with a scroll-driven reveal, an element styled `opacity: 0` plus a transform
+ * offset until an IntersectionObserver flips a class on scroll. If we clone and read
  * computed style before that fires, we bake the frozen blank pre-reveal frame and the
- * snip ships empty, even though the reference (which the grader scrolls into view
- * before screenshotting) looks fully revealed. The same gap leaves lazy images
+ * snip ships empty, even though the reference, which the grader scrolls into view
+ * before screenshotting, looks fully revealed. The same gap leaves lazy images
  * unloaded and webfonts unswapped.
  *
  * Settle removes the gap by driving the live element to the state a human would see:
  * scroll it into view so observers and scroll reveals fire, await the reveal, finish
- * any running transitions/animations to their end state (so the capture is stable and
- * deterministic, not a mid-flight frame), force lazy images to load and decode, and
+ * any running transitions/animations to their end state, so the capture is stable and
+ * deterministic, not a mid-flight frame, force lazy images to load and decode, and
  * await fonts. Infinite animations are left alone, finishing them is meaningless and
  * the guard keeps the settle deterministic.
  *
  * It does not mutate authored styles or structure, it only nudges the page's own
- * reveal machinery and waits. A reveal that is gated on an event we cannot fire (a
- * click, a custom timer) will not settle; that residual is detected and returned as a
+ * reveal machinery and waits. A reveal that is gated on an event we cannot fire, such as
+ * a click or a custom timer, will not settle; that residual is detected and returned as a
  * warning so the snip is flagged rather than shipped silently blank.
  */
 
@@ -73,7 +73,7 @@ export async function settle(root: Element): Promise<{ warning?: string }> {
 /**
  * Forces every image in the subtree to load eagerly and awaits decode, so the capture
  * reads loaded dimensions and the resolved currentSrc rather than a lazy spacer. Decode
- * failures (cross-origin, broken) are ignored, the snip proceeds either way.
+ * failures, whether cross-origin or broken, are ignored, the snip proceeds either way.
  *
  * @param root - the live subtree
  */
@@ -89,7 +89,7 @@ async function loadImages(root: Element): Promise<void> {
 			// Read-only in some contexts; scrolling still triggers native lazy load.
 		}
 		// Decode resolves once the current source is ready; catch so a broken image
-		// (or a still-pending lazy swap) never rejects the settle.
+		// or a still-pending lazy swap, never rejects the settle.
 		decodes.push(el.decode().catch(() => undefined));
 	}
 	await Promise.all(decodes);
@@ -98,7 +98,7 @@ async function loadImages(root: Element): Promise<void> {
 /**
  * Finishes running transitions and finite animations across the subtree, jumping each
  * to its end state so the capture is a stable, deterministic frame rather than a
- * mid-flight one. Infinite (looping) animations are skipped: finishing them is
+ * mid-flight one. Infinite looping animations are skipped: finishing them is
  * undefined, and forcing it would either throw or pin an arbitrary frame.
  *
  * @param root - the live subtree
@@ -118,14 +118,14 @@ function finishTransientAnimations(root: Element): void {
 			if (timing && timing.iterations === Infinity) continue; // Looping; leave it.
 			anim.finish();
 		} catch {
-			// Some animations reject finish (e.g. infinite without the guard catching it).
+			// Some animations reject finish, e.g. an infinite one the guard did not catch.
 		}
 	}
 }
 
 /**
  * Heuristic check for a reveal that never fired: after settling, the root still paints
- * nothing because it (or its only child wrapper) is held invisible. Returns a warning
+ * nothing because it, or its only child wrapper, is held invisible. Returns a warning
  * string so the snip is flagged. This never blocks or alters the snip, it only reports.
  *
  * @param root - the live subtree, post-settle

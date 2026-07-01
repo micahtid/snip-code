@@ -1,11 +1,11 @@
 /**
  * components/inspect/AssetGrid.tsx: the assets inspector view
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a, ui only
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none, ui only.
  *
  * Why this exists: renders the page's images, media, backgrounds, favicons, and
  * inline svgs as a grid of thumbnail cards showing the filename, type, and

@@ -1,17 +1,17 @@
 /**
  * inspect/schema/optimize.ts: schema size reduction
  *
- * Pipeline position: inspect (page-scoped; post-processes the extracted schema)
- * Reads from DOM: nothing (operates on the extracted schema)
- * Writes to: nothing (returns an optimized copy)
+ * Pipeline position: inspect, page-scoped; post-processes the extracted schema
+ * Reads from DOM: nothing; operates on the extracted schema
+ * Writes to: nothing; returns an optimized copy
  *
- * Principles applied: none (transformation).
+ * Principles applied: none; transformation.
  *
  * Why this exists: the raw schema can be large, and the ai pass pays per token, so
  * this trims it before the prompt: dedupe and cap the color palette, sort and bound
  * spacing, merge near-identical style entries, and apply hard caps on the style
- * map, structure, states, sections, and blueprints. The caps keep the prompt small
- * (the simpler defense against a slow model than any timeout). Ported (rewritten)
+ * map, structure, states, sections, and blueprints. The caps keep the prompt small,
+ * a simpler defense against a slow model than any timeout. Ported by rewriting
  * from v1 schema/schema-optimizer.ts.
  */
 import type { PageSchema } from './types';
@@ -76,8 +76,8 @@ function optimizeSpacing(spacing: string[]): string[] {
 
 /**
  * When there are many style entries, collapse pairs that differ by one property,
- * dropping the near-duplicate. Only runs above 40 entries (below that the map is
- * already small enough to leave intact).
+ * dropping the near-duplicate. Only runs above 40 entries; below that the map is
+ * already small enough to leave intact.
  */
 function mergeNearIdenticalStyles(styles: Record<string, Record<string, string>>): Record<string, Record<string, string>> {
 	const entries = Object.entries(styles);

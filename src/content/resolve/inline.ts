@@ -1,27 +1,27 @@
 /**
  * resolve/inline.ts: inline external resources so the snip is self-contained
  *
- * Pipeline position: resolve (closing step, after the standalone reconciliation)
+ * Pipeline position: resolve; the closing step, after the standalone reconciliation
  * Reads from Captured: clone, bakedStyles, fonts, page
- * Writes to Captured: clone (img src), bakedStyles (background url), fonts (src), warnings
+ * Writes to Captured: clone img src, bakedStyles background url, fonts src, and warnings
  *
- * Why this exists: a snip that references the origin (a webfont url, an image url, a
- * background-image url) breaks the moment it is pasted somewhere that cannot reach
+ * Why this exists: a snip that references the origin, such as a webfont url, an image url,
+ * or a background-image url, breaks the moment it is pasted somewhere that cannot reach
  * those urls, hotlink-protected fonts, authenticated image cdns, or simply offline.
  * The artifact must not depend on the origin. This step fetches every referenced font
- * and image through the extension's privileged background context (whose <all_urls>
- * permission reaches resources the page's own context cannot) and rewrites the
+ * and image through the extension's privileged background context, whose <all_urls>
+ * permission reaches resources the page's own context cannot, and rewrites the
  * reference to a base64 data uri, so the snip carries its pixels with it.
  *
- * Best-effort and deterministic: a fetch that fails (blocked, oversize, offline)
+ * Best-effort and deterministic: a fetch that fails, whether blocked, oversize, or offline,
  * leaves the absolute url in place rather than throwing, so the snip still ships; given
- * the same responses the rewrite is byte-identical. Bounded by a resource cap and (in
- * the background) a size cap so a heavy page cannot bloat the output without limit.
+ * the same responses the rewrite is byte-identical. Bounded by a resource cap and, in
+ * the background, a size cap so a heavy page cannot bloat the output without limit.
  */
 import type { Captured } from '../types';
 import { synthesizedStyle, forEachSynthesizedDeclaration, rewriteSynthesizedDeclarations } from '../reconcile/synthesized';
 
-/** Matches each url() token in a css value (font src, background-image), quote-tolerant. */
+/** Matches each url() token in a css value such as font src or background-image, quote-tolerant. */
 const URL_IN_VALUE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
 
 /** The background-carrying baked properties whose url()s are inlined. */
@@ -33,16 +33,16 @@ const MAX_RESOURCES = 48;
 /** Concurrent background fetches; keeps the snip responsive without flooding the worker. */
 const FETCH_CONCURRENCY = 6;
 
-/** Per-fetch deadline; a stalled resource is abandoned (url kept) rather than hanging the snip. */
+/** Per-fetch deadline; a stalled resource is abandoned, keeping its url, rather than hanging the snip. */
 const FETCH_TIMEOUT_MS = 8000;
 
-/** A resource larger than this is left as a url reference rather than inlined (mirrors the background cap). */
+/** A resource larger than this is left as a url reference rather than inlined, mirroring the background cap. */
 const MAX_INLINE_BYTES = 3 * 1024 * 1024;
 
 /**
  * Inlines every referenced font and image as a data uri. Collects the unique absolute
  * urls across @font-face src, <img> src, and baked background-image, fetches them
- * (bounded), and rewrites each reference to the fetched data uri. Leaves any url it
+ * within bounds, and rewrites each reference to the fetched data uri. Leaves any url it
  * could not fetch untouched.
  *
  * @param captured - clone, bakedStyles, and fonts are rewritten in place
@@ -62,8 +62,8 @@ export async function inlineResources(captured: Captured): Promise<void> {
 	for (const [, baked] of captured.bakedStyles) {
 		for (const prop of BG_PROPS) for (const u of urlsIn(baked.get(prop) ?? '')) add(u);
 	}
-	// Synthesized state/pseudo rules carry their own url() (a hover background, a css-icon
-	// content), which the bakedStyles loop never sees because they live in a <style>.
+	// Synthesized state/pseudo rules carry their own url(), such as a hover background or a
+	// css-icon content, which the bakedStyles loop never sees because they live in a <style>.
 	forEachSynthesizedDeclaration(captured, (decl) => { for (const u of urlsIn(decl.value)) add(u); });
 
 	if (wanted.size === 0) return;
@@ -89,7 +89,7 @@ export async function inlineResources(captured: Captured): Promise<void> {
 		const data = dataByUrl.get(absolute(src, base) ?? '');
 		if (data) img.setAttribute('src', data);
 	}
-	// Rewrite baked background urls (inline style mirrors the baked map).
+	// Rewrite baked background urls; the inline style mirrors the baked map.
 	for (const [clone, baked] of captured.bakedStyles) {
 		for (const prop of BG_PROPS) {
 			const value = baked.get(prop);
@@ -106,7 +106,7 @@ export async function inlineResources(captured: Captured): Promise<void> {
 	}
 
 	// Rewrite the synthesized rules' url()s the same way, but only when one was actually
-	// inlined, so the synthesized <style> is not re-serialized (and reformatted) for the
+	// inlined, so the synthesized <style> is not re-serialized, and reformatted, for the
 	// common case that carries no url() at all.
 	if (dataByUrl.size > 0 && (synthesizedStyle(captured)?.textContent ?? '').includes('url(')) {
 		rewriteSynthesizedDeclarations(captured, (decl) =>
@@ -119,8 +119,8 @@ export async function inlineResources(captured: Captured): Promise<void> {
 
 /**
  * Drops any @font-face the inlining could not make self-contained, so the artifact never
- * ships a dead origin reference. A face whose src resolves only to an external url (no
- * data: bytes inlined and no local() system source) cannot render once the snip is pasted
+ * ships a dead origin reference. A face whose src resolves only to an external url, with no
+ * data: bytes inlined and no local() system source, cannot render once the snip is pasted
  * away from the origin, and appendGenericFallbacks has already guaranteed every baked
  * font-family stack ends in a generic, so the text falls back deterministically rather
  * than depending on (or 404ing from) the origin.
@@ -142,8 +142,8 @@ function dropUncontainedFaces(captured: Captured): void {
 }
 
 /**
- * Whether a @font-face src can render without the origin: it has no external url at all
- * (data:, local(), or already resolved), or it pairs an external url with an inlined
+ * Whether a @font-face src can render without the origin: it has no external url at all,
+ * whether data:, local(), or already resolved, or it pairs an external url with an inlined
  * data: source or a local() system fallback the browser can use offline.
  *
  * @param src - the face's src descriptor
@@ -178,8 +178,8 @@ async function fetchAll(urls: string[]): Promise<Map<string, string>> {
 
 /**
  * Fetches one url as a data uri, null on any failure or timeout. Tries a direct fetch
- * from the content script first (which succeeds for same-origin and cors-enabled
- * resources without a worker round-trip), then falls back to the privileged background
+ * from the content script first, which succeeds for same-origin and cors-enabled
+ * resources without a worker round-trip, then falls back to the privileged background
  * broker, whose <all_urls> permission reaches cross-origin and hotlink-protected
  * resources the page's own context cannot.
  */
@@ -189,7 +189,7 @@ async function fetchData(url: string): Promise<string | null> {
 	return fetchDataViaBackground(url);
 }
 
-/** Direct content-script fetch + encode; null if blocked (cors), oversize, or non-2xx. */
+/** Direct content-script fetch + encode; null if blocked by cors, oversize, or non-2xx. */
 async function fetchDataDirect(url: string): Promise<string | null> {
 	try {
 		const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
@@ -202,7 +202,7 @@ async function fetchDataDirect(url: string): Promise<string | null> {
 	}
 }
 
-/** Background-broker fetch (privileged); null on failure or timeout. */
+/** Background-broker fetch, privileged; null on failure or timeout. */
 async function fetchDataViaBackground(url: string): Promise<string | null> {
 	try {
 		const reply = (await Promise.race([
@@ -225,7 +225,7 @@ function blobToDataUrl(blob: Blob): Promise<string | null> {
 	});
 }
 
-/** Every url() target inside a css value (font src may list several). */
+/** Every url() target inside a css value; font src may list several. */
 function urlsIn(value: string): string[] {
 	const out: string[] = [];
 	for (const match of value.matchAll(URL_IN_VALUE)) {

@@ -3,7 +3,7 @@
  * pipeline phase.
  *
  * This is the extension's only privileged context. It exists so the content
- * script (sandboxed, same-origin-limited) can reach things it cannot touch
+ * script, which is sandboxed and same-origin-limited, can reach things it cannot touch
  * directly: cross-origin stylesheet fetches, tab screenshots, and byok llm
  * provider calls. It routes the extension's message protocol.
  *
@@ -37,7 +37,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		case 'CAPTURE_SCREENSHOT': {
 			// Content scripts cannot call captureVisibleTab; the worker can. It
 			// returns the whole viewport at device resolution and the content-side
-			// picker crops to the element rect (it knows the dpr + scroll offsets).
+			// picker crops to the element rect, since it knows the dpr and scroll offsets.
 			chrome.tabs
 				.captureVisibleTab({ format: 'png' })
 				.then((dataUrl) => sendResponse({ requestId: message.requestId, ok: true, result: { dataUrl } }))
@@ -69,12 +69,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'LLM_REQUEST': {
-			// Byok llm calls (polish + the inspect ai passes). The worker reads the
-			// key from storage (never logs it), calls the provider, and returns the
+			// Byok llm calls for polish and the inspect ai passes. The worker reads the
+			// key from storage and never logs it, calls the provider, and returns the
 			// raw model { text, usage }; each caller parses its own shape. Content
-			// scripts cannot reach provider hosts (page csp), so all llm traffic goes
-			// through here. The optional payload.max raises the output-token ceiling
-			// for the larger schema-synthesis prompt (polish omits it; default 2000).
+			// scripts cannot reach provider hosts because of the page csp, so all llm
+			// traffic goes through here. The optional payload.max raises the output-token
+			// ceiling for the larger schema-synthesis prompt; polish omits it, defaulting to 2000.
 			const p = message.payload || {};
 			llmRequest(p.provider, p.model, p.prompt, p.max)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
@@ -82,7 +82,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 					const msg = String(err && err.message ? err.message : err);
 					const code = msg === 'NO_KEY_CONFIGURED' ? 'NO_KEY_CONFIGURED' : 'PROVIDER_ERROR_0';
 					const response = { requestId: message.requestId, ok: false, error: { code, message: msg } };
-					// A failed-but-billed reply (empty/non-json) carries usage; pass it through to be totalled.
+					// A failed-but-billed reply, empty or non-json, carries usage; pass it through to be totalled.
 					if (err && err.usage) response.usage = err.usage;
 					sendResponse(response);
 				});
@@ -92,7 +92,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		case 'CDP_STYLESHEETS': {
 			// Recover cross-origin stylesheet text the browser already parsed, via the
 			// devtools protocol. The page cannot read these sheets and a background re-fetch
-			// is unreliable (cdn wafs commonly block the extension origin); cdp reads the
+			// is unreliable because cdn wafs commonly block the extension origin; cdp reads the
 			// parsed text above both limits. Capture-internal; see capture/cdp.ts.
 			const tabId = _sender.tab && _sender.tab.id;
 			cdpStylesheets(tabId, (message.payload && message.payload.hrefs) || [])
@@ -111,7 +111,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 			// Begin a measured-state session: attach the debugger and pin motion media so
 			// interactive states can be forced and read live. Capture-internal; see
 			// capture/states-measure.ts. Soft-fails the same way the inherited-chain capture
-			// does (the content side degrades to copying authored rules).
+			// does, with the content side degrading to copying authored rules.
 			const tabId = _sender.tab && _sender.tab.id;
 			cdpForceBegin(tabId)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
@@ -122,8 +122,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'CDP_FORCE_STATE': {
-			// Force (or, with an empty state list, clear) a pseudo-state on one node of the
-			// open session. The content script reads getComputedStyle while the force is live.
+			// Force a pseudo-state on one node of the open session, or clear it with an empty
+			// state list. The content script reads getComputedStyle while the force is live.
 			cdpForceState(message.payload && message.payload.selector, (message.payload && message.payload.states) || [])
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
 				.catch((err) =>
@@ -135,7 +135,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		case 'CDP_FORCE_END': {
 			// End the measured-state session: clear emulated media and detach. The sender tab
 			// is passed so detach happens even if the worker was recycled mid-session and lost
-			// the remembered target (otherwise a forced state could leak into the resting bake).
+			// the remembered target; otherwise a forced state could leak into the resting bake.
 			cdpForceEnd(_sender.tab && _sender.tab.id)
 				.then((result) => sendResponse({ requestId: message.requestId, ok: true, result }))
 				.catch((err) =>
@@ -160,7 +160,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 		}
 
 		case 'FETCH_BINARY': {
-			// Background fetch a binary resource (font/image) and return it as a base64
+			// Background fetch a binary resource, a font or image, and return it as a base64
 			// data uri. The <all_urls> host permission and privileged origin reach
 			// hotlink-protected fonts the page's own context cannot, so the snip can be
 			// made fully self-contained.
@@ -189,8 +189,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
  * DOM.querySelector(root, selector) -> CSS.getMatchedStylesForNode(nodeId).
  * The response's `inherited[]` is the ancestor cascade devtools shows under
  * "inherited from"; we strip user-agent + implicit rules at source. Detaches in
- * finally. Throws on attach contention (devtools already attached) so the caller
- * can soft-fail to cssom-only capture.
+ * finally. Throws on attach contention, when devtools is already attached, so the
+ * caller can soft-fail to cssom-only capture.
  */
 async function cdpInheritedChain(tabId, selector) {
 	if (!tabId) throw new Error('no tab id');
@@ -202,7 +202,7 @@ async function cdpInheritedChain(tabId, selector) {
 		attached = true;
 		await chrome.debugger.sendCommand(target, 'DOM.enable');
 		await chrome.debugger.sendCommand(target, 'CSS.enable');
-		// Pierce:true so the tree (and the inherited chain) crosses closed shadow
+		// Pierce:true so the tree, including the inherited chain, crosses closed shadow
 		// roots, the v2 addition over v1's pierce:false.
 		const doc = await chrome.debugger.sendCommand(target, 'DOM.getDocument', { depth: -1, pierce: true });
 		const closedShadowRoots = countClosedShadowRoots(doc.root);
@@ -235,13 +235,13 @@ async function cdpInheritedChain(tabId, selector) {
 
 /**
  * Recovers cross-origin stylesheet text the browser already parsed, via the devtools
- * protocol. The page cannot read these sheets (same-origin policy) and a privileged
- * re-fetch is unreliable (a cdn waf commonly 403s the extension origin), but the browser
+ * protocol. The page cannot read these sheets under the same-origin policy and a privileged
+ * re-fetch is unreliable because a cdn waf commonly 403s the extension origin, but the browser
  * holds the parsed text and cdp reads it above both limits with no network round-trip.
  *
- * Flow: attach debugger -> enable DOM+CSS (CSS.enable replays CSS.styleSheetAdded for
- * every already-loaded sheet) -> for each sheet whose sourceURL was requested, read
- * CSS.getStyleSheetText. Returns { sheets: [{ href, text }] }; detaches in finally.
+ * Flow: attach debugger -> enable DOM+CSS -> for each sheet whose sourceURL was
+ * requested, read CSS.getStyleSheetText. CSS.enable replays CSS.styleSheetAdded for
+ * every already-loaded sheet. Returns { sheets: [{ href, text }] }; detaches in finally.
  *
  * @param tabId - the sender tab to attach to
  * @param hrefs - the cross-origin sheet urls the content script could not read
@@ -264,9 +264,11 @@ async function cdpStylesheets(tabId, hrefs) {
 		await chrome.debugger.sendCommand(target, 'CSS.enable');
 		// styleSheetAdded replays for every loaded sheet right after enable. Wait in short
 		// bounded steps until every requested href has appeared, then stop early.
-		for (let i = 0; i < 20; i++) {
+		const POLL_STEPS = 20;
+		const POLL_MS = 25;
+		for (let i = 0; i < POLL_STEPS; i++) {
 			if (hrefs.every((h) => headers.some((hd) => hd.sourceURL === h))) break;
-			await new Promise((resolve) => setTimeout(resolve, 25));
+			await new Promise((resolve) => setTimeout(resolve, POLL_MS));
 		}
 		const sheets = [];
 		const seen = new Set();
@@ -294,7 +296,7 @@ async function cdpStylesheets(tabId, hrefs) {
 }
 
 // The open measured-state session: the attached target and the document node the content
-// script's force selectors resolve against. Only one session runs at a time (one snip).
+// script's force selectors resolve against. Only one session runs at a time, one per snip.
 let forceTarget = null;
 let forceRootNodeId = null;
 
@@ -309,15 +311,15 @@ let forceRootNodeId = null;
 async function cdpForceBegin(tabId) {
 	if (!tabId) throw new Error('no tab id');
 	const target = { tabId };
-	// Attaching can transiently fail while a sibling tab's detach is still settling (the
-	// fixtures harness drives many snips back to back). A bounded retry keeps the measured
+	// Attaching can transiently fail while a sibling tab's detach is still settling, since the
+	// fixtures harness drives many snips back to back. A bounded retry keeps the measured
 	// path reliable so its output stays deterministic; a hard failure still soft-fails to copy.
 	await attachWithRetry(target);
 	forceTarget = target;
 	try {
 		await chrome.debugger.sendCommand(target, 'DOM.enable');
 		await chrome.debugger.sendCommand(target, 'CSS.enable');
-		// Pin motion (and scheme) so the captured timing is the page's intent, not a
+		// Pin motion and scheme so the captured timing is the page's intent, not a
 		// headless/ci 'reduce' that would report 0s durations. Best-effort.
 		try {
 			await chrome.debugger.sendCommand(target, 'Emulation.setEmulatedMedia', {
@@ -336,8 +338,8 @@ async function cdpForceBegin(tabId) {
 }
 
 /**
- * Forces (or, with an empty list, clears) a set of pseudo-states on the one node matched by
- * `selector` in the open session. The state names are bare (no colon), e.g. ['hover'].
+ * Forces a set of pseudo-states, or clears them with an empty list, on the one node matched by
+ * `selector` in the open session. The state names are bare with no colon, e.g. ['hover'].
  *
  * @param selector - a selector resolving to exactly the element to force
  * @param states - the pseudo-class names to force, or [] to clear
@@ -353,14 +355,16 @@ async function cdpForceState(selector, states) {
 
 /** Attaches the debugger, retrying a few times on transient contention with a short backoff. */
 async function attachWithRetry(target) {
+	const MAX_ATTEMPTS = 4;
+	const BACKOFF_MS = 60; // Grows linearly per attempt (60, 120, 180ms).
 	let lastErr;
-	for (let attempt = 0; attempt < 4; attempt++) {
+	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 		try {
 			await chrome.debugger.attach(target, '1.3');
 			return;
 		} catch (err) {
 			lastErr = err;
-			await new Promise((resolve) => setTimeout(resolve, 60 * (attempt + 1)));
+			await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS * (attempt + 1)));
 		}
 	}
 	throw lastErr;
@@ -369,7 +373,7 @@ async function attachWithRetry(target) {
 /**
  * Ends the measured-state session: clears emulated media and detaches. Detaching is what clears
  * every forced pseudo-state, so it must happen even when the worker was recycled and lost the
- * remembered target — the sender tab id is the fallback so a forced :hover can never leak into
+ * remembered target; the sender tab id is the fallback so a forced :hover can never leak into
  * the later resting bake. Idempotent.
  *
  * @param tabId - the sender tab, used to detach when the remembered target was lost
@@ -409,11 +413,11 @@ function countClosedShadowRoots(node) {
 
 /**
  * Normalizes one cdp RuleMatch into { selector, properties, media? }, dropping
- * user-agent and implicit/disabled declarations (we synthesize our own
- * defaults, and ua rules would bloat the output). Returns null if nothing usable.
+ * user-agent and implicit/disabled declarations, since we synthesize our own
+ * defaults and ua rules would bloat the output. Returns null if nothing usable.
  */
 function stripCdpRule(rm) {
-	const rule = rm && rule_of(rm);
+	const rule = rm && ruleOf(rm);
 	if (!rule) return null;
 	if ((rule.origin || 'regular') === 'user-agent') return null;
 	const selector = rule.selectorList && rule.selectorList.text;
@@ -432,20 +436,20 @@ function stripCdpRule(rm) {
 }
 
 /** Unwrap the rule object from a cdp RuleMatch. */
-function rule_of(rm) {
+function ruleOf(rm) {
 	return rm.rule || null;
 }
 
 /**
  * Runs a byok llm request: reads the provider key from storage, calls the
  * provider, and returns the raw model { text, usage }, where usage is the
- * provider-reported token count. Each caller (polish, the inspect ai passes)
+ * provider-reported token count. Each caller, polish and the inspect ai passes,
  * parses the text into its own shape. Throws NO_KEY_CONFIGURED when no key is
- * stored (caller skips the step). The key is read here and attached to the
+ * stored, so the caller skips the step. The key is read here and attached to the
  * request only; it is never logged or persisted elsewhere.
  *
- * @param max - optional output-token ceiling, clamped to the provider limit
- *   (default 2000; raised by the schema-synthesis caller)
+ * @param max - optional output-token ceiling, clamped to the provider limit;
+ *   defaults to 2000, and is raised by the schema-synthesis caller
  */
 async function llmRequest(provider, model, prompt, max) {
 	const stored = await chrome.storage.local.get('byok.' + provider);
@@ -458,8 +462,8 @@ async function llmRequest(provider, model, prompt, max) {
 	const json = await res.json();
 	const text = req.extract(json);
 	const usage = req.usage(json);
-	// A 200 with no usable text (e.g. a reasoning model that spent its token
-	// budget thinking) or with no json object means the reply yields no edits.
+	// A 200 with no usable text, e.g. a reasoning model that spent its token
+	// budget thinking, or with no json object means the reply yields no edits.
 	// Throw so the caller surfaces the cause instead of returning silent empties.
 	// The call still spent tokens, so the error carries usage for the session total.
 	if (!text || !text.trim()) throw usageError('EMPTY_COMPLETION', usage);
@@ -473,8 +477,8 @@ const DEFAULT_MAX_TOKENS = 2000;
 const PROVIDER_MAX_TOKENS = { anthropic: 8192, google: 8192, openai: 16384, openrouter: 8192 };
 
 /**
- * Build a chat/generation request per provider (mirrors utils/byok.ts shapes).
- * The output-token cap is the requested `max` (or the 2000 default) clamped to
+ * Build a chat/generation request per provider; mirrors utils/byok.ts shapes.
+ * The output-token cap is the requested `max`, or the 2000 default, clamped to
  * the provider's ceiling, since only the broker knows which provider is in play.
  */
 function buildGenerationRequest(provider, key, model, prompt, max) {
@@ -525,13 +529,13 @@ function usageError(code, usage) {
 	return err;
 }
 
-/** A resource larger than this is left as a url reference rather than inlined (cap bloat). */
+/** A resource larger than this is left as a url reference rather than inlined, to cap bloat. */
 const MAX_INLINE_BYTES = 3 * 1024 * 1024;
 
 /**
- * Fetches a binary resource (font, image) and returns it as a base64 data uri
+ * Fetches a binary resource, a font or image, and returns it as a base64 data uri
  * { dataUrl }. Validates the scheme, caps the size, and derives the mime type from the
- * response (falling back to the url extension). Throws on non-2xx, an unsupported
+ * response, falling back to the url extension. Throws on non-2xx, an unsupported
  * scheme, or an oversize body so the caller keeps the url reference instead.
  */
 async function fetchBinary(url) {
@@ -551,7 +555,7 @@ async function fetchBinary(url) {
 	return { dataUrl: 'data:' + mime + ';base64,' + base64FromBuffer(buf) };
 }
 
-/** Base64-encode an ArrayBuffer in chunks (avoids the apply() arg-count limit on big buffers). */
+/** Base64-encode an ArrayBuffer in chunks, avoiding the apply() arg-count limit on big buffers. */
 function base64FromBuffer(buf) {
 	const bytes = new Uint8Array(buf);
 	let binary = '';

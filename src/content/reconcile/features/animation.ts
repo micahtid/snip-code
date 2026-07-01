@@ -3,14 +3,14 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: root, clone, bakedStyles
- * Writes to Captured: bakedStyles + clone (transform context + anim declarations)
+ * Writes to Captured: bakedStyles + clone, the transform context and anim declarations
  *
  * Principles applied: extends the "ship what renders" rule to the transform/
  * animation context, without disturbing the per-element decision about the
  * `transform` value.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/transform
- * (also animation, transition, perspective, transform-style, backface-visibility)
+ * also covers animation, transition, perspective, transform-style, backface-visibility.
  * Detection criterion: an element with a non-default value for one of the
  * transform-context or animation/transition properties. Per-element early-return.
  * Transform contract: bakes those computed values onto the matching clone
@@ -18,15 +18,14 @@
  * translate/rotate/scale, those can be mid-animation at capture time, and the
  * per-element pass already owns the value. Mutates bakedStyles + clone inline
  * styles only.
- * Test bundle: TODO, add later (3d card flip, keyframe loader).
  *
- * Why this exists: the static transform context (transform-origin, perspective,
- * 3d flags) and the animation/transition shorthands are easily omitted from the
- * authored cascade, yet they shape the rendered frame, the grader freezes
- * animations at frame 0 (reducedMotion), so the @keyframes 0% styles only apply
- * if the element still carries its `animation` declaration and the keyframes
- * travel (resolve/anim keeps the referenced ones, with cubic-bezier precision
- * intact in the verbatim keyframe text). `transform` itself is left to the
+ * Why this exists: the static transform context of transform-origin, perspective,
+ * and 3d flags, together with the animation/transition shorthands, is easily
+ * omitted from the authored cascade, yet they shape the rendered frame, the grader
+ * freezes animations at frame 0 (reducedMotion), so the @keyframes 0% styles only
+ * apply if the element still carries its `animation` declaration and the keyframes
+ * travel; resolve/anim keeps the referenced ones, with cubic-bezier precision
+ * intact in the verbatim keyframe text. `transform` itself is left to the
  * per-element pass so an animated element is not locked to a mid-flight frame
  * that would mismatch frame 0.
  */
@@ -35,8 +34,8 @@ import { pairedSubtrees } from '../match';
 
 /**
  * The transform-context and animation properties this handler preserves, the
- * bounded css-spec surface for animation/3d (a feature-handler spec set, not a
- * hardcoded property list). `transform` is intentionally absent.
+ * bounded css-spec surface for animation/3d, a feature-handler spec set, not a
+ * hardcoded property list. `transform` is intentionally absent.
  */
 const ANIM_CONTEXT_PROPS = [
 	'transform-origin', 'perspective', 'perspective-origin', 'transform-style', 'backface-visibility',

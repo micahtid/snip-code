@@ -2,16 +2,16 @@
  * convert/html.ts: plain html + css output
  *
  * Pipeline position: convert
- * Reads from Captured: clone (inline-styled), fonts, keyframes
- * Writes to Captured: nothing (pure emitter; returns the output)
+ * Reads from Captured: the inline-styled clone, fonts, and keyframes
+ * Writes to Captured: nothing; a pure emitter that returns the output
  *
  * Emits the reconciled and resolved result.
  *
  * Why this exists: the "html" output format is the baseline self-
  * contained form: the inline-styled markup plus a <style> block carrying the
- * pieces that cannot live inline, @font-face and @keyframes. (:root custom
- * properties were already inlined onto the snip root by resolve/vars.ts.) every
- * other format (tailwind, bem, jsx, vue) is a transform of this same baked
+ * pieces that cannot live inline, @font-face and @keyframes. The :root custom
+ * properties were already inlined onto the snip root by resolve/vars.ts. Every
+ * other format, whether tailwind, bem, jsx, or vue, is a transform of this same baked
  * clone. composeDocument() is what the grader renders as output.html.
  */
 import type { Captured } from '../types';
@@ -24,7 +24,7 @@ export interface HtmlOutput {
 
 /**
  * Emits the inline-styled clone as html plus a css block of @font-face and
- * @keyframes (the rules that cannot be expressed inline).
+ * @keyframes, the rules that cannot be expressed inline.
  *
  * @param captured - reads the resolved clone, fonts, keyframes
  */
@@ -33,8 +33,8 @@ export function emitHtml(captured: Captured): HtmlOutput {
 }
 
 /**
- * Builds the @font-face + @keyframes stylesheet block shared by every emitter
- * (these at-rules cannot be expressed inline or as utility classes).
+ * Builds the @font-face + @keyframes stylesheet block shared by every emitter;
+ * these at-rules cannot be expressed inline or as utility classes.
  *
  * @param captured - reads fonts + keyframes
  */
@@ -56,12 +56,12 @@ const BASE_RESET = 'html, body { margin: 0; padding: 0; }';
 
 /**
  * Composes a single self-contained html document from the markup and its stylesheet.
- * Emits a valid standalone document (doctype, charset, head/body) so the artifact does
+ * Emits a valid standalone document, with doctype, charset, and head/body, so the artifact does
  * not depend on the origin and renders identically wherever it is pasted. This is what
- * renders standalone (and what the grader screenshots).
+ * renders standalone, and what the grader screenshots.
  *
  * @param html - the inline-styled markup
- * @param css - the accompanying @font-face / @keyframes block (may be empty)
+ * @param css - the accompanying @font-face / @keyframes block, which may be empty
  */
 export function composeDocument(html: string, css: string): string {
 	const sheet = [BASE_RESET, css.trim()].filter(Boolean).join('\n\n');

@@ -1,7 +1,7 @@
 /**
  * utils/byok.ts: bring-your-own-key provider config + validation
  *
- * Pipeline position: n/a (configures the polish phase)
+ * Pipeline position: n/a; configures the polish phase
  *
  * Why this exists: snipcode never ships a key and never proxies requests. This
  * module holds the four supported providers' default models
@@ -9,8 +9,8 @@
  * Validation fetches the provider directly from the sidebar, the manifest CSP
  * whitelists all four hosts for extension pages, so no background
  * round-trip is needed and the key never leaves the user's machine. The actual
- * llm polish runs in the background (content scripts are bound by the page's csp),
- * see polish/llm.ts + background.js.
+ * llm polish runs in the background, since content scripts are bound by the page's
+ * csp; see polish/llm.ts and background.js.
  */
 import type { Provider } from '../content/types';
 
@@ -44,8 +44,8 @@ export interface ValidationResult {
  * success indicator. A minimal 1-token request keeps cost negligible.
  *
  * @param provider - which provider to test
- * @param key - the api key to validate (never logged)
- * @param model - the model to test with (defaults to the provider default)
+ * @param key - the api key to validate, never logged
+ * @param model - the model to test with; defaults to the provider default
  */
 export async function validateKey(provider: Provider, key: string, model?: string): Promise<ValidationResult> {
 	if (!key.trim()) return { valid: false, error: 'no key provided' };
@@ -61,7 +61,7 @@ export async function validateKey(provider: Provider, key: string, model?: strin
 	}
 }
 
-/** Request shape per provider for both validation and (mirrored in background) polish. */
+/** Request shape per provider for both validation and polish; the polish path is mirrored in background. */
 interface ProviderRequest {
 	url: string;
 	headers: Record<string, string>;
@@ -86,7 +86,7 @@ function buildValidationRequest(provider: Provider, key: string, model: string):
 				headers: {
 					'x-api-key': key,
 					'anthropic-version': '2023-06-01',
-					// Required for direct browser/extension-page calls (cors).
+					// Required for direct browser/extension-page calls, to satisfy cors.
 					'anthropic-dangerous-direct-browser-access': 'true',
 					'Content-Type': json,
 				},

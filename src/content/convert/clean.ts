@@ -2,8 +2,8 @@
  * convert/clean.ts: dead-code elimination
  *
  * Pipeline position: convert
- * Reads from Captured: clone (to test selector/usage)
- * Writes to Captured: nothing (operates on the emitted css string)
+ * Reads from Captured: clone, to test selector and usage
+ * Writes to Captured: nothing; operates on the emitted css string
  *
  * Cleanup is dead-code elimination, not aesthetic surgery.
  *
@@ -19,15 +19,15 @@
  * Sets, no is<X> predicates, no "shading-critical" / "vertical text spacing"
  * heuristics. Usage is measured against ground truth, the
  * actual clone subtree and the actual declarations, so the cleaner can never
- * remove something the output depends on. It is reused by every format emitter
- * (html inline, bem/tailwind/scss class rules), so it must be format-agnostic.
+ * remove something the output depends on. It is reused by every format emitter,
+ * html inline and bem/tailwind/scss class rules alike, so it must be format-agnostic.
  *
  * Selector usage is measured against whatever markup the caller passes: the bem
  * emitters generate their class names on a private copy and leave captured.clone
  * inline-styled, so a generated `.block__el` selector matched against the clone would
  * find nothing and wrongly drop a live rule; those callers pass the emitted markup.
- * The html path passes no markup and keeps matching against the clone (its
- * established behavior; it ships only inline styles plus at-rules, no class rules).
+ * The html path passes no markup and keeps matching against the clone, its
+ * established behavior, since it ships only inline styles plus at-rules, no class rules.
  */
 import type { Captured } from '../types';
 
@@ -41,8 +41,8 @@ const DROP = '';
  * @param css - the stylesheet text to prune
  * @param captured - the snip; font/animation/var usage is read from its baked styles
  * @param markup - the emitted markup selectors are matched against; falls back to the
- *   inline-styled clone when absent (the html path passes none and matches the clone,
- *   its established behavior, since it ships only inline styles plus at-rules)
+ *   inline-styled clone when absent. The html path passes none and matches the clone,
+ *   its established behavior, since it ships only inline styles plus at-rules
  * @returns the cleaned stylesheet text
  */
 export function cleanCss(css: string, captured: Captured, markup?: string): string {
@@ -51,7 +51,7 @@ export function cleanCss(css: string, captured: Captured, markup?: string): stri
 	try {
 		sheet.replaceSync(css);
 	} catch {
-		// Unparseable css (rare): return as-is rather than risk dropping content.
+		// Unparseable css, which is rare: return as-is rather than risk dropping content.
 		return css;
 	}
 
@@ -70,7 +70,7 @@ export function cleanCss(css: string, captured: Captured, markup?: string): stri
  * null on absent or unparseable markup so the caller falls back to the clone.
  *
  * @param markup - the emitted markup string, or undefined
- * @returns the parsed body element (its descendants are the snip), or null
+ * @returns the parsed body element, whose descendants are the snip, or null
  */
 function parseMatchRoot(markup: string | undefined): Element | null {
 	if (!markup) return null;
@@ -118,7 +118,7 @@ function keepRule(rule: CSSRule, matchRoot: Element, usage: Usage): string {
 		const cond = rule instanceof CSSMediaRule ? `@media ${rule.conditionText}` : `@supports ${rule.conditionText}`;
 		return `${cond} {\n${inner.join('\n')}\n}`;
 	}
-	// Unknown rule type (e.g. @layer/@property): keep verbatim, do not guess.
+	// Unknown rule type, for example @layer or @property: keep verbatim, do not guess.
 	return rule.cssText;
 }
 
@@ -130,7 +130,7 @@ function selectorMatchesSubtree(selector: string, root: Element): boolean {
 		try {
 			if (root.matches(s) || root.querySelector(s)) return true;
 		} catch {
-			// Unsupported selector (e.g. ::selection pseudo): keep it, do not drop
+			// Unsupported selector, for example the ::selection pseudo: keep it, do not drop
 			// something we cannot evaluate.
 			return true;
 		}
@@ -162,7 +162,7 @@ function pruneVarRule(rule: CSSStyleRule, usage: Usage): string {
 
 /**
  * Gathers all font-family, animation-name, and var() usage from both the clone
- * subtree (inline styles) and the css text (class-based rules), so the cleaner
+ * subtree's inline styles and the css text's class-based rules, so the cleaner
  * works for inline html and class-based formats alike.
  */
 function collectUsage(captured: Captured, css: string): Usage {
@@ -178,7 +178,7 @@ function collectUsage(captured: Captured, css: string): Usage {
 		addAnimations(baked.get('animation-name'), animations);
 		for (const value of baked.values()) addVars(value, vars);
 	}
-	// From the css text (covers class-based rules and any @media bodies).
+	// From the css text; this covers class-based rules and any @media bodies.
 	addFamilies(matchAll(css, /font-family\s*:\s*([^;}{]+)/gi), families);
 	addAnimations(matchAll(css, /animation(?:-name)?\s*:\s*([^;}{]+)/gi), animations);
 	addVars(css, vars);
@@ -198,7 +198,7 @@ function addFamilies(value: string | string[] | undefined, into: Set<string>): v
 	}
 }
 
-/** Collect animation-name tokens (a name can never collide with a duration token). */
+/** Collect animation-name tokens; a name can never collide with a duration token. */
 function addAnimations(value: string | string[] | undefined, into: Set<string>): void {
 	if (!value) return;
 	const values = Array.isArray(value) ? value : [value];

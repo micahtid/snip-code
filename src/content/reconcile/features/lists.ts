@@ -2,23 +2,22 @@
  * features/lists.ts: list + counter properties
  *
  * Pipeline position: reconcile
- * Reads from Captured: root, clone (via bakeNonDefaultProps)
- * Writes to Captured: bakedStyles + clone (list + counter properties)
+ * Reads from Captured: root and clone, via bakeNonDefaultProps
+ * Writes to Captured: bakedStyles + clone, the list + counter properties
  *
  * Extends the "ship what renders" approach to list/counter properties.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/list-style
- * (also counter-reset, counter-increment, which drive ::marker via features/pseudo)
+ * also covers counter-reset and counter-increment, which drive ::marker via features/pseudo.
  * Detection criterion: an element with a non-default list-style-* or counter-*
  * value. Early-returns per property otherwise.
  * Transform contract: bakes the non-default values onto the matching clone
  * element. List-style-image urls arrive already-absolute from getComputedStyle.
  * bakedStyles + clone only.
- * Test bundle: TODO, add later (custom counter list).
  *
  * Why this exists: custom bullet glyphs (list-style-type), bullet images
- * (list-style-image), and counters (counter-reset/increment, rendered through
- * ::marker) are list-scoped and set via classes that do not survive, so a snipped
+ * (list-style-image), and counters (counter-reset/increment), rendered through
+ * ::marker, are list-scoped and set via classes that do not survive, so a snipped
  * list reverts to plain discs/numbers. Baking the computed value is pixel-safe;
  * features/pseudo emits the ::marker rule that consumes the counters.
  */

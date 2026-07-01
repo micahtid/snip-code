@@ -1,9 +1,9 @@
 /**
  * reconcile/standalone.ts: standalone-context reconciliation + completeness probe
  *
- * Pipeline position: reconcile (closing step, after bake + features + denoise)
+ * Pipeline position: reconcile, the closing step, after bake + features + denoise
  * Reads from Captured: root, clone, bakedStyles, page.viewport
- * Writes to Captured: bakedStyles + clone (in fix mode), warnings
+ * Writes to Captured: bakedStyles + clone in fix mode, warnings
  *
  * Why this exists: bake.ts validates each authored value by forcing it onto the
  * LIVE element and re-reading getComputedStyle. That live-context test passes for
@@ -11,8 +11,8 @@
  * :root, an inherited body font, an ancestor-relative length, then those values
  * dangle once the snip is pasted standalone. The artifact's own render is the only
  * authority on what survives, so this module makes that render the source of truth:
- * it mounts the baked clone in an isolated iframe that carries only the ua stylesheet
- * (no page author rules, exactly the pasted-snip environment) and, per element,
+ * it mounts the baked clone in an isolated iframe that carries only the ua stylesheet,
+ * with no page author rules, exactly the pasted-snip environment, and, per element,
  * compares the clone's standalone computed style against the original's live computed
  * style. Where they diverge, the standalone artifact is wrong, so the original's
  * resolved value is baked, overriding any authored value that does not reproduce
@@ -22,23 +22,23 @@
  *
  * Box geometry is reconciled directionally, because the standalone render is the
  * authority on size in only one direction. A non-replaced box that loses a sizing
- * input it drew from outside the snip (a flex track, a `var()` chain on a theme
- * ancestor, an inset) can only collapse standalone, never grow, so its used size is
+ * input it drew from outside the snip, such as a flex track, a `var()` chain on a theme
+ * ancestor, or an inset, can only collapse standalone, never grow, so its used size is
  * reclaimed only when it shrank; a box the same or larger standalone has the room its
  * content needs and is left alone, which is what keeps a font-grown fallback box from
  * being clipped back to the live width. A replaced element has an intrinsic box, so a
  * divergence in either direction is a lost size and is reclaimed. The discriminator is
- * a CSS category (replaced vs not) and the sign of the divergence, never a tolerance
+ * a CSS category, replaced versus not, and the sign of the divergence, never a tolerance
  * constant. See shouldReclaim.
  *
  * The same anchor extends to structure: an element rendered in the original but
- * absent from the clone (silently dropped by some earlier handler) is restored, so a
+ * absent from the clone, silently dropped by some earlier handler, is restored, so a
  * dropped element is corrected universally rather than by special-casing the handler
  * that dropped it.
  *
  * Report mode (probeStandalone) runs the diff without mutating, returning the exact
- * counts of dropped properties and elements. It is deterministic and drift-free (no
- * live screenshot), so it is the trustworthy completeness signal the measurement loop
+ * counts of dropped properties and elements. It is deterministic and drift-free, with no
+ * live screenshot, so it is the trustworthy completeness signal the measurement loop
  * gates on before trusting SSIM.
  */
 import type { Captured, FontFace } from '../types';
@@ -52,13 +52,13 @@ export interface StandaloneReport {
 	droppedEls: number;
 	/**
 	 * Web faces the live subtree renders that the standalone artifact cannot resolve: a
-	 * family absent from the artifact (discovery gap) or a declared face whose bytes
-	 * never load (inlining gap). This is the resource-loss signal getComputedStyle is
+	 * family absent from the artifact, a discovery gap, or a declared face whose bytes
+	 * never load, an inlining gap. This is the resource-loss signal getComputedStyle is
 	 * blind to, since both live and standalone report the same requested font string
 	 * while only the live element actually paints it.
 	 */
 	unresolvedResources: number;
-	/** The properties that diverge most often, for diagnosis (bounded). */
+	/** The properties that diverge most often, for diagnosis, bounded. */
 	topProps: Array<{ prop: string; count: number }>;
 	/** A bounded sample of concrete discrepancies, for diagnosis. */
 	samples: Array<{ path: string; prop: string; live: string; standalone: string }>;
@@ -68,7 +68,7 @@ export interface StandaloneReport {
 export interface EmittedDelta {
 	/** Total property discrepancies across all paired elements in this direction. */
 	droppedProps: number;
-	/** The properties that diverge most often, for diagnosis (bounded). */
+	/** The properties that diverge most often, for diagnosis, bounded. */
 	topProps: Array<{ prop: string; count: number }>;
 	/** A bounded sample of concrete discrepancies, for diagnosis. */
 	samples: Array<{ path: string; prop: string; a: string; b: string }>;
@@ -76,9 +76,9 @@ export interface EmittedDelta {
 
 /**
  * The result of the emitted-artifact probe: the shipped BEM artifact's render diffed
- * against the live original (delta A) and against the inline-clone's standalone render
- * (delta B), plus the count of delta-A properties whose value never reached the emitted
- * CSS (the absent-at-bake subset, distinct from a render-time cascade loss).
+ * against the live original, giving delta A, and against the inline-clone's standalone
+ * render, giving delta B, plus the count of delta-A properties whose value never reached
+ * the emitted CSS, the absent-at-bake subset, distinct from a render-time cascade loss.
  */
 export interface EmittedReport {
 	/** Emitted standalone vs live original: the true shipped residual. */
@@ -98,17 +98,17 @@ export interface EmittedReport {
  * - Margins: a margin positions a box against siblings that did not travel with the
  *   snip, so its standalone value is benign. The root's are zeroed separately
  *   (zeroRootMargin); a descendant's re-derive from the recovered box.
- * - min/max sizes: the reconciliation pins the *used* size directly (see SIZE_PROPS),
+ * - min/max sizes: the reconciliation pins the *used* size directly, as SIZE_PROPS lists,
  *   which already overrides whatever bound produced it, so comparing the bound itself
  *   would be redundant.
- * - Geometry-derived and non-visual props (transform/perspective origins resolve from
- *   the box; -webkit-locale is an input-method hint with no paint effect).
+ * - Geometry-derived and non-visual props: transform/perspective origins resolve from
+ *   the box, and -webkit-locale is an input-method hint with no paint effect.
  *
  * Used size (width/height + logical) and insets (top/right/bottom/left + logical) are
  * deliberately NOT here: they are compared for every element and reclaimed through
  * shouldReclaim, which decides direction from the replaced/non-replaced CSS category.
  *
- * Custom properties are handled separately (they never enumerate in computed style).
+ * Custom properties are handled separately, since they never enumerate in computed style.
  * Everything else is compared: the standalone render is the authority, so any
  * divergence in a paint or box property is a real defect to correct.
  */
@@ -120,11 +120,11 @@ const SKIP_PROPS = new Set<string>([
 ]);
 
 /**
- * The used-size longhands (physical and logical). They carry the directional rule in
+ * The used-size longhands, physical and logical. They carry the directional rule in
  * shouldReclaim: a non-replaced box only ever *loses* a sizing input standalone, so a
  * real defect is always a collapse and is reclaimed only when the box shrank; a
  * replaced box is intrinsic, so a divergence either way is a lost size. Insets are
- * deliberately excluded — they have no intrinsic direction, so they reclaim on any
+ * deliberately excluded: they have no intrinsic direction, so they reclaim on any
  * divergence, like paint.
  */
 const SIZE_PROPS = new Set<string>(['width', 'height', 'inline-size', 'block-size']);
@@ -132,8 +132,8 @@ const SIZE_PROPS = new Set<string>(['width', 'height', 'inline-size', 'block-siz
 /**
  * Replaced elements, whose box comes from intrinsic content or an explicit dimension
  * rather than in-flow layout. Because their box is intrinsic, a standalone size that
- * diverges in either direction is wrong (an svg with only a viewBox collapses, a raster
- * image free-sizes past the cell its container imposed), so shouldReclaim pins their
+ * diverges in either direction is wrong, since an svg with only a viewBox collapses and a
+ * raster image free-sizes past the cell its container imposed, so shouldReclaim pins their
  * size symmetrically. svg reports a lowercase tagName; html elements report uppercase,
  * so the test case-folds.
  */
@@ -143,21 +143,26 @@ function isReplacedElement(el: Element): boolean {
 	return REPLACED_TAGS.has(el.tagName.toLowerCase());
 }
 
+/** Cap on how many example samples each discrepancy report keeps, to bound its size. */
+const MAX_SAMPLES = 40;
+/** How many of the most frequent discrepancy properties a report lists, most-frequent first. */
+const TOP_PROPS = 20;
+
 /**
  * Whether a standalone-vs-live property divergence is a real defect to reclaim (bake the
  * live value), deciding *direction* from a CSS distinction rather than any tolerance.
  *
  * - Within sub-0.1px float noise (valuesMatch) nothing is reclaimed.
  * - A non-replaced element's used size is reclaimed only when it is a *confirmed*
- *   collapse (artifact < target, both numeric): a box that lost an externally-imposed
+ *   collapse, meaning artifact < target with both numeric: a box that lost an externally-imposed
  *   sizing input can only shrink standalone, while a box the same or larger has the room
- *   its content needs and is left alone — this is what protects a font-grown fallback box
+ *   its content needs and is left alone. This is what protects a font-grown fallback box
  *   from being clipped back to the live width. A comparison that is not numerically
- *   decidable (a keyword used size such as `auto`) cannot be shown to have collapsed, so
+ *   decidable, such as a keyword used size like `auto`, cannot be shown to have collapsed, so
  *   it is left alone too, under that same restraint.
  * - A replaced element's used size is reclaimed in *either* direction: its box is
  *   intrinsic, so free-sizing larger than its display cell is as wrong as collapsing.
- * - Everything else (insets, paint, box) is reclaimed on any real divergence.
+ * - Everything else, insets, paint, and box, is reclaimed on any real divergence.
  *
  * @param prop - the computed-style longhand being compared
  * @param artifact - the value the standalone artifact rendered
@@ -167,9 +172,9 @@ function isReplacedElement(el: Element): boolean {
 function shouldReclaim(prop: string, artifact: string, target: string, replaced: boolean): boolean {
 	if (valuesMatch(artifact, target)) return false;
 	if (SIZE_PROPS.has(prop) && !replaced) {
-		// Reclaim only a confirmed numeric collapse. A growth is left alone (a box the
-		// same or larger has the room its content needs), and so is any comparison that
-		// is not numerically decidable — a keyword used size such as `auto`, which cannot
+		// Reclaim only a confirmed numeric collapse. A growth is left alone, since a box the
+		// same or larger has the room its content needs, and so is any comparison that
+		// is not numerically decidable, such as a keyword used size like `auto`, which cannot
 		// be shown to have collapsed. Both fall under the same restraint that keeps a
 		// font-grown fallback box from being clipped back to the live width.
 		const a = parseFloat(artifact);
@@ -207,7 +212,7 @@ export async function probeStandalone(captured: Captured): Promise<StandaloneRep
 					if (!shouldReclaim(prop, stdVal, liveVal, replaced)) continue;
 					report.droppedProps++;
 					counts.set(prop, (counts.get(prop) ?? 0) + 1);
-					if (report.samples.length < 40) {
+					if (report.samples.length < MAX_SAMPLES) {
 						report.samples.push({ path: pathOf(captured.root, original), prop, live: liveVal, standalone: stdVal });
 					}
 				}
@@ -223,14 +228,14 @@ export async function probeStandalone(captured: Captured): Promise<StandaloneRep
 	} catch {
 		// FontFaceSet or frame unavailable; the resource signal reads zero this run.
 	}
-	report.topProps = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([prop, count]) => ({ prop, count }));
+	report.topProps = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_PROPS).map(([prop, count]) => ({ prop, count }));
 	return report;
 }
 
 /** One web face the live subtree renders, normalized for a FontFaceSet.load() request. */
 interface RenderedFace {
 	family: string;
-	weight: string; // Numeric css weight from computed style (e.g. "400", "700").
+	weight: string; // Numeric css weight from computed style, e.g. "400" or "700".
 	style: string; // 'normal' | 'italic' | 'oblique'.
 }
 
@@ -238,9 +243,9 @@ interface RenderedFace {
  * Counts the web faces the standalone artifact fails to resolve. Builds an isolated
  * frame carrying only the snip's own captured @font-face rules (the exact faces the
  * artifact ships), then for each web face the live subtree renders asks the frame's
- * FontFaceSet to load it. An empty result means the family is absent from the artifact
- * (a discovery gap); a rejection or an unloaded face means a declared face could not be
- * fetched (an inlining gap). Either way the artifact would render the wrong font, so it
+ * FontFaceSet to load it. An empty result means the family is absent from the artifact,
+ * a discovery gap; a rejection or an unloaded face means a declared face could not be
+ * fetched, an inlining gap. Either way the artifact would render the wrong font, so it
  * is counted. Nothing is mutated and no emitted byte changes.
  *
  * Scope is the live FontFaceSet: only families the page actually loaded as a web font
@@ -249,8 +254,8 @@ interface RenderedFace {
  *
  * Determinism note: while a captured face still carries an external src, the frame's
  * load() reaches the network, so the count is fully deterministic only once faces are
- * inlined as data uris (resolve/inline.ts). The discovery gap (zero faces for a rendered
- * family) reads the same offline or online.
+ * inlined as data uris in resolve/inline.ts. The discovery gap, zero faces for a rendered
+ * family, reads the same offline or online.
  *
  * @param captured - the reconciled capture (read-only)
  */
@@ -298,7 +303,7 @@ function liveWebFontFamilies(): Set<string> {
 
 /**
  * The distinct (family, weight, style) web faces the live subtree renders. Reads the
- * first family of each element's computed font stack (the one that actually renders),
+ * first family of each element's computed font stack, the one that actually renders,
  * paired with the weight and style it renders at, keeping only families the live page
  * loaded as a web font. Deduped so each face is counted once.
  *
@@ -342,8 +347,8 @@ function fontFaceRule(font: FontFace): string {
 
 /**
  * The emitted-artifact probe: renders the final BEM class-based artifact in an isolated
- * iframe and diffs each element's computed style against the live original (delta A) and
- * against the inline-clone's own standalone render (delta B). Where probeStandalone above
+ * iframe and diffs each element's computed style against the live original, giving delta A,
+ * and against the inline-clone's own standalone render, giving delta B. Where probeStandalone above
  * validates the intermediate inline clone, this validates the artifact that actually
  * ships, so it is the anchor the measurement loop gates on.
  *
@@ -351,12 +356,12 @@ function fontFaceRule(font: FontFace): string {
  * clone->emitted computed-style divergence is the BEM class cascade resolving differently
  * than the inline styles it replaced. delta A is the true shipped residual versus the live
  * element; absentProps counts the subset of delta A whose needed value never reached the
- * emitted CSS at all (an upstream capture/bake gap, not a cascade defect). Both renders use
+ * emitted CSS at all, an upstream capture/bake gap rather than a cascade defect. Both renders use
  * the same drift-free iframe as probeStandalone, so the probe is deterministic.
  *
  * @param captured - the reconciled capture (root + clone, read-only here)
- * @param emittedHtml - the emitted root markup (emitBem output, before doc assembly)
- * @param emittedCss - the shipped stylesheet (after cleanCss)
+ * @param emittedHtml - the emitted root markup, the emitBem output before doc assembly
+ * @param emittedCss - the shipped stylesheet, after cleanCss
  */
 export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss: string): EmittedReport {
 	const report: EmittedReport = {
@@ -369,9 +374,9 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 	let cloneSized: SizedFrame | null = null;
 	let emittedSized: SizedFrame | null = null;
 	try {
-		// Render the inline clone and the emitted artifact in two separate frames (the
-		// emitted stylesheet must not match the clone's author classes, so they cannot
-		// share a document). Both are the pasted-snip environment: ua stylesheet only.
+		// Render the inline clone and the emitted artifact in two separate frames, because
+		// the emitted stylesheet must not match the clone's author classes, so they cannot
+		// share a document. Both are the pasted-snip environment: ua stylesheet only.
 		cloneSized = createSizedFrame(captured);
 		const framedClone = cloneSized.doc.importNode(captured.clone, true) as Element;
 		cloneSized.doc.body.appendChild(framedClone);
@@ -386,10 +391,10 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 		if (!emittedRoot) throw new Error('emitted markup has no root element');
 		emittedSized.doc.body.appendChild(emittedRoot);
 
-		// emitBem deep-copies the clone and only rewrites class/style attributes (never
-		// adds or drops elements), so the emitted tree is structurally identical to the
+		// emitBem deep-copies the clone and only rewrites class/style attributes, never
+		// adding or dropping elements, so the emitted tree is structurally identical to the
 		// clone tree: a lockstep zip pairs them. pairedSubtrees pairs the live original to
-		// the clone (skipping clone-only injected nodes the original lacks).
+		// the clone, skipping clone-only injected nodes the original lacks.
 		const cloneToFramed = new Map<Element, Element>();
 		zip(captured.clone, framedClone, cloneToFramed);
 		const cloneToEmitted = new Map<Element, Element>();
@@ -408,7 +413,7 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 				if (!shouldReclaim(prop, emittedVal, cloneVal, replaced)) continue;
 				report.deltaB.droppedProps++;
 				bCounts.set(prop, (bCounts.get(prop) ?? 0) + 1);
-				if (report.deltaB.samples.length < 40) {
+				if (report.deltaB.samples.length < MAX_SAMPLES) {
 					report.deltaB.samples.push({ path: pathOf(captured.clone, clone), prop, a: cloneVal, b: emittedVal });
 				}
 			}
@@ -416,7 +421,7 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 
 		// delta A: every live original, live computed value vs emitted standalone. A value
 		// the emitted CSS never carries is an absent-at-bake gap; one it carries but renders
-		// differently is a render-time gap (the delta-B attribution says which mechanism).
+		// differently is a render-time gap; the delta-B attribution says which mechanism.
 		const cssHaystack = emittedCss.replace(/\s+/g, ' ').toLowerCase();
 		for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 			const emitted = cloneToEmitted.get(clone);
@@ -431,7 +436,7 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 				report.deltaA.droppedProps++;
 				aCounts.set(prop, (aCounts.get(prop) ?? 0) + 1);
 				if (!cssHaystack.includes(liveVal.replace(/\s+/g, ' ').toLowerCase())) report.absentProps++;
-				if (report.deltaA.samples.length < 40) {
+				if (report.deltaA.samples.length < MAX_SAMPLES) {
 					report.deltaA.samples.push({ path: pathOf(captured.root, original), prop, a: liveVal, b: emittedVal });
 				}
 			}
@@ -449,19 +454,19 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 
 /** The 20 most frequent properties from a discrepancy count map, descending. */
 function topN(counts: Map<string, number>): Array<{ prop: string; count: number }> {
-	return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([prop, count]) => ({ prop, count }));
+	return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_PROPS).map(([prop, count]) => ({ prop, count }));
 }
 
-/** Matches a number (int, decimal, or scientific) anywhere in a computed value. */
+/** Matches a number, whether int, decimal, or scientific, anywhere in a computed value. */
 const NUMBER_TOKEN = /-?\d*\.?\d+(?:e[+-]?\d+)?/gi;
 
 /**
  * Whether two computed values are equal up to sub-0.1px float noise. Identical strings
  * match; otherwise every embedded number is rounded to one decimal and the normalized
- * forms compared, so a benign length round-trip residual (a `px`->`rem`->`px` line-height
- * of 21.0012px vs 21.0013px, a 9999px radius vs 9999.01px) is not counted as a loss,
- * while a real divergence (a dropped declaration falling back to 0/normal/currentColor,
- * or a different color) still differs. The threshold is well below one device pixel, so
+ * forms compared. A benign length round-trip residual, such as a `px`->`rem`->`px`
+ * line-height of 21.0012px vs 21.0013px or a 9999px radius vs 9999.01px, is not counted
+ * as a loss, while a real divergence still differs: a dropped declaration falling back to
+ * 0/normal/currentColor, or a different color. The threshold is well below one device pixel, so
  * nothing visible is masked.
  *
  * @param a - one computed value
@@ -494,16 +499,16 @@ const MAX_ROUNDS = 4;
 /**
  * The closing reconciliation: makes the standalone artifact's own render the source of
  * truth. For every paired element, any paint or box property whose standalone value
- * diverges from the original's live computed value (as shouldReclaim judges it) is
+ * diverges from the original's live computed value, as shouldReclaim judges it, is
  * corrected by baking the original's resolved value, overriding an authored value that
- * does not reproduce standalone (a dangling token, a lost inherited font, an
- * ancestor-relative length, a flex/grid track or inset that did not travel with the
- * snip). This is the single anchor that fixes missing backgrounds, dangling variables,
+ * does not reproduce standalone, such as a dangling token, a lost inherited font, an
+ * ancestor-relative length, or a flex/grid track or inset that did not travel with the
+ * snip. This is the single anchor that fixes missing backgrounds, dangling variables,
  * lost display, and collapsed box geometry at once.
  *
  * It runs to a fixed point: baking a structural property such as `display` can change
- * descendants' computed values, so each round re-reads the standalone render (the
- * bakes are applied to the in-frame copy too, so the next round sees them) and stops
+ * descendants' computed values, so each round re-reads the standalone render, with the
+ * bakes applied to the in-frame copy too so the next round sees them, and stops
  * when a round makes no further corrections.
  *
  * @param captured - bakedStyles + clone are mutated in place
@@ -547,8 +552,8 @@ export function reconcileStandalone(captured: Captured): void {
 
 /**
  * Zeroes the snip root's own margin. A root margin positioned the element against
- * siblings that do not travel with the snip (escaped context, like the geometry
- * bake.ts recovers), so standalone it only pushes the component away from the origin.
+ * siblings that do not travel with the snip, the escaped context like the geometry
+ * bake.ts recovers, so standalone it only pushes the component away from the origin.
  * A pasted component is positioned by its new container, not by a margin it carried
  * from the old page, so the faithful standalone form sits flush at the origin. Only the
  * root is affected; descendant margins are real intra-component spacing and are kept.
@@ -578,7 +583,7 @@ function zeroRootMargin(captured: Captured): void {
 /**
  * Recovers the backdrop a snip lost with its ancestor chain. A component is often
  * authored with a transparent background because it sits on a section that paints the
- * color (a dark hero, a tinted band); reparented standalone, that section is gone and
+ * color, such as a dark hero or a tinted band; reparented standalone, that section is gone and
  * the component renders on white, so light text vanishes. This is the same escaped-
  * context recovery bake.ts already does for geometry (bakeEscapedLayout), applied to
  * paint: when the root's own background is transparent, bake the nearest opaque
@@ -588,14 +593,14 @@ function zeroRootMargin(captured: Captured): void {
  * root reproduce its OWN computed style (a transparent background), and this is the
  * separate, later decision to restore the vanished backdrop, so it is not reverted.
  * Only the root needs it; children paint over it. The recovered paint is a solid color,
- * or any reproducible backdrop image (a gradient, a tiled pattern, a cover/contain
- * image); a positioned framed photo, sized for the full section, is still only flagged.
+ * or any reproducible backdrop image, such as a gradient, a tiled pattern, or a
+ * cover/contain image; a positioned framed photo, sized for the full section, is still only flagged.
  *
  * @param captured - the root clone's baked map + inline style are extended
  */
 function recoverEscapedBackground(captured: Captured): void {
 	const rootCs = getComputedStyle(captured.root);
-	// The root already paints its own backdrop (an opaque color or any image): trust it.
+	// The root already paints its own backdrop, an opaque color or any image: trust it.
 	if (!isTransparentColor(rootCs.backgroundColor)) return;
 	if (rootCs.backgroundImage && rootCs.backgroundImage !== 'none') return;
 
@@ -607,7 +612,7 @@ function recoverEscapedBackground(captured: Captured): void {
 			return;
 		}
 		// A nearer ancestor paints its backdrop with an image rather than a solid color.
-		// A reproducible backdrop (a gradient, a repeated tile, a cover/contain image) is a
+		// A reproducible backdrop, such as a gradient, a repeated tile, or a cover/contain image, is a
 		// paint that re-renders at any size, so baking the whole multi-layer value plus its
 		// placement onto the root reproduces the backdrop and makes light-on-backdrop text
 		// visible, even though it was authored for the whole section. A positioned framed
@@ -628,7 +633,7 @@ function recoverEscapedBackground(captured: Captured): void {
 	}
 }
 
-/** Bakes one recovered value onto the snip root (bakedStyles + inline style). */
+/** Bakes one recovered value onto the snip root: bakedStyles plus inline style. */
 function bakeOnRoot(captured: Captured, prop: string, value: string): void {
 	const rootClone = captured.clone as HTMLElement;
 	const baked = captured.bakedStyles.get(rootClone) ?? new Map<string, string>();
@@ -641,21 +646,21 @@ function bakeOnRoot(captured: Captured, prop: string, value: string): void {
 	}
 }
 
-/** Whether a computed color is fully transparent (so it paints no backdrop). */
+/** Whether a computed color is fully transparent, so it paints no backdrop. */
 function isTransparentColor(color: string): boolean {
 	return color === 'transparent' || color === 'rgba(0, 0, 0, 0)' || /,\s*0\)\s*$/.test(color);
 }
 
 /**
  * Whether a computed backdrop reproduces faithfully when baked onto the snip's own,
- * smaller box. A value with no raster layer is judged on its gradients (a paint function
- * reproduces at any size). A raster layer reproduces when it tiles (a repeat fills any
- * box), scales (a cover/contain image fits any box), or paints the whole ancestor box
- * (a full-bleed backdrop, which can be rescaled to cover the snip). A smaller placed
+ * smaller box. A value with no raster layer is judged on its gradients, since a paint
+ * function reproduces at any size. A raster layer reproduces when it tiles, a repeat fills
+ * any box; scales, a cover/contain image fits any box; or paints the whole ancestor box,
+ * a full-bleed backdrop which can be rescaled to cover the snip. A smaller placed
  * raster is a framed image positioned for its section and does not reproduce.
  *
- * @param node - the ancestor painting the backdrop (source of its box size)
- * @param cs - the ancestor's computed style (image plus its placement)
+ * @param node - the ancestor painting the backdrop, the source of its box size
+ * @param cs - the ancestor's computed style, the image plus its placement
  */
 function isReproducibleBackdrop(node: Element, cs: CSSStyleDeclaration): boolean {
 	if (!/url\(/i.test(cs.backgroundImage)) return isReproducibleGradient(cs.backgroundImage);
@@ -664,7 +669,7 @@ function isReproducibleBackdrop(node: Element, cs: CSSStyleDeclaration): boolean
 
 /**
  * The size and repeat to bake when reproducing a backdrop on the snip. A tiled or
- * scaling backdrop keeps its own placement (a tile repeats, a cover/contain image fits).
+ * scaling backdrop keeps its own placement: a tile repeats, and a cover/contain image fits.
  * A full-bleed raster sized in fixed pixels for the original section is rescaled to
  * cover, so it fills the smaller snip box rather than overflowing it.
  *
@@ -676,7 +681,7 @@ function backdropPlacement(cs: CSSStyleDeclaration): { size: string; repeat: str
 	return { size: 'cover', repeat: 'no-repeat' };
 }
 
-/** Whether any background-repeat layer tiles (so the backdrop fills an arbitrary box). */
+/** Whether any background-repeat layer tiles, so the backdrop fills an arbitrary box. */
 function backdropTiles(backgroundRepeat: string): boolean {
 	return backgroundRepeat.split(',').some((layer) => {
 		const r = layer.trim();
@@ -706,8 +711,8 @@ function isFullBleed(node: Element, backgroundSize: string): boolean {
 }
 
 /**
- * Whether a computed background-image is purely css gradients (linear/radial/conic,
- * including repeating and -webkit- forms). A gradient is a paint function, not positioned
+ * Whether a computed background-image is purely css gradients: linear/radial/conic,
+ * including repeating and -webkit- forms. A gradient is a paint function, not positioned
  * pixels, so baking it onto a smaller box still renders a faithful backdrop.
  *
  * @param backgroundImage - the computed background-image value
@@ -718,8 +723,8 @@ function isReproducibleGradient(backgroundImage: string): boolean {
 }
 
 /**
- * Bakes one recovered value onto the clone (persistent: bakedStyles + inline style) and
- * mirrors it onto the in-frame copy so the next reconciliation round reads the updated
+ * Bakes one recovered value onto the clone, persistently in bakedStyles plus the inline
+ * style, and mirrors it onto the in-frame copy so the next reconciliation round reads the updated
  * standalone render. A property the element rejects is skipped via the inline try/catch.
  *
  * @param captured - source of the per-clone baked maps
@@ -743,7 +748,7 @@ function applyOverride(captured: Captured, o: Override): void {
 
 /**
  * The longhand properties worth comparing on an element: every enumerable computed
- * longhand except custom properties (which do not enumerate) and the explicit skip
+ * longhand except custom properties, which do not enumerate, and the explicit skip
  * set. The standalone render is the authority, so this list is deliberately broad,
  * never a hand-picked "important props" set. Used size and insets are included for
  * every element; shouldReclaim then decides which divergences are real defects.
@@ -763,10 +768,10 @@ function comparableProps(cs: CSSStyleDeclaration): string[] {
 
 /**
  * Mounts a deep copy of the working clone in a fresh, hidden, same-origin iframe
- * sized to the capture viewport (about:blank carries only the ua stylesheet, so the
- * page's author rules are absent, exactly the pasted-snip environment). Builds a map
- * from each working-clone element to its in-frame counterpart (the two trees are
- * structurally identical, so a lockstep walk pairs them), then runs `fn` with that
+ * sized to the capture viewport, where about:blank carries only the ua stylesheet so the
+ * page's author rules are absent, exactly the pasted-snip environment. Builds a map
+ * from each working-clone element to its in-frame counterpart, and since the two trees are
+ * structurally identical a lockstep walk pairs them, then runs `fn` with that
  * map while the frame is attached and laid out, tearing it down afterward.
  *
  * @param captured - source of the clone and the viewport size
@@ -797,7 +802,7 @@ interface SizedFrame {
  * iframe's own ua margins zeroed so a mounted root lays out from 0,0. about:blank
  * carries only the ua stylesheet, so the page's author rules are absent, exactly the
  * pasted-snip environment. The caller mounts content into `doc.body` and must call
- * `frame.remove()` when done (both standalone renders the loop compares are built on it).
+ * `frame.remove()` when done, since both standalone renders the loop compares are built on it.
  *
  * @param captured - source of the viewport size
  */
@@ -843,10 +848,10 @@ function zip(clone: Element, framed: Element, map: Map<Element, Element>): void 
 
 /**
  * Counts elements present in the original subtree but SILENTLY missing from the clone.
- * Walks both trees in lockstep (skipping clone-only injected nodes, as pairedSubtrees
- * does); an original child the clone lacks at a given level is a drop, counted with its
- * whole subtree. Elements a handler removes deliberately (a `<picture>`'s `<source>`,
- * overridden by the pinned `<img src>`) are not silent drops and do not count, so this
+ * Walks both trees in lockstep, skipping clone-only injected nodes as pairedSubtrees
+ * does; an original child the clone lacks at a given level is a drop, counted with its
+ * whole subtree. Elements a handler removes deliberately, such as a `<picture>`'s `<source>`
+ * overridden by the pinned `<img src>`, are not silent drops and do not count, so this
  * stays a true signal of unintended structural loss rather than intended pruning.
  *
  * @param root - the live snip root

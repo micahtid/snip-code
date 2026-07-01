@@ -1,18 +1,18 @@
 /**
  * inspect/colors.ts: page-wide color extractor
  *
- * Pipeline position: inspect (page-scoped; reads the live dom directly, does not run the element pipeline)
- * Reads from DOM: document/window (live; page must be loaded)
- * Writes to: nothing (pure extraction, no side effects)
+ * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
+ * Reads from DOM: document/window; live, the page must be loaded
+ * Writes to: nothing; pure extraction, no side effects
  *
- * Principles applied: none (extraction).
+ * Principles applied: none; extraction.
  *
  * Why this exists: the colors inspector lists every color the page paints,
  * perceptually clustered so near-duplicate shades collapse into one swatch, most-
- * used first. Clustering is greedy in Oklab space (the perceptually uniform color
- * model), so visually identical colors that differ by a hex digit merge while
+ * used first. Clustering is greedy in Oklab space, the perceptually uniform color
+ * model, so visually identical colors that differ by a hex digit merge while
  * distinct colors stay apart. The color-valued css custom properties ride along as
- * context for the optional ai role pass (inspect/ai.ts). Ported (rewritten) from v1
+ * context for the optional ai role pass (inspect/ai.ts). Ported by rewriting from v1
  * colors/color-extractor.ts, preserving the Oklab clustering verbatim and dropping
  * the per-element / oklch / member-count fields the panel never showed.
  */
@@ -28,7 +28,7 @@ const COLOR_PROPERTIES = [
 /** Non-paint tags skipped during the walk. */
 const SKIP_TAGS = new Set(['SCRIPT', 'NOSCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'LINK', 'META', 'HEAD', 'BASE', 'BR', 'WBR']);
 
-/** Values that carry no palette signal (fully transparent / absent / keyword). */
+/** Values that carry no palette signal: fully transparent, absent, or keyword. */
 const IGNORE_COLORS = new Set(['rgba(0, 0, 0, 0)', 'transparent', 'initial', 'inherit', 'currentcolor']);
 
 /** Caps mirrored from v1: the walk, the shadow-color pass, and the shipped swatch count. */
@@ -78,7 +78,7 @@ function walkPaintColors(raw: Map<string, RawColor>): void {
 	}
 }
 
-/** Adds the colors embedded in box-shadow / text-shadow values (capped). */
+/** Adds the colors embedded in box-shadow / text-shadow values, capped. */
 function addShadowColors(raw: Map<string, RawColor>): void {
 	const elements = document.querySelectorAll('*');
 	const limit = Math.min(elements.length, MAX_SHADOW_ELEMENTS);
@@ -103,7 +103,7 @@ function tally(raw: Map<string, RawColor>, parsed: { r: number; g: number; b: nu
 	else raw.set(hex, { hex, rgb: parsed, count: 1 });
 }
 
-/** Color-valued css custom properties declared on :root / html (the named tokens). */
+/** Color-valued css custom properties declared on :root / html, the named tokens. */
 function collectColorVariables(): Record<string, string> {
 	const vars: Record<string, string> = {};
 	const rootStyle = getComputedStyle(document.documentElement);
@@ -127,9 +127,9 @@ function collectColorVariables(): Record<string, string> {
 	return vars;
 }
 
-/** A loose test for whether a css value resolves to a color. */
+/** Whether a css value is a color, tested by the browser's own parser, the ground truth. */
 function looksLikeColor(value: string): boolean {
-	return /^(#|rgb|hsl|oklch|oklab|color\(|lab\(|lch\()/.test(value) || /^[a-z]{3,20}$/.test(value);
+	return CSS.supports('color', value);
 }
 
 /**
@@ -139,7 +139,7 @@ function looksLikeColor(value: string): boolean {
  */
 function clusterColors(colors: RawColor[]): ColorReport[] {
 	interface Cluster {
-		hex: string; // The representative (most frequent) color's hex.
+		hex: string; // The representative color's hex, the most frequent one.
 		centroid: { L: number; a: number; b: number };
 		members: Array<{ L: number; a: number; b: number }>;
 		count: number;
@@ -168,7 +168,7 @@ function clusterColors(colors: RawColor[]): ColorReport[] {
 
 /**
  * Parses a css color to rgb, dropping near-transparent values. The rgb/rgba fast
- * path covers computed styles (always serialized that way); named colors and other
+ * path covers computed styles, which are always serialized that way; named colors and other
  * notations fall back to a 1x1 canvas paint.
  */
 function parseColor(cssColor: string): { r: number; g: number; b: number } | null {
@@ -208,7 +208,7 @@ function srgbToLinear(c: number): number {
 	return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
 
-/** RGB to Oklab (the perceptually uniform model clustering measures distance in). */
+/** RGB to Oklab, the perceptually uniform model clustering measures distance in. */
 function rgbToOklab(r: number, g: number, b: number): { L: number; a: number; b: number } {
 	const lr = srgbToLinear(r);
 	const lg = srgbToLinear(g);

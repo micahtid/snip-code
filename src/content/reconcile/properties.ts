@@ -1,23 +1,23 @@
 /**
  * reconcile/properties.ts: registered custom properties (@property)
  *
- * Pipeline position: reconcile (a leaf utility, read live from the cssom)
- * Reads from Captured: nothing (reads document.styleSheets directly)
- * Writes to Captured: nothing (pure read)
+ * Pipeline position: reconcile; a leaf utility, read live from the cssom
+ * Reads from Captured: nothing; reads document.styleSheets directly
+ * Writes to Captured: nothing; a pure read
  *
  * Why this exists: a custom property registered with `@property` carries a syntax, an
- * inherits flag, and (often) an initial-value that govern how it falls back and
+ * inherits flag, and, often, an initial-value that govern how it falls back and
  * interpolates. Two phases need that registration: features/layers.ts re-emits the
  * rules so the artifact keeps the behavior, and resolve/vars.ts treats a registered
- * property with an initial-value as resolvable (a `var()` to it yields its initial even
- * when nothing sets it, so a state rule referencing it renders standalone). The two
+ * property with an initial-value as resolvable, since a `var()` to it yields its initial even
+ * when nothing sets it, so a state rule referencing it renders standalone. The two
  * shared this scan rather than walk the cssom twice with copied logic.
  *
  * CSSPropertyRule is not in every dom lib version, so the rule is detected
  * structurally by its descriptor fields, exactly as before.
  */
 
-/** One registered @property: its name, its initial-value (null when none), and its source text. */
+/** One registered @property: its name, its initial-value or null when none, and its source text. */
 export interface RegisteredProperty {
 	/** The custom-property name, including the leading `--`. */
 	name: string;
@@ -29,8 +29,8 @@ export interface RegisteredProperty {
 
 /**
  * The custom properties registered via `@property` anywhere in the document, keyed by
- * name. Cross-origin sheets that cannot be read are skipped (their registrations are
- * unreadable from the content script, the same boundary every cssom read accepts).
+ * name. Cross-origin sheets that cannot be read are skipped: their registrations are
+ * unreadable from the content script, the same boundary every cssom read accepts.
  *
  * @returns a name -> registration map
  */

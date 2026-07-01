@@ -1,26 +1,26 @@
 /**
  * capture/picker.ts: in-page element picker overlay
  *
- * Pipeline position: capture (the front door; produces the chosen Element)
- * Reads from Captured: n/a (runs before Captured exists)
- * Writes to Captured: n/a (hands the chosen Element + screenshot to the orchestrator)
+ * Pipeline position: capture; the front door, produces the chosen Element
+ * Reads from Captured: n/a; runs before Captured exists
+ * Writes to Captured: n/a; hands the chosen Element + screenshot to the orchestrator
  *
  * Why this exists: every snip starts with the user choosing an element. This
  * overlay gives live visual feedback, a highlight box, edge guide lines, and a
  * tag/size tooltip, that tracks whatever is under the pointer, then resolves to
- * the chosen element on click. Ported (rewritten, not copied) from v1
+ * the chosen element on click. Ported, rewritten not copied, from v1
  * element-selector.ts; the meaningful v2 change is the sticky arrow-climb, which
  * v1 lacked, letting the user grab a wrapping container instead of the leaf they
  * happen to be hovering.
  *
  * The climb is sticky: arrowup walks to the parent, arrowdown walks back down
  * toward the leaf the cursor is over, and a climbed selection is preserved while
- * the pointer stays inside it (a plain mousemove no longer snaps back to the leaf,
- * the regression that made wrapping containers unreachable). Moving the pointer
+ * the pointer stays inside it; a plain mousemove no longer snaps back to the leaf,
+ * the regression that made wrapping containers unreachable. Moving the pointer
  * out of the selection re-baselines to the fresh leaf under the cursor.
  *
- * Deliberately no Set<string> of "blocked" container tags (v1 had one to avoid
- * snapping to body/main): hardcoded tag-name Sets are disallowed, and the sticky
+ * Deliberately no Set<string> of "blocked" container tags, which v1 had to avoid
+ * snapping to body/main: hardcoded tag-name Sets are disallowed, and the sticky
  * climb makes the heuristic unnecessary, the user climbs on purpose.
  */
 
@@ -45,7 +45,7 @@ const Z_GUIDES = 2147483646;
 export class ElementPicker {
 	private readonly options: PickerOptions;
 	private active = false;
-	/** The element that would be snipped on click (may be a climbed ancestor of `leaf`). */
+	/** The element that would be snipped on click; may be a climbed ancestor of `leaf`. */
 	private current: Element | null = null;
 	/** The actual element under the cursor; the floor that arrowdown descends toward. */
 	private leaf: Element | null = null;
@@ -110,12 +110,12 @@ export class ElementPicker {
 			pointerEvents: 'none', // Never intercept the hover/click we track.
 			border: '1.5px solid #4f6ef6',
 			background: 'rgba(79, 110, 246, 0.10)',
-			// Dim the rest of the page so the target stands out (set-of-marks).
+			// Dim the rest of the page so the target stands out, the set-of-marks technique.
 			boxShadow: '0 0 0 16000px rgba(7, 9, 15, 0.30)',
 			borderRadius: '2px',
-			// Translate (gpu-composited) instead of top/left to avoid layout thrash.
+			// Translate, which is gpu-composited, instead of top/left to avoid layout thrash.
 			transform: 'translate(0,0)',
-			// Elastic settle (matches v1's selection feel); opacity fades faster.
+			// Elastic settle that matches v1's selection feel; opacity fades faster.
 			transition:
 				'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.25s cubic-bezier(0.22, 1, 0.36, 1), height 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out',
 			top: '0',
@@ -161,7 +161,7 @@ export class ElementPicker {
 		this.tooltip = tooltip;
 	}
 
-	/** Track the element under the cursor (via hit-testing, not event.target). */
+	/** Track the element under the cursor via hit-testing, not event.target. */
 	private readonly onMove = (e: MouseEvent): void => {
 		if (this.scrolling) return;
 		// elementFromPoint is more reliable than e.target for nested/overlapped
@@ -242,7 +242,7 @@ export class ElementPicker {
 			return;
 		}
 		// Arrowup: climb to the parent so the user can grab a wrapping container
-		// rather than the leaf under the cursor. The climb is sticky (see onMove)
+		// rather than the leaf under the cursor. The climb is sticky, see onMove,
 		// and the tooltip is re-rendered so the user sees which element they are
 		// now on.
 		if (e.key === 'ArrowUp' && this.current?.parentElement) {
@@ -321,7 +321,7 @@ export class ElementPicker {
  * of `ancestor` that sits on the path down to `leaf`. Used by the arrowdown descend
  * to step exactly one level back toward the element under the cursor.
  *
- * @param ancestor - the currently selected (climbed) element
+ * @param ancestor - the currently selected, climbed element
  * @param leaf - the element under the cursor, a descendant of `ancestor`
  * @returns the child of `ancestor` containing `leaf`, or null if not on the path
  */
@@ -336,8 +336,8 @@ function childTowardLeaf(ancestor: Element, leaf: Element): Element | null {
 /**
  * Captures the visible tab and crops to the element's padded border box.
  *
- * The privileged screenshot lives in the background worker (content scripts
- * cannot call chrome.tabs.captureVisibleTab), so this messages CAPTURE_SCREENSHOT
+ * The privileged screenshot lives in the background worker, since content scripts
+ * cannot call chrome.tabs.captureVisibleTab, so this messages CAPTURE_SCREENSHOT
  * and crops the returned full-viewport image to the element rect. A 24px pad
  * keeps drop shadows and ::before/::after decorations that bleed outside the
  * border box. Accounts for devicePixelRatio so css px map to device px.

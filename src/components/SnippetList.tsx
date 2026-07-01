@@ -1,16 +1,16 @@
 /**
- * components/SnippetList.tsx: the history view (lists saved snippets)
+ * components/SnippetList.tsx: the history view that lists saved snippets
  *
- * Pipeline position: n/a (reads stored SnippetRecord[])
+ * Pipeline position: n/a. Reads stored SnippetRecord[].
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
  * Why this exists: snipcode keeps the last 50 snippets in chrome.storage.local
- * (fifo) and offers one-click "export all" to a zip with one folder
- * per snippet. This view lists them (thumbnail + page + format) and builds the zip
- * in the sidebar (jszip), downloading it via an object-url anchor.
+ * in fifo order and offers one-click "export all" to a zip with one folder
+ * per snippet. This view lists them by thumbnail, page, and format, and builds the zip
+ * in the sidebar with jszip, downloading it via an object-url anchor.
  */
 import { useEffect, useState } from 'react';
 import { LibraryBig } from 'lucide-react';
@@ -19,6 +19,7 @@ import type { OutputFormat, SnippetRecord } from '../content/types';
 import { EmptyState } from './EmptyState';
 import { ViewLayout } from './ViewLayout';
 import { clearSnippets, listSnippets } from '../utils/storage';
+import { triggerDownload } from '../utils/download';
 import { COLORS, FONT_UI, RADIUS, SURFACE } from '../theme';
 
 const EXT: Record<OutputFormat, string> = {
@@ -87,7 +88,7 @@ export function SnippetList() {
 	);
 }
 
-/** Build a zip with one folder per snippet (code + screenshot + meta) and download it. */
+/** Build a zip with one folder per snippet, holding code, screenshot, and meta, and download it. */
 async function exportZip(snippets: SnippetRecord[]): Promise<void> {
 	const zip = new JSZip();
 	snippets.forEach((snip, i) => {
@@ -101,10 +102,7 @@ async function exportZip(snippets: SnippetRecord[]): Promise<void> {
 	});
 	const blob = await zip.generateAsync({ type: 'blob' });
 	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = 'snipcode-snippets.zip';
-	a.click();
+	triggerDownload(url, 'snipcode-snippets.zip');
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 

@@ -1,22 +1,23 @@
 /**
- * components/inspect/SchemaView.tsx: the style-json inspector view
+ * components/inspect/SchemaView.tsx: the schema inspector view
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a, ui only
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none, ui only.
  *
  * Why this exists: renders the page's design-system schema as a scrollable code
  * block with copy and download. It uses its own small code surface rather than the
  * snip ResultPanel's: a schema is not a snip, so routing it through ResultPanel
- * would couple it to snip-only concerns (the format eyebrow, file tabs, preview).
+ * would couple it to snip-only concerns: the format eyebrow, file tabs, and preview.
  * The surface still shares the theme tokens and the sc-icon-btn / sc-scroll classes
  * so it matches the snip code block visually.
  */
 import { useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
-import { COLORS, FONT_CODE, RADIUS, SURFACE } from '../../theme';
+import { triggerDownload } from '../../utils/download';
+import { COLORS, FLASH_MS, FONT_CODE, RADIUS, SURFACE } from '../../theme';
 
 export function SchemaView({ json }: { json: string }) {
 	const [copied, setCopied] = useState(false);
@@ -25,7 +26,7 @@ export function SchemaView({ json }: { json: string }) {
 		try {
 			await navigator.clipboard.writeText(json);
 			setCopied(true);
-			setTimeout(() => setCopied(false), 1400);
+			setTimeout(() => setCopied(false), FLASH_MS);
 		} catch (err) {
 			console.warn('snipcode: copy failed', err);
 		}
@@ -33,17 +34,14 @@ export function SchemaView({ json }: { json: string }) {
 
 	const onDownload = (): void => {
 		const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = 'schema.json';
-		a.click();
+		triggerDownload(url, 'schema.json');
 		URL.revokeObjectURL(url);
 	};
 
 	return (
 		<div style={container}>
 			<div style={header}>
-				<span style={eyebrow}>Style JSON</span>
+				<span style={eyebrow}>Schema</span>
 				<div style={actions}>
 					<button className="sc-icon-btn" title={copied ? 'Copied' : 'Copy schema'} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}

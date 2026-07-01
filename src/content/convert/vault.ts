@@ -1,9 +1,9 @@
 /**
  * convert/vault.ts: verbatim data vault
  *
- * Pipeline position: convert (stash) and polish (restore)
- * Reads from Captured: nothing (operates on the emitted code string)
- * Writes to Captured: nothing (the caller owns the vault instance)
+ * Pipeline position: convert to stash, and polish to restore
+ * Reads from Captured: nothing; operates on the emitted code string
+ * Writes to Captured: nothing; the caller owns the vault instance
  *
  * A token-economy mechanism.
  *
@@ -13,8 +13,8 @@
  * short @@V*@@ placeholders before the llm sees them cuts tokens and makes it
  * impossible for the model to corrupt data it never sees; restore() swaps the
  * originals back afterward. Html and css are vaulted with separate patterns so a
- * css regex never matches inside an html attribute (e.g. a tailwind arbitrary
- * value). Ported (rewritten) verbatim from v1 verbatim-vault.ts; the one fix is
+ * css regex never matches inside an html attribute, for example a tailwind arbitrary
+ * value. Ported verbatim from v1 verbatim-vault.ts, rewritten; the one fix is
  * restore() using split/join instead of String.replace so a vaulted value
  * containing "$" cannot be mangled by replacement-pattern interpretation.
  */
@@ -30,7 +30,7 @@ export class VerbatimVault {
 	}
 
 	/**
-	 * Vaults an entire block (e.g. a whole css block) behind one placeholder.
+	 * Vaults an entire block, for example a whole css block, behind one placeholder.
 	 *
 	 * @param content - the block to stash
 	 * @returns the placeholder standing in for it
@@ -43,7 +43,7 @@ export class VerbatimVault {
 
 	/**
 	 * Replaces fragile and token-heavy content with placeholders. Two phases:
-	 * html-element patterns first (svg, path data, long urls), then css values,
+	 * html-element patterns first, meaning svg, path data, and long urls, then css values,
 	 * only inside <style> blocks, so html attributes are never touched.
 	 *
 	 * @param code - the emitted document string
@@ -52,7 +52,7 @@ export class VerbatimVault {
 	protect(code: string): string {
 		let result = code;
 
-		// Phase 1, html element vaulting (patterns that only match html).
+		// First, vault html-only patterns, those that match markup, not css.
 
 		// Whole <svg>...</svg> blocks regardless of size: the biggest token sink.
 		result = result.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, (match) => this.stash(match));
@@ -63,13 +63,13 @@ export class VerbatimVault {
 		// Svg points="..." On polyline/polygon.
 		result = result.replace(/\bpoints="([^"]{10,})"/g, (_m, points: string) => `points="${this.stash(points)}"`);
 
-		// Long http(s) urls in src/href attributes.
+		// Long http and https urls in src/href attributes.
 		result = result.replace(
 			/\b(src|href)="(https?:\/\/[^"]{60,})"/g,
 			(_m, attr: string, url: string) => `${attr}="${this.stash(url)}"`,
 		);
 
-		// Phase 2, css value vaulting, scoped to <style> blocks only.
+		// Then, vault css values, scoped to <style> blocks only.
 		result = result.replace(
 			/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi,
 			(_m, open: string, cssContent: string, close: string) => `${open}${this.vaultCssValues(cssContent)}${close}`,
@@ -87,7 +87,7 @@ export class VerbatimVault {
 	private vaultCssValues(css: string): string {
 		let result = css;
 
-		// Multi-layer box-shadow (3+ layers): heavy and easy for an llm to garble.
+		// Multi-layer box-shadow, meaning 3 or more layers: heavy and easy for an llm to garble.
 		result = result.replace(/box-shadow:\s*([^;}{]+)/g, (match, value: string) => {
 			const commasOutsideParens = value.replace(/\([^)]*\)/g, '').match(/,/g);
 			if (!commasOutsideParens || commasOutsideParens.length < 2) return match;
@@ -100,13 +100,13 @@ export class VerbatimVault {
 			(_m, prefix: string, gradient: string) => `${prefix}${this.stash(gradient.trim())}`,
 		);
 
-		// Transition values (skip the trivial `none`).
+		// Transition values, skipping the trivial `none`.
 		result = result.replace(/transition:\s*([^;}{]+)/g, (match, value: string) => {
 			if (/^none$/i.test(value.trim())) return match;
 			return `transition: ${this.stash(value.trim())}`;
 		});
 
-		// Filter / backdrop-filter values (skip `none`).
+		// Filter / backdrop-filter values, skipping `none`.
 		result = result.replace(/((?:backdrop-)?filter):\s*([^;}{]+)/g, (match, prop: string, value: string) => {
 			if (/^none$/i.test(value.trim())) return match;
 			return `${prop}: ${this.stash(value.trim())}`;
@@ -127,7 +127,7 @@ export class VerbatimVault {
 	}
 
 	/**
-	 * Strips the html document wrapper (doctype/html/head/body) for token economy
+	 * Strips the html document wrapper of doctype, html, head, and body for token economy
 	 * before sending to the llm.
 	 *
 	 * @param code - a full or partial document string
@@ -146,7 +146,7 @@ export class VerbatimVault {
 	/**
 	 * Restores every placeholder back to its original value.
 	 *
-	 * Uses split/join (not String.replace) so a vaulted value containing "$" is
+	 * Uses split/join, not String.replace, so a vaulted value containing "$" is
 	 * inserted literally, never interpreted as a replacement pattern.
 	 *
 	 * @param code - llm output (or any string) carrying placeholders
@@ -164,7 +164,7 @@ export class VerbatimVault {
 		return new Map(this.vault);
 	}
 
-	/** Placeholders that are still present in `code` (i.e. not yet restored). */
+	/** Placeholders that are still present in `code`, meaning not yet restored. */
 	getUnrestoredPlaceholders(code: string): string[] {
 		const remaining: string[] = [];
 		for (const placeholder of this.vault.keys()) {

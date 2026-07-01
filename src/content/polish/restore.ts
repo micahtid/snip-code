@@ -2,7 +2,7 @@
  * polish/restore.ts: vault restore, hover-rule merge, orphan prune
  *
  * Pipeline position: polish
- * Reads from Captured: n/a (operates on html + css strings)
+ * Reads from Captured: n/a; operates on html + css strings
  * Writes to Captured: n/a
  *
  * The orphan prune is dead-code elimination, not aesthetic surgery.
@@ -10,8 +10,8 @@
  * Why this exists: the final polish step folds the llm's additive output back in.
  * Any @@V*@@ placeholders the model echoed into its hover rules are restored to
  * their original values (vault.restore), the validated hover rules are appended to
- * the css, and selectors whose class tokens no longer appear in the markup (after
- * renaming) are pruned. It never removes anything the markup still references.
+ * the css, and selectors whose class tokens no longer appear in the markup after
+ * renaming are pruned. It never removes anything the markup still references.
  */
 import type { VerbatimVault } from '../convert/vault';
 
@@ -19,10 +19,10 @@ import type { VerbatimVault } from '../convert/vault';
  * Finalizes the polished output: restores vaulted values in the hover rules,
  * appends them, and prunes orphan css rules.
  *
- * @param html - the (renamed) markup
- * @param css - the (renamed) stylesheet
+ * @param html - the renamed markup
+ * @param css - the renamed stylesheet
  * @param hoverRules - additive interaction rules from the llm
- * @param vault - the vault used for the prompt (to restore any echoed placeholders)
+ * @param vault - the vault used for the prompt, to restore any echoed placeholders
  * @returns the finalized html + css
  */
 export function finalize(html: string, css: string, hoverRules: string[], vault: VerbatimVault): { html: string; css: string } {

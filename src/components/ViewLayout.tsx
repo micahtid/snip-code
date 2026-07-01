@@ -1,19 +1,19 @@
 /**
  * components/ViewLayout.tsx: the shared sidebar view scaffold
  *
- * Pipeline position: n/a (ui)
+ * Pipeline position: n/a. Ui only.
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none. Ui only.
  *
- * Why this exists: every sidebar view (capture / history / settings, plus their
- * loading and empty states) has the same shape: a scrolling body that fills the
+ * Why this exists: every sidebar view, capture / history / settings, plus their
+ * loading and empty states, has the same shape: a scrolling body that fills the
  * panel over an optional footer pinned to the bottom. Centralizing that here keeps
  * the views structurally identical and is the one place the scroll/footer treatment
- * is applied (the values themselves live in LAYOUT in theme.ts). Pass `fill` when
- * the body's single child should grow to the full height (the capture view's code
- * block) rather than sit at its natural height.
+ * is applied; the values themselves live in LAYOUT in theme.ts. Pass `fill` when
+ * the body's single child should grow to the full height, as with the capture view's
+ * code block, rather than sit at its natural height.
  */
 import { LAYOUT } from '../theme';
 

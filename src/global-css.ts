@@ -1,27 +1,27 @@
 /**
  * Global-css.ts: the one injected stylesheet for the sidebar ui
  *
- * Pipeline position: n/a (ui foundation, not a pipeline phase)
+ * Pipeline position: n/a; ui foundation, not a pipeline phase
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Principles applied: none (ui).
+ * Principles applied: none; ui.
  *
- * Why this exists: the v2 ui is otherwise styled with inline react style objects
- * (the established convention; no .css files in the tree). A handful of things
+ * Why this exists: the v2 ui is otherwise styled with inline react style objects,
+ * the established convention, since there are no .css files in the tree. A handful of things
  * cannot be expressed inline: @font-face, the cloud-backdrop geometry, and, most
  * importantly, interactive pseudo-states (:hover / :active / :disabled) and
  * ::-webkit-scrollbar / ::placeholder. Inline styles also win the cascade over
  * stylesheet rules, so a button whose base background is inline can never show a
- * :hover background. The fix used here: interactive controls (buttons, inputs,
- * the mode toggle) are styled entirely by the classes below so their pseudo-states
- * work, while structural layout stays inline. App.tsx injects this once on mount,
- * keeping index.html bare ("the bundle owns all markup"). Values come from
+ * :hover background. The fix used here: interactive controls, such as buttons,
+ * inputs, and the mode toggle, are styled entirely by the classes below so their
+ * pseudo-states work, while structural layout stays inline. App.tsx injects this
+ * once on mount, keeping index.html bare, so the bundle owns all markup. Values come from
  * theme.ts so inline styles and these rules never drift.
  */
 import { COLORS, FONT_CODE, FONT_UI, RADIUS, STATE, SURFACE, EASE_UI } from './theme';
 
-/** The id of the single injected <style> element (idempotency guard). */
+/** The id of the single injected <style> element, the idempotency guard. */
 const STYLE_ID = 'snipcode-global-css';
 
 /**
@@ -96,9 +96,9 @@ body {
 	height: 46px;
 	border-radius: ${RADIUS.xl}px;
 	font-size: 14px;
-	color: rgba(255, 255, 255, 0.95);
+	color: ${SURFACE.onDarkText};
 	background: ${SURFACE.primary};
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	border: 1px solid ${SURFACE.onDarkBorder};
 }
 .sc-btn-primary:hover:not(:disabled) { background: ${SURFACE.primaryHover}; }
 .sc-btn-primary:active:not(:disabled) { transform: scale(0.985); opacity: 0.9; }
@@ -106,7 +106,7 @@ body {
 	height: 46px;
 	border-radius: ${RADIUS.xl}px;
 	font-size: 14px;
-	color: rgba(71, 85, 105, 0.9);
+	color: ${SURFACE.secondaryText};
 	background: ${SURFACE.control};
 	border: 1px solid ${SURFACE.borderStrong};
 }
@@ -124,7 +124,7 @@ body {
 	border-radius: ${RADIUS.xl}px;
 	overflow: hidden;
 	background: ${SURFACE.primary};
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	border: 1px solid ${SURFACE.onDarkBorder};
 	transition: background 0.2s ${EASE_UI}, opacity 0.15s ${EASE_UI};
 }
 .sc-split:hover:not(.sc-split-disabled) { background: ${SURFACE.primaryHover}; }
@@ -132,7 +132,7 @@ body {
 .sc-split-main, .sc-split-chevron {
 	border: none;
 	background: transparent;
-	color: rgba(255, 255, 255, 0.95);
+	color: ${SURFACE.onDarkText};
 	cursor: pointer;
 	transition: background 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
 }
@@ -142,17 +142,17 @@ body {
 	font-size: 14px;
 	font-weight: 600;
 }
-.sc-split-main:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.sc-split-main:hover:not(:disabled) { background: ${STATE.onDarkHover}; }
 .sc-split-main:active:not(:disabled) { transform: scale(0.99); }
 .sc-split-main:disabled, .sc-split-chevron:disabled { cursor: not-allowed; }
-.sc-split-divider { width: 1px; margin: 9px 0; background: rgba(255, 255, 255, 0.18); }
+.sc-split-divider { width: 1px; margin: 9px 0; background: ${STATE.onDarkDivider}; }
 .sc-split-chevron {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	width: 42px;
 }
-.sc-split-chevron:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.sc-split-chevron:hover:not(:disabled) { background: ${STATE.onDarkHoverStrong}; }
 .sc-split-chevron:active:not(:disabled) { transform: scale(0.94); }
 
 /* ---- Popover menu for the capture mode select; opens above the split action. ---- */
@@ -191,7 +191,7 @@ body {
 /* Hairline between the element-pick modes and the page-scan modes in the menu. */
 .sc-menu-divider { height: 1px; margin: 4px 6px; background: ${SURFACE.border}; }
 
-/* ---- Page-scoped inspector card grid (fonts / colors / assets). ---- */
+/* ---- Page-scoped inspector card grid: fonts, colors, and assets. ---- */
 .sc-inspect-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -252,7 +252,7 @@ body {
 	transition: color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI};
 }
 .sc-navicon:hover { background: ${STATE.iconBtnHover}; }
-.sc-navicon-active { background: rgba(15, 23, 42, 0.08); }
+.sc-navicon-active { background: ${STATE.navActive}; }
 
 /* ---- File tabs for index.html, icon-1.svg, image-1.png. ---- */
 .sc-tab {
@@ -299,7 +299,7 @@ body {
 	font-family: ${FONT_UI};
 	font-size: 13px;
 	color: ${COLORS.slate800};
-	background: rgba(255, 255, 255, 0.7);
+	background: ${SURFACE.field};
 	border: 1px solid ${SURFACE.borderStrong};
 	border-radius: ${RADIUS.md}px;
 	box-sizing: border-box;
@@ -307,6 +307,32 @@ body {
 }
 .sc-input:focus { outline: none; border-color: ${COLORS.accent}; box-shadow: 0 0 0 3px ${STATE.focusRing}; }
 .sc-input::placeholder { color: ${COLORS.slate400}; }
+/* Hide the browser's own password-reveal control in Edge so it never doubles our eye. */
+.sc-input::-ms-reveal, .sc-input::-ms-clear { display: none; }
+
+/* Field wrapper hosting a masked input plus its in-field reveal eye. */
+.sc-key-field { position: relative; flex: 1; min-width: 0; }
+/* The eye sits just inside the right edge; the input's right padding clears its text. */
+.sc-key-reveal {
+	position: absolute;
+	top: 50%;
+	right: 6px;
+	transform: translateY(-50%);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	border-radius: ${RADIUS.sm}px;
+	background: transparent;
+	color: ${COLORS.slate400};
+	cursor: pointer;
+	transition: color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI};
+}
+.sc-key-reveal:hover { color: ${COLORS.slate600}; background: ${STATE.iconBtnHover}; }
+.sc-key-reveal:active { color: ${COLORS.slate800}; transform: translateY(-50%) scale(0.92); }
 
 /* ---- Custom select for settings; opens in-flow so it pushes content below it down. ---- */
 .sc-select { position: relative; }
@@ -321,7 +347,7 @@ body {
 	font-family: ${FONT_UI};
 	font-size: 13px;
 	color: ${COLORS.slate800};
-	background: rgba(255, 255, 255, 0.7);
+	background: ${SURFACE.field};
 	border: 1px solid ${SURFACE.borderStrong};
 	border-radius: ${RADIUS.md}px;
 	cursor: pointer;
@@ -405,7 +431,7 @@ body {
 	height: 18px;
 	border: 1px solid ${SURFACE.borderStrong};
 	border-radius: ${RADIUS.sm}px;
-	background: rgba(255, 255, 255, 0.7);
+	background: ${SURFACE.field};
 	color: ${COLORS.white};
 	transition: background 0.12s ${EASE_UI}, border-color 0.12s ${EASE_UI};
 }
@@ -421,7 +447,7 @@ body {
 
 /**
  * Injects {@link GLOBAL_CSS} once into the document head. Idempotent: a second
- * call (e.g. a hot-reload or a re-mount) finds the existing style by id and
+ * call, such as a hot-reload or a re-mount, finds the existing style by id and
  * no-ops, so the rules are never duplicated.
  */
 export function injectGlobalCss(): void {
