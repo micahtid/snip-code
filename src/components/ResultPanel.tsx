@@ -112,11 +112,11 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	};
 
-	// Save a single file to disk. Image files carry a data: url that downloads
-	// directly; text files such as html, svg, and json become a blob whose object url is revoked
-	// once the browser has read it.
+	// Save a single file to disk. Binary files (images, fonts) carry a data: url that
+	// downloads directly; text files such as html, svg, and json become a blob whose object
+	// url is revoked once the browser has read it.
 	const downloadFile = (file: AssetFile): void => {
-		if (file.language === 'image' && file.dataUrl) {
+		if (file.dataUrl) {
 			triggerDownload(file.dataUrl, file.name);
 			return;
 		}
@@ -177,6 +177,8 @@ export function ResultPanel({ result }: ResultPanelProps) {
 				<div className="sc-scroll" style={imageWrap}>
 					<img src={activeFile.dataUrl} alt={activeFile.name} style={imagePreview} />
 				</div>
+			) : activeFile.language === 'font' ? (
+				<div style={binaryNote}>Binary font file — use Download to save {activeFile.name}.</div>
 			) : (
 				<pre className="sc-scroll" style={display}>
 					<code>{activeFile.text}</code>
@@ -216,6 +218,10 @@ const imageWrap: React.CSSProperties = {
 	padding: '16px', flex: 1, minHeight: 0, overflow: 'auto', background: COLORS.slate50,
 };
 const imagePreview: React.CSSProperties = { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' };
+const binaryNote: React.CSSProperties = {
+	display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+	padding: '24px', flex: 1, minHeight: 0, background: COLORS.slate50, color: COLORS.slate500, fontSize: '12px',
+};
 const display: React.CSSProperties = {
 	// Code never wraps: long lines scroll horizontally (overflow: auto) so the markup
 	// reads as emitted rather than reflowing mid-attribute. tabSize narrows the

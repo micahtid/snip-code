@@ -26,7 +26,7 @@ const RUNNER_TIMEOUT_MS = 60_000;
 const SETTLE_MS = 400; // Post-load / post-scroll wait for layout and reveal animations to settle.
 
 /** Read source.json supporting both the flat bundle schema and the nested assistive schema. */
-function readSource(source) {
+export function readSource(source) {
 	return {
 		url: source.url ?? source.page?.url,
 		selector: source.selector ?? source.element?.selector,
@@ -34,7 +34,7 @@ function readSource(source) {
 	};
 }
 
-async function findBundles(dataDir) {
+export async function findBundles(dataDir = DEFAULT_DATA_DIR) {
 	const bundles = [];
 	const tiers = await fs.readdir(dataDir, { withFileTypes: true });
 	for (const tier of tiers) {
@@ -57,7 +57,12 @@ async function findBundles(dataDir) {
 	return bundles;
 }
 
-async function snipOne(context, bundle) {
+/**
+ * Snip one bundle through the built extension. extraDetail is merged into the
+ * snip-runner:snip event detail, which is how a caller opts a snip into a phase, such as
+ * { minimize: true }, without changing the default grader path.
+ */
+export async function snipOne(context, bundle, extraDetail = {}) {
 	const src = readSource(bundle.source);
 	const viewport = { width: src.viewport.width || 1280, height: src.viewport.height || 800 };
 	const page = await context.newPage();
@@ -82,7 +87,7 @@ async function snipOne(context, bundle) {
 		await page.waitForTimeout(SETTLE_MS);
 
 		const result = await page.evaluate(
-			({ selector, timeoutMs }) =>
+			({ selector, timeoutMs, extra }) =>
 				new Promise((resolve) => {
 					const handler = (ev) => {
 						document.removeEventListener('snip-extension:result', handler);
@@ -94,16 +99,64 @@ async function snipOne(context, bundle) {
 						resolve({ ok: false, error: 'timeout' });
 					}, timeoutMs);
 					document.addEventListener('snip-extension:result', handler);
-					document.dispatchEvent(new CustomEvent('snip-runner:snip', { detail: { selector, mode: 'snip' } }));
+					document.dispatchEvent(new CustomEvent('snip-runner:snip', { detail: { selector, mode: 'snip', ...extra } }));
 				}),
-			{ selector: src.selector, timeoutMs: RUNNER_TIMEOUT_MS },
+			{ selector: src.selector, timeoutMs: RUNNER_TIMEOUT_MS, extra: extraDetail },
 		);
 
 		if (!result?.ok) throw new Error(result?.error || 'unknown failure');
 		if (result.status === 'unsupported') throw new Error(`builder gate: unsupported (${(result.warnings || []).join(',')})`);
-		return { html: result.html, warnings: result.warnings || [], probe: result.probe, emittedProbe: result.emittedProbe };
+		return { html: result.html, htmlBaseline: result.htmlBaseline, files: result.files, warnings: result.warnings || [], probe: result.probe, emittedProbe: result.emittedProbe, minimize: result.minimize };
 	} finally {
 		await page.close();
+	}
+}
+
+/** Throw with a build hint unless dist/ carries a built extension manifest. */
+export async function ensureBuilt() {
+	try {
+		await fs.access(path.join(EXT_DIR, 'manifest.json'));
+	} catch {
+		throw new Error(`extension build not found at ${EXT_DIR}. run "npm run build" first.`);
+	}
+}
+
+/**
+ * Launch a persistent chromium context with the built extension loaded at the given dpr,
+ * returning the context and its temp user-data dir for cleanup. Chromium runs extensions
+ * only under a persistent context and only in the new headless mode, so headless:false
+ * suppresses the classic flag and --headless=new is passed explicitly. Dpr is fixed at
+ * context creation, so one context serves one dpr.
+ */
+export async function launchExtensionContext(dpr = 1) {
+	const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), `snip-run-${dpr}-`));
+	const context = await chromium.launchPersistentContext(userDataDir, {
+		headless: false,
+		deviceScaleFactor: dpr,
+		args: ['--headless=new', '--no-sandbox', `--disable-extensions-except=${EXT_DIR}`, `--load-extension=${EXT_DIR}`],
+	});
+	return { context, userDataDir };
+}
+
+/**
+ * Write a split-asset file set into a bundle directory: index.html plus each lifted
+ * icon-N.svg / image-N.ext / font-N.ext, so the training data carries the same split the
+ * sidebar ships. Text files (html, svg) write verbatim; binary files (images, fonts) decode
+ * their data uri to bytes, base64 or url-encoded, and write binary, so the relative
+ * references in index.html resolve.
+ */
+async function writeBundleFiles(dir, files) {
+	for (const file of files) {
+		const target = path.join(dir, file.name);
+		if (file.dataUrl) {
+			const comma = file.dataUrl.indexOf(',');
+			const meta = file.dataUrl.slice(0, comma);
+			const payload = file.dataUrl.slice(comma + 1);
+			const bytes = /;base64/i.test(meta) ? Buffer.from(payload, 'base64') : Buffer.from(decodeURIComponent(payload), 'utf8');
+			await fs.writeFile(target, bytes);
+		} else if (file.text !== undefined) {
+			await fs.writeFile(target, file.text, 'utf8');
+		}
 	}
 }
 
@@ -114,11 +167,7 @@ export async function runAll(opts = {}) {
 	// so a single cluster can be re-snipped cheaply during the measurement loop.
 	if (opts.only) bundles = bundles.filter((b) => `${b.tier}/${b.name}`.includes(opts.only));
 	if (bundles.length === 0) throw new Error(`no bundles with source.json found under ${dataDir}` + (opts.only ? ` matching "${opts.only}"` : ''));
-	try {
-		await fs.access(path.join(EXT_DIR, 'manifest.json'));
-	} catch {
-		throw new Error(`extension build not found at ${EXT_DIR}. run "npm run build" first.`);
-	}
+	await ensureBuilt();
 
 	// One persistent context per devicePixelRatio (dpr is fixed at context creation).
 	const byDpr = new Map();
@@ -130,20 +179,16 @@ export async function runAll(opts = {}) {
 
 	const results = [];
 	for (const [dpr, group] of byDpr) {
-		const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), `snip-run-${dpr}-`));
-		// Classic headless does not run extensions; --headless=new does. Pass
-		// headless:false to suppress the old flag, then add --headless=new ourselves.
-		const context = await chromium.launchPersistentContext(userDataDir, {
-			headless: false,
-			deviceScaleFactor: dpr,
-			args: ['--headless=new', '--no-sandbox', `--disable-extensions-except=${EXT_DIR}`, `--load-extension=${EXT_DIR}`],
-		});
+		const { context, userDataDir } = await launchExtensionContext(dpr);
 		try {
 			for (const bundle of group) {
 				process.stdout.write(`pipeline ${bundle.tier}/${bundle.name} ... `);
 				try {
-					const { html, warnings, probe, emittedProbe } = await snipOne(context, bundle);
+					const { html, files, warnings, probe, emittedProbe } = await snipOne(context, bundle);
 					await fs.writeFile(path.join(bundle.dir, 'output.html'), html, 'utf8');
+					// Also persist the split delivery shape (index.html + lifted assets), the
+					// same files the sidebar presents, so the training data exercises that path.
+					if (files) await writeBundleFiles(bundle.dir, files);
 					// Sidecar: the completeness-probe counts the grader folds in (drift-free).
 					if (probe) {
 						await fs.writeFile(

@@ -228,16 +228,16 @@ export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google';
 export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' | 'jsx-css' | 'vue' | 'html';
 
 /**
- * One file in a split snip result: the index.html document plus the inline svgs
- * and data-uri images lifted out into their own referenced files (convert/assets.ts).
- * Text files, html/svg/json, carry `text`; image files carry the original `dataUrl`
- * so the panel can render them.
+ * One file in a split snip result: the index.html document plus the inline svgs,
+ * data-uri images, and @font-face fonts lifted out into their own referenced files
+ * (convert/assets.ts). Text files, html/svg/json, carry `text`; binary files, images and
+ * fonts, carry the original `dataUrl` so the panel can render or download them.
  */
 export interface AssetFile {
-	name: string; // 'index.html', 'icon-1.svg', 'image-1.png'
-	language: 'html' | 'svg' | 'image' | 'json';
+	name: string; // 'index.html', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
+	language: 'html' | 'svg' | 'image' | 'json' | 'font';
 	text?: string; // Source for text files
-	dataUrl?: string; // Original data: url for image files
+	dataUrl?: string; // Original data: url for binary files (images, fonts)
 }
 
 /**

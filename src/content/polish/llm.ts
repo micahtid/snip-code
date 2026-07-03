@@ -17,44 +17,52 @@
  * marketing-website openrouter.ts, taking the request shape and response parsing
  * only, none of the original's account, credit-accounting, or backend-verification code.
  */
-import type { Provider, TokenUsage } from '../types';
+import type { Captured, Provider, TokenUsage } from '../types';
 import { requestLlm, NO_KEY } from '../llm';
 import { VerbatimVault } from '../convert/vault';
+import { inScopeRule } from '../minimize/declarations';
 import { buildPolishPrompt } from './prompts';
-import { applyRenames } from './rename';
+import { applyRenames, applyTags, applyComments } from './rename';
 import { finalize } from './restore';
+import { polishRenderNeutral } from './verify';
 
 /** The polish edits parsed out of the model's reply text. */
 interface PolishEdits {
 	renameMap: Record<string, string>;
-	hoverRules: string[];
+	tagMap: Record<string, string>;
+	comments: Record<string, string>;
 }
 
 /**
  * Runs the polish phase if a key is configured; otherwise returns the input unchanged.
  *
- * Polish is best-effort: a missing key is an intentional, silent skip, but a
- * configured-key failure, such as a provider error or empty/non-json reply, returns a
- * `warning` so the orchestrator can surface why the phase produced no edits
- * instead of failing invisibly.
+ * Polish is best-effort and safe: a missing key is an intentional, silent skip; a
+ * configured-key failure returns a `warning` so the orchestrator can surface why the phase
+ * produced no edits; and an edit that changes the render is reverted to the pre-polish
+ * output, since the edits, semantic class renames, tag swaps, and grouping comments, are all
+ * meant to be render-neutral. The interactive and generated-content rules are stripped
+ * before the prompt so the model never sees or regenerates them.
  *
+ * @param captured - source of the viewport size, used to verify render-neutrality
  * @param html - markup from the earlier phases
  * @param css - stylesheet from the earlier phases
  * @param provider - the active byok provider
  * @param model - the model to use, resolved by the caller from prefs/defaults
- * @returns polished html + css, the provider-reported token usage when an edit ran,
- *   plus a warning when a configured key was present but the request failed
+ * @returns polished html + css, the provider-reported token usage when an edit ran, plus a
+ *   warning when a configured key was present but the request failed or the edit was reverted
  */
 export async function polish(
+	captured: Captured,
 	html: string,
 	css: string,
 	provider: Provider,
 	model: string,
 ): Promise<{ html: string; css: string; warning?: string; usage?: TokenUsage }> {
-	// Vault token-heavy values for the prompt only; the working html/css stay
-	// un-vaulted, since the model returns instructions, not rewritten code.
+	// Show the model only the resting class rules, vaulting token-heavy values, so it never
+	// sees the state/pseudo/at-rules and cannot regenerate or truncate them. The working
+	// html/css stay whole and un-vaulted, since the model returns instructions, not code.
 	const vault = new VerbatimVault();
-	const vaulted = vault.protect(`<style>${css}</style>\n${html}`);
+	const vaulted = vault.protect(`<style>${stripWithheld(css)}</style>\n${html}`);
 	const prompt = buildPolishPrompt(vaulted);
 
 	const { text, error, usage } = await requestLlm(provider, model, prompt);
@@ -72,25 +80,66 @@ export async function polish(
 
 	const edits = parseReply(text);
 	const renamed = applyRenames(html, css, edits.renameMap);
-	const out = finalize(renamed.html, renamed.css, edits.hoverRules, vault);
+	const out = finalize(applyTags(renamed.html, edits.tagMap), applyComments(renamed.css, edits.comments));
+
+	// Verify the polished artifact renders identically; a model can rename inconsistently or
+	// swap a tag whose ua styles differ, so a non-neutral edit falls back to the safe output.
+	if (!polishRenderNeutral(captured, html, css, out.html, out.css)) {
+		const warning = 'llm polish reverted: an edit changed the render';
+		return usage ? { html, css, warning, usage } : { html, css, warning };
+	}
 	return usage ? { ...out, usage } : out;
 }
 
 /**
- * Parses the model's reply into the two additive polish edits. Lenient by design:
- * a missing or malformed reply yields empty edits, a clean no-op, rather than
- * throwing. Moved here from the background broker so polish owns its own shape.
+ * The stylesheet with only its in-scope resting class rules kept, so the prompt hides the
+ * interactive-state, pseudo-element, and at-rules the model must not touch. Parsed through
+ * the browser so a data-uri brace can never mislead it; returns the input unchanged if it
+ * will not parse.
+ *
+ * @param css - the full stylesheet
+ */
+function stripWithheld(css: string): string {
+	try {
+		const sheet = new CSSStyleSheet();
+		sheet.replaceSync(css);
+		return Array.from(sheet.cssRules)
+			.map((rule) => inScopeRule(rule))
+			.filter((rule): rule is CSSStyleRule => rule !== null)
+			.map((rule) => rule.cssText)
+			.join('\n');
+	} catch {
+		return css;
+	}
+}
+
+/**
+ * Parses the model's reply into the polish edits. Lenient by design: a missing or malformed
+ * reply, or a missing field, yields empty edits, a clean no-op, rather than throwing.
  */
 function parseReply(text: string): PolishEdits {
 	const match = text.match(/\{[\s\S]*\}/);
-	if (!match) return { renameMap: {}, hoverRules: [] };
+	const empty: PolishEdits = { renameMap: {}, tagMap: {}, comments: {} };
+	if (!match) return empty;
 	try {
-		const parsed = JSON.parse(match[0]) as { renameMap?: unknown; hoverRules?: unknown };
+		const parsed = JSON.parse(match[0]) as Record<string, unknown>;
 		return {
-			renameMap: parsed.renameMap && typeof parsed.renameMap === 'object' ? (parsed.renameMap as Record<string, string>) : {},
-			hoverRules: Array.isArray(parsed.hoverRules) ? (parsed.hoverRules as string[]) : [],
+			renameMap: stringMap(parsed['renameMap']),
+			tagMap: stringMap(parsed['tagMap']),
+			comments: stringMap(parsed['comments']),
 		};
 	} catch {
-		return { renameMap: {}, hoverRules: [] };
+		return empty;
 	}
+}
+
+/** A record of string values from an untrusted parsed value, or an empty record. */
+function stringMap(value: unknown): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (value && typeof value === 'object') {
+		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+			if (typeof v === 'string') out[k] = v;
+		}
+	}
+	return out;
 }

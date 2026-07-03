@@ -19,31 +19,38 @@
 /**
  * Builds the polish prompt for a vaulted code string.
  *
- * The model is asked ONLY to propose semantic class renames and add
- * hover/focus interaction rules, both purely additive, and to return strict
- * json so the result is machine-applicable. It must not rewrite the markup,
- * touch @@V*@@ placeholders, or change any geometry.
+ * The css and markup reaching the model are already minimal and pixel-correct from the
+ * earlier phases, and the interactive state and pseudo-element rules are withheld before
+ * the prompt, so the model never sees or regenerates them. It is asked only for the jobs a
+ * deterministic pass cannot do: naming, semantic tags, and grouping comments, all
+ * render-neutral, all returned as strict json so the result is machine-applicable and the
+ * artifact is re-verified before it ships. It must not rewrite declarations, touch @@V*@@
+ * placeholders, or change any geometry.
  *
  * @param vaultedCode - the html+css with fragile values replaced by placeholders
  */
 export function buildPolishPrompt(vaultedCode: string): string {
 	return [
-		'you are refining an already-pixel-correct html+css snippet. do not change',
-		'any layout, sizes, colors, or geometry. do not modify @@V*@@ placeholders.',
+		'you are naming an already-pixel-correct html+css snippet. do not change any layout,',
+		'sizes, colors, geometry, or declarations. do not modify @@V*@@ placeholders.',
 		'',
-		'two tasks, both purely additive:',
-		'1. propose semantic class names to replace generated/hashed ones. some elements',
-		'   carry a shared base class plus a per-element modifier (e.g. "x__group-1" and',
-		'   "x__group-1--2" together): rename the base once and each modifier to match it',
-		'   ("button" + "button--primary"), and keep both classes on the element. never',
-		'   collapse a base and its modifier into a single class.',
-		'2. add :hover and :focus-visible interaction rules where they clearly fit',
-		'   (buttons, links, inputs), using only colors/values already present.',
+		'three tasks, all render-neutral:',
+		'1. renameMap: propose semantic class names to replace generated/hashed ones. some',
+		'   elements carry a shared base class plus a per-element modifier (e.g. "x__group-1"',
+		'   and "x__group-1--2" together): rename the base once and each modifier to match it',
+		'   ("button" + "button--primary"), keep both classes on the element, never collapse a',
+		'   base and its modifier into one class. each value is a single class token.',
+		'2. tagMap: where an element\'s role is unambiguous, map its class to a more semantic',
+		'   html tag (e.g. a nav container to "nav", a heading div to "h2"). only when the tag',
+		'   change cannot alter rendering; when unsure, leave it out.',
+		'3. comments: short grouping comments to place before a rule, keyed by that rule\'s',
+		'   selector, e.g. { ".card": "the product card" }. plain english, no css inside.',
 		'',
 		'reply with STRICT json and nothing else:',
 		'{',
 		'  "renameMap": { "old-class": "new-semantic-class" },',
-		'  "hoverRules": [".new-class:hover { ... }"]',
+		'  "tagMap": { "class-name": "section" },',
+		'  "comments": { ".selector": "what this rule styles" }',
 		'}',
 		'',
 		'the snippet:',

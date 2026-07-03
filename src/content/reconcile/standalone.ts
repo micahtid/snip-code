@@ -791,7 +791,7 @@ function withStandaloneFrame(captured: Captured, fn: (map: Map<Element, Element>
 }
 
 /** A hidden iframe and its document/window, sized to the capture viewport. */
-interface SizedFrame {
+export interface SizedFrame {
 	frame: HTMLIFrameElement;
 	doc: Document;
 	win: Window;
@@ -804,9 +804,19 @@ interface SizedFrame {
  * pasted-snip environment. The caller mounts content into `doc.body` and must call
  * `frame.remove()` when done, since both standalone renders the loop compares are built on it.
  *
+ * Exported so the minimize phase mounts its oracle in the same pasted-snip environment,
+ * keeping one authoritative definition of what a standalone frame is.
+ *
+ * With standards true the frame is switched to standards mode by writing a doctype,
+ * because a fresh iframe's about:blank is in quirks mode, where form-control box-sizing
+ * and other layout differ from the shipped artifact, which always carries a doctype. The
+ * minimize oracle needs that match so a removal's rendered effect is judged as it ships;
+ * the reconcile probes keep the default, preserving their established behavior.
+ *
  * @param captured - source of the viewport size
+ * @param standards - write a doctype so the frame renders in standards mode
  */
-function createSizedFrame(captured: Captured): SizedFrame {
+export function createSizedFrame(captured: Captured, standards = false): SizedFrame {
 	const vw = captured.page.viewport.width || 1280;
 	const vh = captured.page.viewport.height || 800;
 	const frame = document.createElement('iframe');
@@ -820,6 +830,11 @@ function createSizedFrame(captured: Captured): SizedFrame {
 	if (!doc || !win) {
 		frame.remove();
 		throw new Error('standalone iframe unavailable');
+	}
+	if (standards) {
+		doc.open();
+		doc.write('<!DOCTYPE html><html><head></head><body></body></html>');
+		doc.close();
 	}
 	doc.documentElement.style.margin = '0';
 	doc.body.style.margin = '0';

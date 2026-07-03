@@ -97,10 +97,13 @@ export function isHtmlShaped(format: OutputFormat): boolean {
  */
 export function assembleHtmlDocument(html: string, css: string, warnings: string[]): { html: string; css: string; document: string } {
 	const lifted = liftEmbeddedStyles(html);
-	// Re-key the lifted pseudo rules from their numeric marker to the host element's
-	// class where that class is unique, so the output reads `.date-field::placeholder`
-	// rather than `[data-snip-pseudo="0"]::placeholder`.
-	const keyed = keyPseudosToClasses(lifted.markup, lifted.css);
+	// Re-key the lifted pseudo and state rules from their numeric markers to the host
+	// element's class where that class is unique, so the output reads `.date-field::placeholder`
+	// and `.btn:hover .icon` rather than `[data-snip-pseudo="0"]::placeholder` and
+	// `[data-snip-state="0"]:hover [data-snip-state="1"]`, and the now-redundant marker
+	// attributes are dropped from the markup.
+	const keyedPseudo = keyMarkersToClasses(lifted.markup, lifted.css, 'data-snip-pseudo');
+	const keyed = keyMarkersToClasses(keyedPseudo.markup, keyedPseudo.css, 'data-snip-state');
 	const formattedHtml = formatHtmlMarkup(keyed.markup, css, warnings);
 	// The pseudo rules are already one-declaration-per-line from features/pseudo.ts and
 	// carry only a marker or a unique-class selector, so they are appended after the
@@ -132,25 +135,28 @@ function liftEmbeddedStyles(html: string): { markup: string; css: string } {
 }
 
 /**
- * Re-keys lifted pseudo rules from their numeric [data-snip-pseudo="n"] marker to the
- * host element's class, when that class uniquely identifies the element. This turns
- * `[data-snip-pseudo="0"]::placeholder` into the far more readable `.date-field::placeholder`,
- * most valuable once polish has named the classes, and drops the now-redundant marker
- * attribute. An element whose class is shared, absent, or not a bare identifier keeps its
- * numeric marker, so a rule can never leak onto a sibling. Render-neutral: a unique class
- * selects exactly the marked element at the same specificity as the attribute selector.
+ * Re-keys lifted rules from a numeric marker attribute to the host element's class, when
+ * that class uniquely identifies the element. This turns `[data-snip-pseudo="0"]::placeholder`
+ * into the far more readable `.date-field::placeholder` and a multi-marker state selector
+ * `[data-snip-state="0"]:hover [data-snip-state="1"]` into `.btn:hover .icon`, and drops the
+ * now-redundant marker attribute. Every reference to a re-keyed marker is replaced, so a
+ * selector that names the marker more than once, a trigger and its pseudo pair, is fully
+ * rewritten. An element whose class is shared, absent, or not a bare identifier keeps its
+ * marker, so a rule can never leak onto a sibling. Render-neutral: a unique class selects
+ * exactly the marked element at the same specificity as the attribute selector.
  *
- * @param markup - the lifted markup, with the pseudo <style> already removed
- * @param pseudoCss - the lifted pseudo rules, keyed by data-snip-pseudo marker
- * @returns the markup with redundant markers removed and the re-keyed pseudo css; inputs
- *   are unchanged if the markup will not parse
+ * @param markup - the lifted markup, with the injected <style> already removed
+ * @param css - the lifted rules, keyed by the marker attribute
+ * @param attr - the marker attribute, data-snip-pseudo or data-snip-state
+ * @returns the markup with redundant markers removed and the re-keyed css; inputs are
+ *   unchanged if the markup will not parse
  */
-function keyPseudosToClasses(markup: string, pseudoCss: string): { markup: string; css: string } {
-	if (!pseudoCss.trim()) return { markup, css: pseudoCss };
+function keyMarkersToClasses(markup: string, css: string, attr: string): { markup: string; css: string } {
+	if (!css.trim()) return { markup, css };
 	try {
 		const doc = new DOMParser().parseFromString(markup, 'text/html');
-		const marked = Array.from(doc.body.querySelectorAll('[data-snip-pseudo]'));
-		if (marked.length === 0) return { markup, css: pseudoCss };
+		const marked = Array.from(doc.body.querySelectorAll(`[${attr}]`));
+		if (marked.length === 0) return { markup, css };
 
 		// A class identifies a single element when it is borne by exactly one element.
 		const classCounts = new Map<string, number>();
@@ -158,19 +164,19 @@ function keyPseudosToClasses(markup: string, pseudoCss: string): { markup: strin
 			for (const name of el.classList) classCounts.set(name, (classCounts.get(name) ?? 0) + 1);
 		}
 
-		let css = pseudoCss;
+		let out = css;
 		for (const el of marked) {
-			const id = el.getAttribute('data-snip-pseudo');
+			const id = el.getAttribute(attr);
 			if (id === null) continue;
 			const unique = Array.from(el.classList).find((name) => classCounts.get(name) === 1 && BARE_IDENT.test(name));
 			if (!unique) continue; // Shared, unnamed, or unsafe class: keep the numeric marker
 			// Literal global replace keeps the regex-special `["]` characters intact.
-			css = css.split(`[data-snip-pseudo="${id}"]`).join(`.${unique}`);
-			el.removeAttribute('data-snip-pseudo');
+			out = out.split(`[${attr}="${id}"]`).join(`.${unique}`);
+			el.removeAttribute(attr);
 		}
-		return { markup: doc.body.innerHTML, css };
+		return { markup: doc.body.innerHTML, css: out };
 	} catch {
-		return { markup, css: pseudoCss };
+		return { markup, css };
 	}
 }
 

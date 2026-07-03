@@ -1,17 +1,18 @@
 /**
- * polish/rename.ts: class rename application
+ * polish/rename.ts: polish edit application, class renames, semantic tags, grouping comments
  *
  * Pipeline position: polish
  * Reads from Captured: n/a; operates on html + css strings
  * Writes to Captured: n/a
  *
- * Principles applied: none; text transform.
+ * Principles applied: none; text transforms.
  *
- * Why this exists: when the llm proposes semantic class names, both the markup's
- * class attributes and the css selectors must be renamed in lockstep or the
- * styles detach. This applies a renameMap to html class attributes and css class
- * selectors together, matching whole class tokens only, so "btn" never rewrites
- * inside "btn-primary". Ported and rewritten from v1 class-rename-sync.ts.
+ * Why this exists: the model's edits are applied here. A class rename must rewrite the
+ * markup's class attributes and the css selectors in lockstep or the styles detach; whole
+ * class tokens only, so "btn" never rewrites inside "btn-primary". A semantic tag swap
+ * rewrites one uniquely-classed element's tag name. A grouping comment is inserted before
+ * the rule its selector names. Each edit is best-effort and independently render-verified
+ * downstream, so a bad one is caught and the whole polish falls back cleanly.
  */
 
 /**
@@ -49,6 +50,66 @@ function renameInSelectors(css: string, oldName: string, newName: string): strin
 	// Match `.oldName` only when not followed by another class-name char.
 	const re = new RegExp(`\\.${escapeRegExp(oldName)}(?![\\w-])`, 'g');
 	return css.replace(re, `.${newName}`);
+}
+
+/** Safe html tag names the model may swap an element to. Excludes replaced, void, form,
+ * and interactive tags whose ua behaviour or box differs, keeping only inert flow and
+ * sectioning containers plus headings, so a swap cannot change rendering or semantics
+ * beyond the tag name. Render-neutrality is still verified downstream regardless. */
+const SAFE_TAGS = new Set([
+	'div', 'span', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure',
+	'figcaption', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'blockquote',
+]);
+
+/**
+ * Swaps the tag of each uniquely-classed element named in the tag map. Only an element whose
+ * class is borne by exactly one node is retagged, so a swap can never move onto a sibling,
+ * and only to a safe container tag. The element's attributes and children are preserved.
+ *
+ * @param html - the markup
+ * @param tagMap - class token -> new tag name
+ * @returns the markup with the tags swapped, or unchanged if it will not parse
+ */
+export function applyTags(html: string, tagMap: Record<string, string>): string {
+	const entries = Object.entries(tagMap).filter(([cls, tag]) => isSafeClass(cls) && SAFE_TAGS.has(tag.toLowerCase()));
+	if (entries.length === 0) return html;
+	try {
+		const doc = new DOMParser().parseFromString(html, 'text/html');
+		for (const [cls, tag] of entries) {
+			const matches = doc.body.querySelectorAll(`.${cls}`);
+			if (matches.length !== 1) continue; // Shared or absent class: leave it.
+			const el = matches[0]!;
+			if (el.tagName.toLowerCase() === tag.toLowerCase()) continue;
+			const replacement = doc.createElement(tag);
+			for (const attr of Array.from(el.attributes)) replacement.setAttribute(attr.name, attr.value);
+			replacement.innerHTML = el.innerHTML;
+			el.replaceWith(replacement);
+		}
+		return doc.body.innerHTML;
+	} catch {
+		return html;
+	}
+}
+
+/**
+ * Inserts a grouping comment before each rule whose selector the comment map names. The css
+ * is one rule per block, so a comment is prepended on its own line before the matching
+ * selector; a selector that matches no rule is skipped. Comment text is sanitized so it
+ * cannot close the comment or inject css.
+ *
+ * @param css - the formatted stylesheet
+ * @param comments - rule selector -> comment text
+ * @returns the stylesheet with grouping comments inserted
+ */
+export function applyComments(css: string, comments: Record<string, string>): string {
+	let out = css;
+	for (const [selector, text] of Object.entries(comments)) {
+		const clean = String(text).replace(/\*\//g, '').replace(/[\r\n]+/g, ' ').trim();
+		if (!clean || !selector.trim()) continue;
+		const re = new RegExp(`(^|\\n)(${escapeRegExp(selector.trim())}\\s*\\{)`, '');
+		out = out.replace(re, `$1/* ${clean} */\n$2`);
+	}
+	return out;
 }
 
 /** Only rename plain class tokens; reject anything that could break a selector. */

@@ -54,7 +54,13 @@ import { emitBem } from './convert/bem';
 import { emitJsx } from './convert/jsx';
 import { emitVue } from './convert/vue';
 import { cleanCss } from './convert/clean';
-import { assembleHtmlDocument, isHtmlShaped } from './convert/format';
+import { minimizeCss, type MinimizeStats } from './minimize/prune';
+import { normalizeCss } from './minimize/normalize';
+import { mergeCss } from './minimize/merge';
+import { purgeAtRules } from './minimize/atrules';
+import { inlineVars } from './minimize/inline';
+import { colorizeCss } from './minimize/colorize';
+import { assembleHtmlDocument, formatCss, isHtmlShaped } from './convert/format';
 import { splitAssets } from './convert/assets';
 import { polish } from './polish/llm';
 import { buildAssistiveJson, deliver } from './assistive/emit';
@@ -263,31 +269,42 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// Token usage from the polish call, the only billed step; shipped so the panel
 	// can total it for the session. Undefined when polish is skipped or has no key.
 	let usage: TokenUsage | undefined;
-
-	// Polish phase, byok and optional. Additive class renames + hover rules from the
-	// user's own llm; silently no-ops without a key. Gated to class-based formats
-	// so it never rewrites tailwind utilities or jsx.
-	if (format === 'html' || format === 'bem-css' || format === 'bem-scss') {
-		const model = prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider];
-		const polished = await polish(finalHtml, cleanedCss, prefs.activeProvider, model);
-		finalHtml = polished.html;
-		cleanedCss = polished.css;
-		usage = polished.usage;
-		// A configured-key polish failure surfaces as a warning; a missing key is a
-		// silent skip and returns none, so the sidebar reports why no edits landed.
-		if (polished.warning) captured.warnings.push(polished.warning);
-	}
-
-	// Format phase. For html-shaped formats, lift the injected pseudo <style> into the
-	// single head stylesheet and pretty-print both markup and css; jsx/vue self-indent
-	// and keep composeDocument. Runs after polish so the formatting reflects exactly what
-	// ships, including any renamed classes.
 	let output: string;
+
+	// For the html-shaped formats, assemble the shipped artifact first (lift the injected
+	// pseudo and state styles into the head, re-key their markers to real class selectors,
+	// pretty-print markup and css), then run the deterministic minimize pipeline over that
+	// shipped stylesheet, and only then the optional byok polish, so the model sees the small,
+	// clean, final css and its naming edits land last. jsx/vue self-indent and just compose.
 	if (isHtmlShaped(format)) {
-		const assembled = assembleHtmlDocument(finalHtml, cleanedCss, captured.warnings);
+		const assembled = assembleHtmlDocument(html, cleanedCss, captured.warnings);
 		finalHtml = assembled.html;
 		cleanedCss = assembled.css;
-		output = assembled.document;
+
+		// Minimize phase, deterministic and key-free, class-based formats only. Prune,
+		// normalize, merge, purge dead at-rules, then colorize; each is oracle-verified or
+		// paint-exact.
+		if (classMarkup !== undefined) {
+			const pruned = await minimizeCss(assembled.css, captured, assembled.html);
+			const normalized = await normalizeCss(pruned, captured, assembled.html);
+			const merged = await mergeCss(normalized, captured, assembled.html);
+			const purged = purgeAtRules(merged);
+			const inlined = await inlineVars(purged, captured, assembled.html);
+			cleanedCss = colorizeCss(formatCss(purgeAtRules(inlined)));
+		}
+
+		// Polish phase, byok and optional, class-based formats only. Semantic class renames,
+		// tags, and grouping comments from the user's own llm; silently no-ops without a key,
+		// and reverts to the pre-polish output if an edit changes the render.
+		if (classMarkup !== undefined) {
+			const model = prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider];
+			const polished = await polish(captured, finalHtml, cleanedCss, prefs.activeProvider, model);
+			finalHtml = polished.html;
+			cleanedCss = polished.css;
+			usage = polished.usage;
+			if (polished.warning) captured.warnings.push(polished.warning);
+		}
+		output = composeDocument(finalHtml, cleanedCss);
 	} else {
 		output = composeDocument(finalHtml, cleanedCss);
 	}
@@ -526,21 +543,53 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		// css cleaner landed, so it is no longer emitted as a separate reference.
 		const bem = emitFormat(captured, 'bem-css');
 		const cleanedCss = cleanCss(bem.css, captured, bem.html);
-		const doc = assembleHtmlDocument(bem.html, cleanedCss, captured.warnings);
+		// Assemble the shipped artifact first: lift the injected pseudo styles into the head,
+		// re-key them to classes, pretty-print markup and css, and compose. The minimizer then
+		// runs on this shipped stylesheet in the shipped markup, so its render oracle sees the
+		// exact cascade that ships rather than the pre-assembly clone, which renders the
+		// injected pseudo styles and data-snip markers differently.
+		const assembled = assembleHtmlDocument(bem.html, cleanedCss, captured.warnings);
+		const finalHtml = assembled.html;
+		// Minimize phase, deterministic and key-free. htmlBaseline is the pre-minimize shipped
+		// document from this same capture, so the harness can pixel-compare pre against post
+		// minimization with no live-capture drift between them.
+		//
+		// Prune, normalize, merge, format, colorize: delete render-invisible declarations,
+		// fold longhands to shorthands and order each rule like a human, collapse identical
+		// rules into selector lists, drop dead @property registrations, pretty-print, then
+		// rewrite rgb()/rgba() colors to hex. All but colorize are oracle-verified against the shipped context; colorize runs last,
+		// on the formatted text, and is paint-exact by construction. Each degrades to its input.
+		const htmlBaseline = assembled.document;
+		const minimizeStats: MinimizeStats = { ms: 0, declsBefore: 0, declsAfter: 0, charsBefore: 0, charsAfter: 0 };
+		const pruned = await minimizeCss(assembled.css, captured, assembled.html, minimizeStats);
+		const normalized = await normalizeCss(pruned, captured, assembled.html);
+		const merged = await mergeCss(normalized, captured, assembled.html);
+		const purged = purgeAtRules(merged);
+		const inlined = await inlineVars(purged, captured, assembled.html);
+		const finalCss = colorizeCss(formatCss(purgeAtRules(inlined)));
+		const finalDoc = composeDocument(finalHtml, finalCss);
 
 		// Emitted-artifact probe, read-only: diff the shipped BEM artifact's own
 		// standalone render against the live original, delta A, and the inline-clone
 		// render, delta B. This classifies each residual as an emit-cascade loss, delta B,
 		// an absent-at-bake gap where delta A is absent from the css, or another render-time
-		// mechanism. Measured on the cleaned css that actually ships.
-		const emittedProbe = probeEmitted(captured, bem.html, cleanedCss);
+		// mechanism. Measured on the markup and css that actually ship.
+		const emittedProbe = probeEmitted(captured, finalHtml, finalCss);
+
+		// Delivery split, the same one the sidebar ships: lift inline svgs and data-uri
+		// images into their own referenced files so the training data exercises the split
+		// path users see. The inlined finalDoc is still returned as html for grading.
+		const files = splitAssets(finalDoc, captured.warnings);
 
 		return {
 			ok: true,
 			status: 'ok',
-			html: doc.document,
+			html: finalDoc,
+			htmlBaseline,
+			files,
 			probe,
 			emittedProbe,
+			minimize: minimizeStats,
 			warnings: captured.warnings,
 		};
 	} catch (err) {

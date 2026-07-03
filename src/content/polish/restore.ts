@@ -1,5 +1,5 @@
 /**
- * polish/restore.ts: vault restore, hover-rule merge, orphan prune
+ * polish/restore.ts: orphan prune after the polish edits
  *
  * Pipeline position: polish
  * Reads from Captured: n/a; operates on html + css strings
@@ -7,33 +7,21 @@
  *
  * The orphan prune is dead-code elimination, not aesthetic surgery.
  *
- * Why this exists: the final polish step folds the llm's additive output back in.
- * Any @@V*@@ placeholders the model echoed into its hover rules are restored to
- * their original values (vault.restore), the validated hover rules are appended to
- * the css, and selectors whose class tokens no longer appear in the markup after
- * renaming are pruned. It never removes anything the markup still references.
+ * Why this exists: after the polish edits are applied, a class rename could leave a css rule
+ * whose every class token no longer appears in the markup. This drops exactly those rules
+ * and never touches one the markup still references. Interactive and generated-content rules
+ * are re-emitted deterministically upstream, so polish no longer adds any css of its own.
  */
-import type { VerbatimVault } from '../convert/vault';
 
 /**
- * Finalizes the polished output: restores vaulted values in the hover rules,
- * appends them, and prunes orphan css rules.
+ * Finalizes the polished output by dropping css rules the renamed markup no longer uses.
  *
- * @param html - the renamed markup
- * @param css - the renamed stylesheet
- * @param hoverRules - additive interaction rules from the llm
- * @param vault - the vault used for the prompt, to restore any echoed placeholders
+ * @param html - the polished markup
+ * @param css - the polished stylesheet
  * @returns the finalized html + css
  */
-export function finalize(html: string, css: string, hoverRules: string[], vault: VerbatimVault): { html: string; css: string } {
-	const restored = hoverRules.map((rule) => vault.restore(rule)).filter((rule) => looksLikeRule(rule));
-	const merged = restored.length > 0 ? `${css}\n\n${restored.join('\n')}` : css;
-	return { html, css: pruneOrphans(merged, html) };
-}
-
-/** A minimal sanity check that a string is a css rule, not prose. */
-function looksLikeRule(rule: string): boolean {
-	return /\{[^}]*\}/.test(rule) && !rule.includes('@@V');
+export function finalize(html: string, css: string): { html: string; css: string } {
+	return { html, css: pruneOrphans(css, html) };
 }
 
 /**
