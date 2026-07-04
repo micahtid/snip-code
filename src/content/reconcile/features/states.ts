@@ -281,12 +281,34 @@ const CURRENT_COLOR_TRACKERS = new Set([
 	'-webkit-text-stroke-color', 'fill', 'stroke',
 ]);
 
+/** Box-size properties whose css initial value is `auto`, so an unset resting base is `auto`. */
+const AUTO_SIZED_PROPS = new Set(['width', 'height', 'inline-size', 'block-size']);
+
+/**
+ * Whether a measured property's resting base resolves to `auto`, and so cannot interpolate to
+ * the concrete length measured in the state. A transition animates between two values only when
+ * both are interpolable; `auto` is not, so a size pinned onto the state over an `auto` base can
+ * only snap while every concrete-valued neighbour eases. An `auto`-sized box is content-driven,
+ * and the content deltas that grow it are pinned in their own right, so left unpinned it resizes
+ * standalone exactly as the live element does when its own `auto` box flows. The base is read as
+ * `auto` from the resting bake, or inferred for a size property the bake left unset since its
+ * initial value is `auto`; a base already pinned to a concrete length stays pinned and animates.
+ *
+ * @param property - the measured longhand
+ * @param resting - the affected element's resting baked value for it, or undefined when unset
+ */
+function baseIsAuto(property: string, resting: string | undefined): boolean {
+	if (resting !== undefined) return resting.trim() === 'auto';
+	return AUTO_SIZED_PROPS.has(property);
+}
+
 /**
  * Folds a unit's measured declarations into a selector's winners, dropping any that merely
- * restate the element's resting baked value, have no effect in this element's context, or only
- * track the forced `color`, so the emitted rule stays proportional to the real change. A later
- * unit for the same selector overwrites an earlier property, but distinct triples carry distinct
- * selectors, so this is just the per-selector accumulation point.
+ * restate the element's resting baked value, cannot animate from an `auto` base, have no effect
+ * in this element's context, or only track the forced `color`, so the emitted rule stays
+ * proportional to the real change. A later unit for the same selector overwrites an earlier
+ * property, but distinct triples carry distinct selectors, so this is just the per-selector
+ * accumulation point.
  *
  * @param decls - the measured declarations for this affected element
  * @param resting - the affected clone's resting baked styles
@@ -306,6 +328,7 @@ function denoiseMeasured(decls: MeasuredStateDecl[], resting: Map<string, string
 	for (const decl of decls) {
 		const rest = resting?.get(decl.property);
 		if (rest !== undefined && rest.trim() === decl.value.trim()) continue;
+		if (baseIsAuto(decl.property, rest)) continue; // Auto base cannot interpolate; leave it content-driven.
 		if (decl.property === 'transform-origin' && !hasTransform) continue;
 		if (decl.property === 'perspective-origin' && !hasTransform && !hasPerspective) continue;
 		if (forcedColor !== undefined && CURRENT_COLOR_TRACKERS.has(decl.property) && decl.value.trim() === forcedColor.trim()) continue;

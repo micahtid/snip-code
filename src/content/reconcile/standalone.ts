@@ -103,6 +103,11 @@ export interface EmittedReport {
  *   would be redundant.
  * - Geometry-derived and non-visual props: transform/perspective origins resolve from
  *   the box, and -webkit-locale is an input-method hint with no paint effect.
+ * - Transition longhands: a transition describes the motion between two states and produces
+ *   no pixels at rest, so the resting-render authority cannot judge it and must not reclaim
+ *   it. Reconciling it toward the live value would collapse a cycled timing sub-list back to
+ *   its single literal against a multi-entry transition-property, undoing the lossless
+ *   expansion resolve/transition.ts makes for the emitted shorthand.
  *
  * Used size (width/height + logical) and insets (top/right/bottom/left + logical) are
  * deliberately NOT here: they are compared for every element and reclaimed through
@@ -117,6 +122,7 @@ const SKIP_PROPS = new Set<string>([
 	'min-inline-size', 'min-block-size', 'max-inline-size', 'max-block-size',
 	'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
 	'transform-origin', 'perspective-origin', '-webkit-locale',
+	'transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay', 'transition-behavior',
 ]);
 
 /**
@@ -153,6 +159,15 @@ const TOP_PROPS = 20;
  * live value), deciding *direction* from a CSS distinction rather than any tolerance.
  *
  * - Within sub-0.1px float noise (valuesMatch) nothing is reclaimed.
+ * - A color that merely follows `currentColor`, its target value equal to the element's own
+ *   `color`, is never reclaimed as a concrete color. `color` is itself reclaimed when it
+ *   diverges and carries the value down, and every `currentColor`-derived property
+ *   (-webkit-text-fill-color, caret-color, text-emphasis-color, the border/outline colors,
+ *   and their kin) tracks it per element in the standalone render just as it does live.
+ *   Baking a concrete color here instead would freeze it onto this element and inherit down,
+ *   overriding every descendant that sets only its own `color`, so a light-labelled button
+ *   nested under dark text would keep the ancestor's dark fill and paint dark. `color` itself
+ *   is never caught by this, so the load-bearing divergence still reclaims.
  * - A non-replaced element's used size is reclaimed only when it is a *confirmed*
  *   collapse, meaning artifact < target with both numeric: a box that lost an externally-imposed
  *   sizing input can only shrink standalone, while a box the same or larger has the room
@@ -168,9 +183,15 @@ const TOP_PROPS = 20;
  * @param artifact - the value the standalone artifact rendered
  * @param target - the live element's value (the authority being reclaimed toward)
  * @param replaced - whether the element is a replaced element (intrinsic box)
+ * @param targetColor - the target element's own computed `color`, so a value merely following
+ *   `currentColor` is left to track it rather than frozen concrete
  */
-function shouldReclaim(prop: string, artifact: string, target: string, replaced: boolean): boolean {
+function shouldReclaim(prop: string, artifact: string, target: string, replaced: boolean, targetColor: string): boolean {
 	if (valuesMatch(artifact, target)) return false;
+	// A color resolving from `currentColor` equals the element's own `color`, which reconciles
+	// in its own right; reclaiming it independently would freeze it and break the cascade for
+	// descendants that set only their own color. `color` itself is excluded.
+	if (prop !== 'color' && target === targetColor) return false;
 	if (SIZE_PROPS.has(prop) && !replaced) {
 		// Reclaim only a confirmed numeric collapse. A growth is left alone, since a box the
 		// same or larger has the room its content needs, and so is any comparison that
@@ -206,10 +227,11 @@ export async function probeStandalone(captured: Captured): Promise<StandaloneRep
 				const live = getComputedStyle(original);
 				const standalone = win.getComputedStyle(framed);
 				const replaced = isReplacedElement(original);
+				const targetColor = live.getPropertyValue('color');
 				for (const prop of comparableProps(live)) {
 					const liveVal = live.getPropertyValue(prop);
 					const stdVal = standalone.getPropertyValue(prop);
-					if (!shouldReclaim(prop, stdVal, liveVal, replaced)) continue;
+					if (!shouldReclaim(prop, stdVal, liveVal, replaced, targetColor)) continue;
 					report.droppedProps++;
 					counts.set(prop, (counts.get(prop) ?? 0) + 1);
 					if (report.samples.length < MAX_SAMPLES) {
@@ -407,10 +429,11 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			const cloneCs = cloneSized.win.getComputedStyle(framed);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
 			const replaced = isReplacedElement(clone);
+			const targetColor = cloneCs.getPropertyValue('color');
 			for (const prop of comparableProps(cloneCs)) {
 				const cloneVal = cloneCs.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
-				if (!shouldReclaim(prop, emittedVal, cloneVal, replaced)) continue;
+				if (!shouldReclaim(prop, emittedVal, cloneVal, replaced, targetColor)) continue;
 				report.deltaB.droppedProps++;
 				bCounts.set(prop, (bCounts.get(prop) ?? 0) + 1);
 				if (report.deltaB.samples.length < MAX_SAMPLES) {
@@ -429,10 +452,11 @@ export function probeEmitted(captured: Captured, emittedHtml: string, emittedCss
 			const live = getComputedStyle(original);
 			const emittedCs = emittedSized.win.getComputedStyle(emitted);
 			const replaced = isReplacedElement(original);
+			const targetColor = live.getPropertyValue('color');
 			for (const prop of comparableProps(live)) {
 				const liveVal = live.getPropertyValue(prop);
 				const emittedVal = emittedCs.getPropertyValue(prop);
-				if (!shouldReclaim(prop, emittedVal, liveVal, replaced)) continue;
+				if (!shouldReclaim(prop, emittedVal, liveVal, replaced, targetColor)) continue;
 				report.deltaA.droppedProps++;
 				aCounts.set(prop, (aCounts.get(prop) ?? 0) + 1);
 				if (!cssHaystack.includes(liveVal.replace(/\s+/g, ' ').toLowerCase())) report.absentProps++;
@@ -533,8 +557,9 @@ export function reconcileStandalone(captured: Captured): void {
 				const overrides: Override[] = [];
 				for (const { clone, framed, want, replaced } of liveTargets) {
 					const standalone = win.getComputedStyle(framed);
+					const targetColor = want.get('color') ?? '';
 					for (const [prop, value] of want) {
-						if (shouldReclaim(prop, standalone.getPropertyValue(prop), value, replaced)) {
+						if (shouldReclaim(prop, standalone.getPropertyValue(prop), value, replaced, targetColor)) {
 							overrides.push({ clone, framed, prop, value });
 						}
 					}

@@ -46,6 +46,7 @@ import { apply as applyForms } from './reconcile/features/forms';
 import { resolveVariables } from './resolve/vars';
 import { resolveFonts, appendGenericFallbacks } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
+import { resolveTransitionTiming } from './resolve/transition';
 import { inlineResources } from './resolve/inline';
 import type { OutputFormat, TokenUsage } from './types';
 import { emitHtml, composeDocument, type HtmlOutput } from './convert/html';
@@ -141,6 +142,10 @@ async function runCoreTransform(captured: Captured): Promise<void> {
 	resolveVariables(captured);
 	resolveFonts(captured);
 	resolveAnimations(captured);
+	// Var resolution can collapse a cycled transition timing sub-list (a single-value var())
+	// to one literal against a multi-entry transition-property, which would serialize to a
+	// malformed `transition` shorthand; re-expand the sub-lists so the fold stays lossless.
+	resolveTransitionTiming(captured);
 
 	// Closing reconciliation: make the standalone artifact's own render the source of
 	// truth, baking the original's resolved value for any paint/box property that does

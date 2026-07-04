@@ -105,6 +105,9 @@ function bakeRootContext(original: Element, clone: Element, captured: Captured):
  */
 function bakeInheritedDivergence(original: Element, baked: Map<string, string>): void {
 	const rootComputed = getComputedStyle(original);
+	// The value `currentcolor` resolves to on this element; every color property whose
+	// initial value is `currentcolor` follows it unless set (see the guard in the loop).
+	const rootColor = rootComputed.getPropertyValue('color');
 	// A same-tag element in a neutral parent gives both the ua default values and
 	// the child probe for inheritance detection.
 	const probeParent = document.createElement('div');
@@ -121,6 +124,17 @@ function bakeInheritedDivergence(original: Element, baked: Map<string, string>):
 			const rootVal = rootComputed.getPropertyValue(prop);
 			const defaultVal = childDefault.getPropertyValue(prop);
 			if (rootVal === defaultVal) continue; // No divergence from default
+			// A property whose value merely equals the root's own `color` is resolving from its
+			// `currentcolor` initial value: -webkit-text-fill-color, -webkit-text-stroke-color,
+			// caret-color, text-emphasis-color, and their kin. Baking it freezes a concrete color
+			// onto the root that then inherits down and overrides every descendant, so a button
+			// that sets only a light `color` keeps inheriting the root's dark fill and paints dark.
+			// The `color` divergence is baked in this same pass and carries the real value to
+			// descendants, whose derived colors track their own `color` again; freezing the
+			// color-derived property is therefore both redundant and harmful. `color` itself is
+			// excluded so the load-bearing divergence still bakes. A non-color property's value can
+			// never equal the color string, so this fires only for currentcolor-derived colors.
+			if (prop !== 'color' && rootVal === rootColor) continue;
 			if (isInherited(probeParent, probeChild, prop, rootVal, defaultVal)) {
 				baked.set(prop, rootVal);
 			}
