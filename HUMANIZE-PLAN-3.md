@@ -476,3 +476,64 @@ output.html byte-identical across two runs. Readable slice: shadcn 9.0→8.2KB (
 plan's −8.7% ceiling), f1 73.5→56.1KB, supermemory 30.6→27.1KB — every bundle down. Inlined
 literals are more verbose than a var token, so total index.html holds near 94% rather than
 shrinking further; the tracked readable slice is what falls.
+
+### M6 — reset preamble and alias-aware pruning (core done 2026-07-03)
+
+**The plan's half-A premise was disproven, and corrected.** Root-cause found: the tracking
+declarations do not survive an `auto`-vs-color string mismatch (`getComputedStyle` returns the
+resolved color identically). They survive because removing an ancestor's `text-emphasis-color`
+changes a *descendant's* computed value (the descendant has its own color and was inheriting
+the ancestor's explicit one), which the oracle vetoes — even though `text-emphasis-style` is
+`none` corpus-wide so no mark paints. So the fix is paint-irrelevance, not keyword equality.
+
+`oracle.ts` `paintIrrelevant` gained two relaxations: skip `text-emphasis-color` when
+`text-emphasis-style` is `none` (no marks paint), and skip `caret-color` when it equals
+`color` (the caret is resting-invisible and falls back to color). `-webkit-text-fill-color`
+and `-webkit-text-stroke-color` were deliberately left unrelaxed: they paint the glyph at
+rest, and a first attempt to color-track them failed supermemory's backstop (3804px) because
+the skip masked a lower-cascade value a removal exposes.
+
+**Reset preamble.** New `minimize/reset.ts` injects `*, *::before, *::after { box-sizing:
+border-box }` and `button, input, select, textarea { font: inherit; color: inherit }` at the
+top, each an addition candidate kept only when the oracle confirms it changed no render; the
+prune pass that reruns after it (only when a reset was injected) drops the restatements it
+made redundant. Conditional by construction: a bundle already `border-box` everywhere accepts
+the reset and collapses (shadcn `box-sizing` 4→1); a bundle with UA-default `content-box`
+elements would be changed by the `*` reset, so the oracle rejects it and the per-rule values
+stay.
+
+**Gate.** Corpus backstop 23/23 (both relaxations and the reset are render-neutral); decl
+removal 48.1% (tracking-decl relaxation) then 47.2% with the reset rerun (within live-capture
+noise). Tracking survivors drop (gitlab/flock → 0, zapier caret 7→1, the survivor `!= color`).
+
+**Deferred:** part-3, prune's 20s budget times out on f1/apple leaving dead code — pre-existing,
+not M6-specific. And `anchor-name` purge (no corpus exemplar, as in M3).
+
+### M7 — logical-to-physical folding (done 2026-07-03)
+
+**Change.** New `minimize/logical.ts` runs after prune, before normalize, at both emit sites.
+For each in-scope rule whose every matched element computes `writing-mode: horizontal-tb` and
+`direction: ltr`, it rewrites logical properties to their physical equivalents: longhands are
+renamed (`border-end-end-radius` → `border-bottom-right-radius`, `margin-inline-start` →
+`margin-left`, `inline-size` → `width`), a two-value logical shorthand splits across its two
+physical sides (`margin-inline: a b` → `margin-left: a; margin-right: b`), and a
+`border-block`/`border-inline` shorthand copies to both. The normalize pass that runs next then
+folds the completed physical sets into `border-radius`, `margin`, and `border`. A vertical or
+rtl element keeps its logical properties, which is what a human writes there too.
+
+**Sound by construction, oracle-backstopped.** The rewrite is spec-equivalent for a
+horizontal-tb ltr element, so it is render-neutral; each rule is still checked against the
+oracle over its own subtree and reverted if anything moved. A rule matching no mounted element
+is skipped, so its logical properties pass through unchanged.
+
+**Gate.** Corpus backstop 23/23; fixtures determinism byte-identical; decl removal 47.2% → 49.0%
+(the physical sets normalize now folds into shorthands remove more declarations). shadcn's four
+logical corner radii collapse to one `border-radius`, the plan's headline; stripe's radius folds
+to `border-radius: 0.375rem`.
+
+## The plan is complete: M0–M7 all implemented and verified.
+
+M0–M5 are committed and pushed (`a04a37c`, `origin/reconstruct-mode`). M6 and M7 are verified in
+the working tree, uncommitted pending permission. Deferred, each noted at its milestone: the
+`anchor-name` purge (no corpus exemplar), and prune's 20s budget timing out on the two largest
+bundles (f1, apple), a pre-existing limitation independent of this plan.

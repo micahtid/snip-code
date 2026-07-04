@@ -59,6 +59,8 @@ import { normalizeCss } from './minimize/normalize';
 import { mergeCss } from './minimize/merge';
 import { purgeAtRules } from './minimize/atrules';
 import { inlineVars } from './minimize/inline';
+import { injectReset } from './minimize/reset';
+import { foldLogical } from './minimize/logical';
 import { colorizeCss } from './minimize/colorize';
 import { assembleHtmlDocument, formatCss, isHtmlShaped } from './convert/format';
 import { splitAssets } from './convert/assets';
@@ -286,11 +288,15 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		// paint-exact.
 		if (classMarkup !== undefined) {
 			const pruned = await minimizeCss(assembled.css, captured, assembled.html);
-			const normalized = await normalizeCss(pruned, captured, assembled.html);
+			const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
 			const merged = await mergeCss(normalized, captured, assembled.html);
 			const purged = purgeAtRules(merged);
-			const inlined = await inlineVars(purged, captured, assembled.html);
-			cleanedCss = colorizeCss(formatCss(purgeAtRules(inlined)));
+			const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
+			const reset = await injectReset(inlined, captured, assembled.html);
+			// Only rerun prune when a reset was actually injected, to drop the restatements it made
+			// redundant; a rejected reset leaves the css untouched and needs no second pass.
+			const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
+			cleanedCss = colorizeCss(formatCss(deduped));
 		}
 
 		// Polish phase, byok and optional, class-based formats only. Semantic class renames,
@@ -562,11 +568,15 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		const htmlBaseline = assembled.document;
 		const minimizeStats: MinimizeStats = { ms: 0, declsBefore: 0, declsAfter: 0, charsBefore: 0, charsAfter: 0 };
 		const pruned = await minimizeCss(assembled.css, captured, assembled.html, minimizeStats);
-		const normalized = await normalizeCss(pruned, captured, assembled.html);
+		const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
 		const merged = await mergeCss(normalized, captured, assembled.html);
 		const purged = purgeAtRules(merged);
-		const inlined = await inlineVars(purged, captured, assembled.html);
-		const finalCss = colorizeCss(formatCss(purgeAtRules(inlined)));
+		const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
+		const reset = await injectReset(inlined, captured, assembled.html);
+		// Only rerun prune when a reset was actually injected, to drop the restatements it made
+		// redundant; a rejected reset leaves the css untouched and needs no second pass.
+		const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
+		const finalCss = colorizeCss(formatCss(deduped));
 		const finalDoc = composeDocument(finalHtml, finalCss);
 
 		// Emitted-artifact probe, read-only: diff the shipped BEM artifact's own

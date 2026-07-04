@@ -269,12 +269,21 @@ export async function createRenderOracle(captured: Captured, css: string, markup
  *
  * - A border side with zero width paints no line, so its color and style are irrelevant.
  * - An outline with style none paints nothing, so its color and width are irrelevant.
+ * - text-emphasis paints marks only when its style is set; with style none no mark paints,
+ *   so the emphasis color is irrelevant however inheritance resolves it.
+ * - caret-color paints only the text caret, which shows only in a focused editable field and
+ *   never in this resting render, so a caret-color that already equals the color it falls
+ *   back to when unset is redundant here. It is skipped only where it equals color; where it
+ *   differs it is kept. This is judged per target, so an inherited value equal to an
+ *   ancestor's color but not a descendant's own color is caught on that descendant and kept.
  *
- * Each is judged from the reference values alone. A removal that instead makes the side
+ * Each is judged from the reference values alone. A removal that instead makes the property
  * paint, by raising a width from zero or an outline-style off none, changes a property that
- * is never skipped, the width itself or the outline-style, so the comparison still catches
- * it and the relaxation can never mask a real change. Both relaxations are also layout-safe
- * because border color and style and the whole outline never affect layout.
+ * is never skipped, so the comparison still catches it and the relaxation can never mask a
+ * real change. The border, outline, text-emphasis, and caret-color relaxations are all
+ * layout-safe because none of those properties affect layout. Text fill and stroke colors are
+ * deliberately not relaxed: they paint the glyph itself at rest, so the oracle compares them
+ * directly, which also keeps a lower-cascade value a removal would expose from slipping past.
  *
  * @param values - the reference computed values, index-aligned with masterProps
  * @param propIndex - masterProps name to its index
@@ -297,5 +306,10 @@ function paintIrrelevant(values: string[], propIndex: Map<string, number>): Set<
 		mark('outline-color');
 		mark('outline-width');
 	}
+	const tes = propIndex.get('text-emphasis-style');
+	if (tes !== undefined && values[tes] === 'none') mark('text-emphasis-color');
+	const ci = propIndex.get('color');
+	const cci = propIndex.get('caret-color');
+	if (ci !== undefined && cci !== undefined && values[cci] === values[ci]) mark('caret-color');
 	return skip;
 }
