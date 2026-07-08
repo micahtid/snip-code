@@ -25,8 +25,12 @@ import { createRenderOracle, type RenderOracle } from './oracle';
 import { inScopeRule, parseSegments } from './declarations';
 import { serializeRules } from './declarations';
 
-/** Logical longhands and one-value directionals mapped to their horizontal-tb ltr physical name. */
-const LONGHAND: Record<string, string> = {
+/**
+ * Logical longhands and one-value directionals mapped to their horizontal-tb ltr physical name.
+ * Exported so the covered-longhand drop in normalize can fold a logical corner name to physical
+ * when testing whether a preceding shorthand already covers it.
+ */
+export const LOGICAL_TO_PHYSICAL: Record<string, string> = {
 	'border-start-start-radius': 'border-top-left-radius',
 	'border-start-end-radius': 'border-top-right-radius',
 	'border-end-start-radius': 'border-bottom-left-radius',
@@ -124,8 +128,8 @@ function rewrite(cssText: string): string | null {
 	const out: string[] = [];
 	for (const seg of parseSegments(cssText)) {
 		const prop = seg.prop;
-		if (LONGHAND[prop]) {
-			out.push(`${LONGHAND[prop]}: ${seg.value}`);
+		if (LOGICAL_TO_PHYSICAL[prop]) {
+			out.push(`${LOGICAL_TO_PHYSICAL[prop]}: ${seg.value}`);
 			changed = true;
 		} else if (PAIR[prop]) {
 			const [start, end] = splitPair(seg.value);

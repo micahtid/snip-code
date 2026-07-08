@@ -141,11 +141,11 @@ interface StyleRuleRef {
  * lists, keeping the first rule's position and joining the selectors in document order. The
  * resting oracle is blind to these rules, so a merge is accepted only by construction, when
  * three syntactic checks hold: the bodies are byte-identical (the grouping key); each
- * selector keeps its own specificity in a list, so joining changes none; and no rule the
- * merge reorders a group member past, resting rule or withheld rule alike, styles an element
- * that member also targets, so no element's cascade order changes. Generated per-element
- * selectors make those target sets disjoint, so the third check passes and the group
- * collapses; a group that fails it is left as written.
+ * selector keeps its own specificity in a list, so joining changes none; and no rule the merge
+ * reorders a group member past could flip a cascade result, see safeToMergeWithheld. Two rules
+ * that touch disjoint properties, or that the element resolves by specificity or importance
+ * rather than source order, cannot flip, so most groups collapse; a group that could flip is
+ * left as written.
  *
  * @param oracle - the mounted render, used only to resolve which elements a selector targets
  * @param topRules - the frame stylesheet's top-level rules, mutated in place
@@ -186,10 +186,10 @@ function mergeWithheldRules(oracle: RenderOracle, topRules: CSSRule[]): void {
 /**
  * Whether merging a withheld group is render-neutral. The group's selectors collapse onto the
  * first member's position, so every later member's rule moves earlier, past the rules between
- * its old position and the first. The move is safe when none of those intervening rules
- * targets an element the moving member also targets: with disjoint targets, reordering the two
- * changes no element's cascade. An undeterminable target set (an unusual selector) is treated
- * as overlapping, so the group is conservatively left unmerged.
+ * its old position and the first. The move is safe when none of those intervening rules could
+ * flip a cascade result with a moving member; see couldFlip. An intervening rule that only
+ * shares an element but not a property, or that an element resolves by specificity or
+ * importance rather than source order, cannot flip and no longer vetoes.
  *
  * @param group - the identical-body withheld rules, in document order
  * @param styleRules - every top-level style rule, to scan the positions the group spans
@@ -200,14 +200,97 @@ function safeToMergeWithheld(group: StyleRuleRef[], styleRules: StyleRuleRef[]):
 	for (const other of styleRules) {
 		if (other.pos <= first || groupPositions.has(other.pos)) continue;
 		// `other` sits after the keeper; a group member moves past it only if that member's old
-		// position is later than `other`. Any such member with an overlapping target set makes
-		// the reorder observable.
+		// position is later than `other`. Block the merge if any such move could flip a result.
 		for (const member of group) {
 			if (member.pos <= other.pos) continue;
-			if (!member.targets || !other.targets || intersects(member.targets, other.targets)) return false;
+			if (couldFlip(member, other)) return false;
 		}
 	}
 	return true;
+}
+
+/**
+ * Whether reordering `member` before `other` could flip which rule wins for some element and
+ * property. It can only when all three hold: the two rules target a common element, they
+ * declare a common longhand at the same importance but a different value, and their selectors
+ * carry equal specificity for that element, since only then does source order, the one thing
+ * the reorder changes, decide the winner. If any fails, the winner is fixed by target,
+ * property, importance, or specificity regardless of order, so the move is safe. An
+ * undeterminable target set is treated as overlapping, staying conservative.
+ */
+function couldFlip(member: StyleRuleRef, other: StyleRuleRef): boolean {
+	if (!member.targets || !other.targets) return true;
+	if (!intersects(member.targets, other.targets)) return false;
+	if (!sharesDecidingProperty(member.rule.style, other.rule.style)) return false;
+	return specificitiesCanTie(member.rule.selectorText, other.rule.selectorText);
+}
+
+/**
+ * Whether two declaration blocks share a longhand that source order would decide between: both
+ * declare it, at the same importance, with different values. A matching value or a differing
+ * importance settles the property without reference to order, so it cannot flip. The cssom
+ * stores each block as expanded longhands with per-longhand priority, so a shorthand and a
+ * longhand that overlap, `background` against `background-color`, are compared correctly, and
+ * custom properties are included.
+ */
+function sharesDecidingProperty(a: CSSStyleDeclaration, b: CSSStyleDeclaration): boolean {
+	for (let i = 0; i < a.length; i++) {
+		const name = a.item(i);
+		const bValue = b.getPropertyValue(name);
+		if (bValue === '') continue; // `b` does not declare this longhand.
+		if (a.getPropertyValue(name) !== bValue && a.getPropertyPriority(name) === b.getPropertyPriority(name)) return true;
+	}
+	return false;
+}
+
+/** Whether some selector of each list shares a specificity, so an element could tie between them. */
+function specificitiesCanTie(a: string, b: string): boolean {
+	const bSpecs = splitSelectorList(b).map(specificity);
+	for (const sa of splitSelectorList(a)) {
+		const spec = specificity(sa);
+		if (bSpecs.some((sb) => sb[0] === spec[0] && sb[1] === spec[1] && sb[2] === spec[2])) return true;
+	}
+	return false;
+}
+
+/**
+ * The [id, class, type] specificity of one selector. The emitted stylesheet uses only simple
+ * compound selectors, classes, attributes, and pseudo-classes or pseudo-elements, with no
+ * functional pseudo-class like `:is()` whose weight depends on its argument, so a straight
+ * token count is exact: an id raises the first rank, a class, attribute, or pseudo-class the
+ * second, a type or pseudo-element the third. Combinators contribute nothing.
+ */
+function specificity(selector: string): [number, number, number] {
+	let s = selector.trim();
+	let a = 0;
+	let b = 0;
+	let c = 0;
+	s = s.replace(/::[\w-]+/g, () => (c++, ' ')); // Pseudo-elements first, so their colons are not recounted.
+	s = s.replace(/#[\w-]+/g, () => (a++, ' '));
+	s = s.replace(/\[[^\]]*\]/g, () => (b++, ' '));
+	s = s.replace(/\.[\w-]+/g, () => (b++, ' '));
+	s = s.replace(/:[\w-]+(?:\([^)]*\))?/g, () => (b++, ' ')); // Pseudo-classes.
+	s.replace(/[a-zA-Z][\w-]*/g, () => (c++, ' ')); // Remaining bare identifiers are type selectors.
+	return [a, b, c];
+}
+
+/** Splits a selector list on its top-level commas, keeping bracket and paren spans intact. */
+function splitSelectorList(list: string): string[] {
+	const out: string[] = [];
+	let depth = 0;
+	let buf = '';
+	for (const ch of list) {
+		if (ch === '(' || ch === '[') depth++;
+		else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+		if (ch === ',' && depth === 0) {
+			out.push(buf);
+			buf = '';
+		} else {
+			buf += ch;
+		}
+	}
+	if (buf.trim()) out.push(buf);
+	return out;
 }
 
 /**

@@ -23,11 +23,17 @@
  * than a wrong render. The transform is a pure string reshuffle, so it is deterministic and
  * never grows the stylesheet.
  *
- * State, pseudo, and at rules are out of scope, exactly as in prune; see inScopeRule.
+ * The reorder runs on in-scope rules only, exactly as in prune; see inScopeRule. After it, a
+ * second pass drops each longhand a preceding shorthand in the same block already sets to that
+ * value, the restatement a machine dump leaves behind, most often a border-radius spelled out
+ * again as its four corner longhands. That drop is render-neutral by CSS definition, so it
+ * needs no oracle and runs on withheld state and pseudo rules too, where such restatement is
+ * densest.
  */
 import type { Captured } from '../types';
 import { createRenderOracle } from './oracle';
 import { parseSegments, inScopeRule, serializeRules } from './declarations';
+import { LOGICAL_TO_PHYSICAL } from './logical';
 
 /**
  * Property groups in the order a human writes them, each entry a property-name prefix. A
@@ -88,11 +94,19 @@ export async function normalizeCss(css: string, captured: Captured, markup: stri
 			const styleRule = inScopeRule(rule);
 			if (styleRule) reorderRule(styleRule);
 		}
-		if (oracle.matchesReference()) return serializeRules(topRules);
-		// Some rule's reorder changed the render, from a shorthand mixed with a longhand it
-		// overrides. Rather than diagnose which, ship the pruned css untouched.
-		captured.warnings.push('normalize: reorder not render-neutral; shipped unnormalized');
-		return css;
+		if (!oracle.matchesReference()) {
+			// Some rule's reorder changed the render, from a shorthand mixed with a longhand it
+			// overrides. Rather than diagnose which, ship the pruned css untouched.
+			captured.warnings.push('normalize: reorder not render-neutral; shipped unnormalized');
+			return css;
+		}
+		// Drop each longhand a preceding shorthand already covers, in every style rule including
+		// the withheld ones. Render-neutral by CSS definition, so it needs no oracle re-check.
+		const scratch = oracle.win.document.createElement('span').style;
+		for (const rule of topRules) {
+			if (rule.type === CSSRule.STYLE_RULE) dropCoveredLonghands(rule as CSSStyleRule, scratch);
+		}
+		return serializeRules(topRules);
 	} catch (err) {
 		captured.warnings.push(`normalize: skipped (${(err as Error).message})`);
 		return css;
@@ -114,4 +128,70 @@ function reorderRule(styleRule: CSSStyleRule): void {
 	if (segs.length < 2) return;
 	const sorted = segs.slice().sort((a, b) => rank(a.prop) - rank(b.prop));
 	styleRule.style.cssText = sorted.map((s) => s.decl).join('; ');
+}
+
+/** One physical longhand the cssom stored for a declaration, with its normalized value. */
+interface Longhand {
+	name: string;
+	value: string;
+	priority: string;
+}
+
+/**
+ * Drops each longhand a preceding shorthand in the same block already sets to that exact value,
+ * so `border-radius: 4px` followed by its four corner longhands at `4px` keeps only the
+ * shorthand. Render-neutral by CSS definition: the shorthand assigns the longhand that value
+ * regardless, so removing the restatement cannot change the cascade.
+ *
+ * A physical longhand is dropped whenever the covering shorthand implies its value, since a
+ * physical side is writing-mode independent. A logical longhand, `border-start-start-radius`
+ * and the like, is dropped only when the covering shorthand is uniform, one value on every
+ * side, because only then is which physical side the logical name resolves to irrelevant and
+ * the drop writing-mode independent. Keeping a longhand that sets a different value clears the
+ * cover, so a restatement after such an override is not dropped.
+ *
+ * @param styleRule - a style rule, in-scope or withheld, pruned in place
+ * @param scratch - a detached style declaration used to expand a shorthand to its longhands
+ */
+function dropCoveredLonghands(styleRule: CSSStyleRule, scratch: CSSStyleDeclaration): void {
+	const segs = parseSegments(styleRule.style.cssText);
+	if (segs.length < 2) return;
+	const covered = new Map<string, { value: string; priority: string; uniform: boolean }>();
+	const kept: string[] = [];
+	for (const seg of segs) {
+		const items = expandDeclaration(scratch, seg.decl);
+		const isShorthand = items.length > 1 || (items.length === 1 && items[0]!.name !== seg.prop);
+		if (isShorthand) {
+			kept.push(seg.decl);
+			const uniform = items.every((it) => it.value === items[0]!.value && it.priority === items[0]!.priority);
+			for (const it of items) covered.set(it.name, { value: it.value, priority: it.priority, uniform });
+			continue;
+		}
+		const self = items[0];
+		const physical = LOGICAL_TO_PHYSICAL[seg.prop] ?? seg.prop;
+		const cover = covered.get(physical);
+		const isLogical = physical !== seg.prop;
+		if (self && cover && cover.value === self.value && cover.priority === self.priority && (!isLogical || cover.uniform)) {
+			continue; // Redundant restatement of what the shorthand already sets.
+		}
+		kept.push(seg.decl);
+		covered.delete(physical); // This longhand now governs the side; a later shorthand may re-cover it.
+	}
+	if (kept.length !== segs.length) styleRule.style.cssText = kept.join('; ');
+}
+
+/**
+ * Expands one declaration to the physical longhands the cssom stores for it, each with its
+ * normalized value and priority. A shorthand yields several longhands, `border-radius` its four
+ * corners; a plain longhand yields itself. An empty array for a declaration the cssom rejects.
+ */
+function expandDeclaration(scratch: CSSStyleDeclaration, decl: string): Longhand[] {
+	scratch.cssText = '';
+	scratch.cssText = decl;
+	const items: Longhand[] = [];
+	for (let i = 0; i < scratch.length; i++) {
+		const name = scratch.item(i);
+		items.push({ name, value: scratch.getPropertyValue(name), priority: scratch.getPropertyPriority(name) });
+	}
+	return items;
 }

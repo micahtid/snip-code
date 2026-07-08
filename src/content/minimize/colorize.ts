@@ -1,5 +1,5 @@
 /**
- * minimize/colorize.ts: rewrite computed color notations to hex
+ * minimize/colorize.ts: post-format serialization sanity for colors and saturating lengths
  *
  * Pipeline position: minimize, last, after format
  * Reads from Captured: nothing
@@ -11,14 +11,20 @@
  * rgba() function to a short hex, using the canvas 2d context as the authority: setting
  * fillStyle to the color yields the engine's own canonical form, so the rewrite is the
  * same color the browser would paint, by construction, with no color math here and no
- * gamut guesswork. Wide-gamut lab() and color() notations are never matched, so they keep
- * their spelling rather than being clamped to the srgb gamut.
+ * gamut guesswork. Wide-gamut oklab/oklch/lab/lch/color() notations are never converted, so
+ * they keep their color space rather than being clamped to the srgb gamut; their numeric
+ * components are only trimmed of the float noise a computed round-trip leaves, so
+ * `oklab(0.999994 0.0000455678 0.0000200868 / 0.5)` reads as `oklab(1 0 0 / 0.5)`. And a
+ * border radius the engine rounded to the saturation overflow, `2.12676e+37rem`, is clamped
+ * to a plain `9999px` that paints the same full pill on any real element.
  *
  * It is a pure string transform and runs last, after format, for two reasons. First, it
  * needs no render oracle: an rgb()/rgba() function and its canvas-canonical hex paint the
- * identical pixel, so the rewrite cannot move the render, in a resting rule, a state rule,
- * a shadow, or a gradient alike. Second, a cssom round-trip re-serializes a standalone hex
- * back to rgb(), so any phase that re-parses the sheet, format among them, would undo the
+ * identical pixel, a trimmed color component moves the pixel by less than a 24-bit step, and
+ * a border radius past the saturation point paints the identical corner, so the rewrite
+ * cannot move the render, in a resting rule, a state rule, a shadow, or a gradient alike.
+ * Second, a cssom round-trip re-serializes a standalone hex back to rgb() and re-inflates a
+ * trimmed component, so any phase that re-parses the sheet, format among them, would undo the
  * rewrite; operating on the already-formatted text as a plain string sidesteps that and
  * preserves the indentation format produced.
  *
@@ -31,13 +37,17 @@
  * hash token; such a color keeps its delimited functional form.
  */
 
+/** A length in a border radius at or beyond this magnitude saturates the corner; clamp it. */
+const RADIUS_SATURATION = 100000;
+
 /**
- * Rewrites every rgb()/rgba() color function in a stylesheet to hex. Graceful by contract:
+ * Rewrites every rgb()/rgba() color function to hex, trims the float noise from a wide-gamut
+ * color's components, and clamps a saturating border radius to `9999px`. Graceful by contract:
  * returns the input unchanged when a canvas context is unavailable, and leaves any function
  * the context does not accept as a color exactly as it was.
  *
  * @param css - the formatted stylesheet
- * @returns the stylesheet with rgb()/rgba() functions rewritten to hex
+ * @returns the stylesheet with colors canonicalized and saturating radii clamped
  */
 export function colorizeCss(css: string): string {
 	if (!css.trim()) return css;
@@ -47,7 +57,8 @@ export function colorizeCss(css: string): string {
 	// string or url is consumed as one unit and any color-looking text inside it is never
 	// seen as a color. A color function never contains a nested paren in a computed value,
 	// so [^)]* delimits it exactly.
-	return css.replace(COLOR_OR_PROTECTED, (match, offset: number, whole: string) => {
+	const recolored = css.replace(COLOR_OR_PROTECTED, (match, offset: number, whole: string) => {
+		if (/^(?:oklab|oklch|lab|lch|color)\(/i.test(match)) return trimColorComponents(match); // Wide-gamut: keep the space, trim noise.
 		if (!/^rgba?\(/i.test(match)) return match; // Protected string or url span; leave verbatim.
 		const converted = colorize(match, ctx);
 		// A hex has no trailing delimiter, but the color function's `)` did. When the color
@@ -60,14 +71,50 @@ export function colorizeCss(css: string): string {
 		}
 		return converted;
 	});
+	return clampSaturatingRadii(recolored);
 }
 
 /**
  * Matches, in priority order, a double-quoted string, a single-quoted string, a url() span,
- * or an rgb()/rgba() color function. The string and url alternatives come first so their
- * contents are swallowed before a color function inside them can match on its own.
+ * an rgb()/rgba() color function, or a wide-gamut color function with only simple numeric
+ * arguments. The string and url alternatives come first so their contents are swallowed
+ * before a color function inside them can match on its own. The wide-gamut alternative rejects
+ * a nested paren, so a relative-color or calc() argument is left untouched.
  */
-const COLOR_OR_PROTECTED = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\burl\((?:[^)"']|"[^"]*"|'[^']*')*\)|rgba?\([^)]*\)/gi;
+const COLOR_OR_PROTECTED = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\burl\((?:[^)"']|"[^"]*"|'[^']*')*\)|rgba?\([^)]*\)|\b(?:oklab|oklch|lab|lch|color)\([^()]*\)/gi;
+
+/**
+ * Trims each numeric component of a wide-gamut color function to at most four decimal places,
+ * removing the float noise a computed round-trip leaves. Four places is finer than a 24-bit
+ * channel resolves, so the trimmed color paints the identical pixel; the color space is
+ * untouched, so no gamut is clamped. Non-numeric tokens, a color-space keyword or an angle
+ * unit, pass through.
+ *
+ * @param fn - a wide-gamut color function with only simple numeric arguments
+ */
+function trimColorComponents(fn: string): string {
+	return fn.replace(/-?\d*\.\d+(?:e[+-]?\d+)?/gi, (num) => {
+		const rounded = Number(Number(num).toFixed(4));
+		return Number.isFinite(rounded) ? String(rounded) : num;
+	});
+}
+
+/**
+ * Clamps a border radius the engine rounded past the saturation point to a plain `9999px`.
+ * A radius at or beyond RADIUS_SATURATION units renders as a full corner on any element a
+ * real layout can produce, and `9999px` renders the identical corner, so the swap is paint-
+ * neutral. Only the border-radius family is touched, and only a length token whose magnitude
+ * no real design reaches, so a legitimate radius is never rewritten.
+ *
+ * @param css - the recolored stylesheet
+ */
+function clampSaturatingRadii(css: string): string {
+	return css.replace(/border(?:-[a-z]+)*-radius\s*:\s*[^;{}]+/gi, (decl) =>
+		decl.replace(/(-?\d[\d.]*(?:e[+-]?\d+)?)(px|rem|em|q|pt|pc|in|cm|mm|ch|ex|vh|vw|vmin|vmax)\b/gi, (token, value: string) =>
+			Math.abs(Number(value)) >= RADIUS_SATURATION ? '9999px' : token,
+		),
+	);
+}
 
 /** A css name-continuation code point, the set that would extend a hash token past a hex. */
 const NAME_CHAR = /[-\w\u0080-\uffff]/;

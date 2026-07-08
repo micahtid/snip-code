@@ -44,11 +44,14 @@ import { parseSegments, inScopeRule, serializeRules, type Segment } from './decl
 const UNVERIFIABLE_PROP = /^(animation|transition|counter-)/;
 
 /**
- * Wall-time ceiling for one component's minimization, a safety valve for a pathological
- * input rather than a normal exit: real components finish well inside it, so it never
- * fires in practice and the output stays deterministic. If it ever does fire, every
- * deletion accepted so far is already render-verified, so shipping the partial result is
- * safe. Measured separately against the tighter performance target.
+ * Wall-time ceiling for one component's minimization, the safety valve that bounds the
+ * delta-debugging on a large component. It is not the mount that costs, which profiling put at
+ * a few hundred milliseconds; it is the bisection's per-check style recalc, and on the two
+ * largest, most restated components in the corpus, apple and f1, that recalc volume reaches the
+ * ceiling and the pass stops early. That is the valve working as designed: every deletion
+ * accepted so far is already render-verified, so shipping the partial result is safe and stays
+ * deterministic for a fixed input. Ordinary components finish in well under a second with the
+ * valve never near.
  */
 const BUDGET_MS = 20_000;
 

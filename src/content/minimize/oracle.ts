@@ -276,14 +276,22 @@ export async function createRenderOracle(captured: Captured, css: string, markup
  *   back to when unset is redundant here. It is skipped only where it equals color; where it
  *   differs it is kept. This is judged per target, so an inherited value equal to an
  *   ancestor's color but not a descendant's own color is caught on that descendant and kept.
+ * - a text decoration line of none paints no underline, overline, or line-through, so its
+ *   color, style, and thickness are irrelevant.
+ * - text-stroke paints the glyph outline only at a non-zero width; with zero width the stroke
+ *   color paints nothing, so it is irrelevant. -webkit-text-fill-color stays compared, since it
+ *   paints the glyph body at rest and a prior relaxation of it regressed the hover color freeze.
+ * - a column rule of style none paints no rule between columns, so its color and width are
+ *   irrelevant, the same shape as the outline relaxation.
+ * - -webkit-tap-highlight-color paints only the flash on a mobile tap, never a resting or hover
+ *   pixel, so it is skipped unconditionally. This is the one deliberate trade in the set: a tap
+ *   flash may differ from the source site, accepted here explicitly rather than slipped through.
  *
- * Each is judged from the reference values alone. A removal that instead makes the property
- * paint, by raising a width from zero or an outline-style off none, changes a property that
- * is never skipped, so the comparison still catches it and the relaxation can never mask a
- * real change. The border, outline, text-emphasis, and caret-color relaxations are all
- * layout-safe because none of those properties affect layout. Text fill and stroke colors are
- * deliberately not relaxed: they paint the glyph itself at rest, so the oracle compares them
- * directly, which also keeps a lower-cascade value a removal would expose from slipping past.
+ * Each painting relaxation is judged from the reference values alone. A removal that instead
+ * makes the property paint, by raising a width from zero, a style off none, or a decoration
+ * line on, changes a gating property that is never skipped, so the comparison still catches it
+ * and the relaxation can never mask a real change. All of these relaxations are layout-safe
+ * because none of the skipped properties affect layout.
  *
  * @param values - the reference computed values, index-aligned with masterProps
  * @param propIndex - masterProps name to its index
@@ -311,5 +319,19 @@ function paintIrrelevant(values: string[], propIndex: Map<string, number>): Set<
 	const ci = propIndex.get('color');
 	const cci = propIndex.get('caret-color');
 	if (ci !== undefined && cci !== undefined && values[cci] === values[ci]) mark('caret-color');
+	const tdl = propIndex.get('text-decoration-line');
+	if (tdl !== undefined && values[tdl] === 'none') {
+		mark('text-decoration-color');
+		mark('text-decoration-style');
+		mark('text-decoration-thickness');
+	}
+	const tsw = propIndex.get('-webkit-text-stroke-width');
+	if (tsw !== undefined && parseFloat(values[tsw]!) === 0) mark('-webkit-text-stroke-color');
+	const crs = propIndex.get('column-rule-style');
+	if (crs !== undefined && values[crs] === 'none') {
+		mark('column-rule-color');
+		mark('column-rule-width');
+	}
+	mark('-webkit-tap-highlight-color');
 	return skip;
 }

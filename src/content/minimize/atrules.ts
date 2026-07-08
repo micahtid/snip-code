@@ -18,15 +18,17 @@
  * the render oracle is actively unfit here: getComputedStyle enumerates a registered custom
  * property, so removing its registration changes that property's computed value even though
  * it is unreferenced and paints nothing, which the oracle would read as a render change and
- * veto. So a registration is kept whenever its exact property-name token occurs anywhere else
- * in the sheet, set or referenced, resting rule or withheld state rule alike; only a name
- * that occurs nowhere but its own registration is dead. Because that name then governs
- * nothing, removing the registration is a no-op at rest and in motion by construction, the
- * same style of by-construction safety colorize relies on. The corpus pixel backstop and the
- * forced-state checks verify the batch at the gate.
+ * veto. So liveness is a read count: a registration is kept whenever its name is read, by a
+ * var() reference or by a mention in a transition or animation property list, resting rule or
+ * withheld state rule alike. A write, a declaration that merely sets the name, is not
+ * liveness, since a value nothing reads governs no paint; a name only written, or present
+ * only in its own registration, is dead. Because a dead name governs nothing, removing its
+ * registration is a no-op at rest and in motion by construction, the same style of
+ * by-construction safety colorize relies on. The corpus pixel backstop and the forced-state
+ * checks verify the batch at the gate.
  *
- * Because M5's var() inlining removes reference sites, registrations can become newly dead
- * after it; this purge is idempotent and cheap, so it runs again there.
+ * Because the var() inlining step removes reference sites, registrations can become newly
+ * dead after it; this purge is idempotent and cheap, so it runs again after that step.
  */
 import { serializeRules } from './declarations';
 
@@ -41,11 +43,12 @@ interface PropertyRuleRef {
 }
 
 /**
- * Drops every `@property` registration whose custom-property name occurs nowhere else in the
- * sheet. Parses the css into a constructable stylesheet, the same side-effect-free cssom
- * parse formatCss uses, so nothing touches the live page. Graceful by contract: returns the
- * input unchanged when the css will not parse or carries no registration. Deterministic: a
- * pure function of the input text.
+ * Drops every `@property` registration whose custom-property name is never read, meaning no
+ * var() reference and no transition or animation mention anywhere in the sheet. Parses the css
+ * into a constructable stylesheet, the same side-effect-free cssom parse formatCss uses, so
+ * nothing touches the live page. Graceful by contract: returns the input unchanged when the
+ * css will not parse or carries no registration. Deterministic: a pure function of the input
+ * text.
  *
  * @param css - the merged stylesheet, after merge and before format
  * @returns the stylesheet with dead registrations removed, or the input unchanged
@@ -61,7 +64,7 @@ export function purgeAtRules(css: string): string {
 	}
 	const registrations: PropertyRuleRef[] = [];
 	collectPropertyRules(sheet, registrations);
-	const dead = registrations.filter((r) => nameOccurrences(css, r.name) === 1);
+	const dead = registrations.filter((r) => nameReads(css, r.name) === 0);
 	if (dead.length === 0) return css;
 	deleteRules(dead);
 	return serializeRules(Array.from(sheet.cssRules));
@@ -109,16 +112,24 @@ function deleteRules(refs: PropertyRuleRef[]): void {
 }
 
 /**
- * How many times a custom-property name occurs in the sheet as a whole token, its own
- * registration included. A registration is the only occurrence when the count is one. The
- * token boundary rejects a name that is a prefix of another (`--tw-ring` inside
- * `--tw-ring-color`), since a hyphen is a name character, not a word boundary.
+ * How many times a custom-property name is read in the sheet: a `var()` reference to it, or a
+ * mention of it in a transition or animation property list, where it names a property to
+ * interpolate. A write, a declaration that sets the name, is not a read and keeps no
+ * registration alive, since a value nothing reads governs no paint; neither does the name's
+ * own `@property` line. A registration with zero reads is therefore dead. The token boundary
+ * rejects a name that is a prefix of another (`--tw-ring` inside `--tw-ring-color`), since a
+ * hyphen is a name character, not a word boundary.
  *
  * @param css - the whole stylesheet text
  * @param name - a custom-property name including the leading `--`
  */
-function nameOccurrences(css: string, name: string): number {
+function nameReads(css: string, name: string): number {
 	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const token = new RegExp(`(?<![-\\w])${escaped}(?![-\\w])`, 'g');
-	return (css.match(token) || []).length;
+	const boundary = `(?<![-\\w])${escaped}(?![-\\w])`;
+	let reads = (css.match(new RegExp(`var\\(\\s*${boundary}`, 'g')) || []).length;
+	// A name listed in a transition or animation value names a property to interpolate, a read.
+	for (const decl of css.matchAll(/(?:transition|transition-property|animation|animation-name)\s*:[^;}]*/g)) {
+		reads += (decl[0].match(new RegExp(boundary, 'g')) || []).length;
+	}
+	return reads;
 }

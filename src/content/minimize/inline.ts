@@ -21,9 +21,9 @@
  * surviving var() reference governs nothing, so dropping its declaration is render-neutral.
  *
  * A custom property is left alone, both its var() references and its declaration, when it
- * carries motion the resting frame cannot see: registered via a surviving `@property`, named
- * inside an @keyframes, listed in a transition or animation, or redefined by a state or
- * pseudo rule. That last case matters most: a resting `color: var(--x)` is dynamic, so if a
+ * carries motion the resting frame cannot see: named inside an @keyframes, listed in a
+ * transition or animation, or redefined by a state or pseudo rule. That last case matters
+ * most: a resting `color: var(--x)` is dynamic, so if a
  * :hover rule redefines `--x` the color follows it on hover; inlining the resting reference
  * to its resting sample would freeze the color and strip the state change.
  */
@@ -81,12 +81,15 @@ export async function inlineVars(css: string, captured: Captured, markup: string
 
 /**
  * The custom-property names that must not be inlined or dropped because their value carries
- * motion the resting frame cannot sample: a name registered by a surviving `@property`, a
- * name written inside an @keyframes block, or a name listed in a transition/animation value.
+ * motion the resting frame cannot sample: a name written inside an @keyframes block, or a
+ * name listed in a transition/animation value. A bare `@property` registration is not itself
+ * a reason to hold: a registered name nothing animates or reads governs no motion, and
+ * holding it would keep alive the very dead pair the at-rule purge exists to drop. The real
+ * motion carriers are keyframe writes, transition and animation mentions, and the withheld
+ * state redefinitions addStateRedefinedNames adds below.
  */
 function motionHeldNames(css: string): Set<string> {
 	const held = new Set<string>();
-	for (const m of css.matchAll(/@property\s+(--[\w-]+)/g)) held.add(m[1]!);
 	for (const block of css.matchAll(/@keyframes[^{]*\{((?:[^{}]|\{[^{}]*\})*)\}/g)) {
 		for (const m of block[1]!.matchAll(/(--[\w-]+)/g)) held.add(m[1]!);
 	}

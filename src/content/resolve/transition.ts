@@ -71,7 +71,7 @@ export function resolveTransitionTiming(captured: Captured): void {
  *
  * @param value - a transition sub-list value, possibly carrying nested function commas
  */
-function splitTopLevelCommas(value: string): string[] {
+export function splitTopLevelCommas(value: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
 	let buf = '';

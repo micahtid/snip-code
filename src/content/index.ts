@@ -44,7 +44,7 @@ import { apply as applyTables } from './reconcile/features/tables';
 import { apply as applyLists } from './reconcile/features/lists';
 import { apply as applyForms } from './reconcile/features/forms';
 import { resolveVariables } from './resolve/vars';
-import { resolveFonts, appendGenericFallbacks } from './resolve/fonts';
+import { resolveFonts, appendGenericFallbacks, correctFontMime, mergeIdenticalFaces } from './resolve/fonts';
 import { resolveAnimations } from './resolve/anim';
 import { resolveTransitionTiming } from './resolve/transition';
 import { inlineResources } from './resolve/inline';
@@ -62,7 +62,9 @@ import { purgeAtRules } from './minimize/atrules';
 import { inlineVars } from './minimize/inline';
 import { injectReset } from './minimize/reset';
 import { foldLogical } from './minimize/logical';
+import { foldTransitions } from './minimize/transitions';
 import { colorizeCss } from './minimize/colorize';
+import { stripUnreferencedDataAttributes } from './minimize/attributes';
 import { assembleHtmlDocument, formatCss, isHtmlShaped } from './convert/format';
 import { splitAssets } from './convert/assets';
 import { polish } from './polish/llm';
@@ -157,6 +159,11 @@ async function runCoreTransform(captured: Captured): Promise<void> {
 	// referenced fonts and images as data uris so the artifact does not depend on the origin.
 	appendGenericFallbacks(captured);
 	await inlineResources(captured);
+	// Post-embed font sanity: relabel each font data uri with the mime its bytes actually are,
+	// then collapse faces that embed identical bytes and differ only in weight into one
+	// weight-range @font-face, so a file served under several weights is carried once.
+	correctFontMime(captured);
+	mergeIdenticalFaces(captured);
 }
 
 /** Only one picker may be active at a time. */
@@ -294,14 +301,23 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		if (classMarkup !== undefined) {
 			const pruned = await minimizeCss(assembled.css, captured, assembled.html);
 			const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
-			const merged = await mergeCss(normalized, captured, assembled.html);
+			// Drop transition layers no state changes, then merge sees any rules the fold unified.
+			const folded = foldTransitions(normalized);
+			const merged = await mergeCss(folded, captured, assembled.html);
 			const purged = purgeAtRules(merged);
 			const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
 			const reset = await injectReset(inlined, captured, assembled.html);
 			// Only rerun prune when a reset was actually injected, to drop the restatements it made
 			// redundant; a rejected reset leaves the css untouched and needs no second pass.
 			const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
-			cleanedCss = colorizeCss(formatCss(deduped));
+			// Colorize first so canvas-canonical colors make any equal-color rules byte-identical,
+			// then regroup once more through the merge entry point to collapse a pair colorize just
+			// unified, and re-finalize since the merge's cssom parse re-serializes the hex.
+			const colored = colorizeCss(formatCss(deduped));
+			cleanedCss = colorizeCss(formatCss(await mergeCss(colored, captured, assembled.html)));
+			// Markup pass, last in minimize: drop every data-* attribute the shipped stylesheet
+			// never references, the framework scope and instrumentation hooks a human would not keep.
+			finalHtml = stripUnreferencedDataAttributes(finalHtml, cleanedCss);
 		}
 
 		// Polish phase, byok and optional, class-based formats only. Semantic class renames,
@@ -574,15 +590,24 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		const minimizeStats: MinimizeStats = { ms: 0, declsBefore: 0, declsAfter: 0, charsBefore: 0, charsAfter: 0 };
 		const pruned = await minimizeCss(assembled.css, captured, assembled.html, minimizeStats);
 		const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
-		const merged = await mergeCss(normalized, captured, assembled.html);
+		// Drop transition layers no state changes, then merge sees any rules the fold unified.
+		const folded = foldTransitions(normalized);
+		const merged = await mergeCss(folded, captured, assembled.html);
 		const purged = purgeAtRules(merged);
 		const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
 		const reset = await injectReset(inlined, captured, assembled.html);
 		// Only rerun prune when a reset was actually injected, to drop the restatements it made
 		// redundant; a rejected reset leaves the css untouched and needs no second pass.
 		const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
-		const finalCss = colorizeCss(formatCss(deduped));
-		const finalDoc = composeDocument(finalHtml, finalCss);
+		// Colorize first so canvas-canonical colors make any equal-color rules byte-identical, then
+		// regroup once more through the merge entry point to collapse a pair colorize just unified,
+		// and re-finalize since the merge's cssom parse re-serializes the hex.
+		const colored = colorizeCss(formatCss(deduped));
+		const finalCss = colorizeCss(formatCss(await mergeCss(colored, captured, assembled.html)));
+		// Markup pass, last in minimize: drop every data-* attribute the shipped stylesheet never
+		// references, the framework scope and instrumentation hooks a human would not keep.
+		const strippedHtml = stripUnreferencedDataAttributes(finalHtml, finalCss);
+		const finalDoc = composeDocument(strippedHtml, finalCss);
 
 		// Emitted-artifact probe, read-only: diff the shipped BEM artifact's own
 		// standalone render against the live original, delta A, and the inline-clone
