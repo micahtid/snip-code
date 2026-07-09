@@ -1,16 +1,14 @@
 /**
- * utils/byok.ts: bring-your-own-key provider config + validation
+ * utils/byok.ts: bring-your-own-key provider config + validation.
  *
- * Pipeline position: n/a; configures the polish phase
+ * This is not part of the pipeline. It configures the polish phase.
  *
- * Why this exists: snipcode never ships a key and never proxies requests. This
- * module holds the four supported providers' default models
- * and endpoints, and the "test key" validation.
- * Validation fetches the provider directly from the sidebar, the manifest CSP
- * whitelists all four hosts for extension pages, so no background
- * round-trip is needed and the key never leaves the user's machine. The actual
- * llm polish runs in the background, since content scripts are bound by the page's
- * csp; see polish/llm.ts and background.js.
+ * Why this exists: snipcode never ships a key and never proxies requests. This module holds
+ * the four supported providers' default models and endpoints, and the "test key" validation.
+ * Validation fetches the provider directly from the sidebar. The manifest CSP whitelists all
+ * four hosts for extension pages, so no background round-trip is needed and the key never
+ * leaves the user's machine. The actual llm polish runs in the background, because content
+ * scripts are bound by the page's csp. See polish/llm.ts and background.js.
  */
 import type { Provider } from '../content/types';
 
@@ -40,12 +38,12 @@ export interface ValidationResult {
 /**
  * Validates a byok key against the live provider.
  *
- * Succeeds iff http 200 AND the body parses as json AND contains the provider's
- * success indicator. A minimal 1-token request keeps cost negligible.
+ * Succeeds only when the response is http 200, the body parses as json, and it contains the
+ * provider's success indicator. A minimal 1-token request keeps cost negligible.
  *
  * @param provider - which provider to test
  * @param key - the api key to validate, never logged
- * @param model - the model to test with; defaults to the provider default
+ * @param model - the model to test with, defaults to the provider default
  */
 export async function validateKey(provider: Provider, key: string, model?: string): Promise<ValidationResult> {
 	if (!key.trim()) return { valid: false, error: 'no key provided' };
@@ -61,7 +59,7 @@ export async function validateKey(provider: Provider, key: string, model?: strin
 	}
 }
 
-/** Request shape per provider for both validation and polish; the polish path is mirrored in background. */
+/** Request shape per provider for both validation and polish. The polish path is mirrored in background. */
 interface ProviderRequest {
 	url: string;
 	headers: Record<string, string>;

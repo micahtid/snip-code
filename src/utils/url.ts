@@ -1,18 +1,18 @@
 /**
- * utils/url.ts: absolutize a possibly-relative url
+ * utils/url.ts: absolutize a possibly-relative url.
  *
- * Pipeline position: n/a; cross-cutting utility
+ * This is not part of the pipeline. It is a cross-cutting utility.
  *
- * Why this exists: several extractors, such as assistive/assets, inspect/assets,
- * and inspect/colors, need to turn a page-relative url into an absolute one against
- * the document base. This was duplicated; it lives here once so both the
- * element-scoped and page-scoped extractors resolve urls identically.
+ * Why this exists: several extractors, such as assistive/assets, inspect/assets, and
+ * inspect/colors, need to turn a page-relative url into an absolute one against the document
+ * base. This was duplicated, so it lives here once, which lets both the element-scoped and
+ * page-scoped extractors resolve urls identically.
  */
 
 /**
- * Resolves a possibly-relative url against a base. Returns '' when the url cannot
- * be parsed, so the caller drops it, and passes `data:` urls through unchanged
- * because they are already self-contained.
+ * Resolves a possibly-relative url against a base. Returns '' when the url cannot be parsed,
+ * so the caller drops it. It passes `data:` urls through unchanged because they are already
+ * self-contained.
  *
  * @param url - the raw url, possibly relative
  * @param base - the document base to resolve against, e.g. document.baseURI || location.href

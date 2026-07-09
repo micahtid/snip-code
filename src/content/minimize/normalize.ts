@@ -2,28 +2,28 @@
  * minimize/normalize.ts: shorthand folding + human property order
  *
  * Pipeline position: minimize, after prune and before hoist
- * Reads from Captured: page.viewport via the oracle; warnings on graceful skip
- * Writes to Captured: nothing; transforms the minimized stylesheet string
+ * Reads from Captured: page.viewport via the oracle, plus warnings on graceful skip
+ * Writes to Captured: nothing. It transforms the minimized stylesheet string.
  *
  * Why this exists: the pruned stylesheet still reads like a machine dump. Each rule lists
  * the longhands the reproduce phase baked, in computed-style order, so a box's four
  * margins sit apart from its four paddings and a border is spelled out as twelve
  * declarations. A human writes the shorthand and groups related properties. This phase
- * does both, in one move: it reorders each rule's declarations into a fixed human order,
- * layout then box then spacing then border then background then type then effects, and
- * lets the cssom fold the now-adjacent longhand families back into their shorthands as it
+ * does both, in one move. It reorders each rule's declarations into a fixed human order
+ * (layout, then box, then spacing, then border, then background, then type, then effects),
+ * and lets the cssom fold the now-adjacent longhand families back into their shorthands as it
  * reserializes. margin-top/right/bottom/left becomes margin, the border longhands become
- * border-width/style/color, top/right/bottom/left becomes inset.
+ * border-width/style/color, and top/right/bottom/left becomes inset.
  *
  * It is render-neutral by construction and verified anyway. Reordering distinct properties
  * cannot change the cascade, and folding a full longhand family into its shorthand sets the
- * identical values, so the render is unchanged; the computed-style oracle confirms it over
- * the whole stylesheet, and if some rule's reorder did change the render, because it mixed
+ * identical values, so the render is unchanged. The computed-style oracle confirms it over
+ * the whole stylesheet. If some rule's reorder did change the render, because it mixed
  * a shorthand with a longhand it overrides, the phase ships the pruned css untouched rather
  * than a wrong render. The transform is a pure string reshuffle, so it is deterministic and
  * never grows the stylesheet.
  *
- * The reorder runs on in-scope rules only, exactly as in prune; see inScopeRule. After it, a
+ * The reorder runs on in-scope rules only, exactly as in prune (see inScopeRule). After it, a
  * second pass drops each longhand a preceding shorthand in the same block already sets to that
  * value, the restatement a machine dump leaves behind, most often a border-radius spelled out
  * again as its four corner longhands. That drop is render-neutral by CSS definition, so it
@@ -74,7 +74,7 @@ function rank(prop: string): number {
  * unchanged on any infrastructure failure or if the reorder is not render-neutral.
  *
  * @param css - the pruned stylesheet, after prune
- * @param captured - source of the viewport size; warnings are appended here on skip
+ * @param captured - source of the viewport size. Warnings are appended here on skip.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @returns the normalized stylesheet, or the input unchanged on any failure
  */
@@ -127,8 +127,8 @@ interface Longhand {
 /**
  * Drops each longhand a preceding shorthand in the same block already sets to that exact value,
  * so `border-radius: 4px` followed by its four corner longhands at `4px` keeps only the
- * shorthand. Render-neutral by CSS definition: the shorthand assigns the longhand that value
- * regardless, so removing the restatement cannot change the cascade.
+ * shorthand. This is render-neutral by CSS definition, because the shorthand assigns the
+ * longhand that value regardless, so removing the restatement cannot change the cascade.
  *
  * A physical longhand is dropped whenever the covering shorthand implies its value, since a
  * physical side is writing-mode independent. A logical longhand, `border-start-start-radius`
@@ -169,8 +169,9 @@ function dropCoveredLonghands(styleRule: CSSStyleRule, scratch: CSSStyleDeclarat
 
 /**
  * Expands one declaration to the physical longhands the cssom stores for it, each with its
- * normalized value and priority. A shorthand yields several longhands, `border-radius` its four
- * corners; a plain longhand yields itself. An empty array for a declaration the cssom rejects.
+ * normalized value and priority. A shorthand yields several longhands, so `border-radius` yields
+ * its four corners, while a plain longhand yields itself. An empty array means the cssom rejected
+ * the declaration.
  */
 function expandDeclaration(scratch: CSSStyleDeclaration, decl: string): Longhand[] {
 	scratch.cssText = '';

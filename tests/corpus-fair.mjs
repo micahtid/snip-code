@@ -4,11 +4,11 @@
 // two shows up as a score gap that is drift, not a pipeline defect. SSIM against a
 // stale reference therefore cannot be trusted to measure fidelity.
 //
-// This harness removes the drift: for each bundle it loads the live page ONCE in the
+// This harness removes the drift. For each bundle it loads the live page ONCE in the
 // extension context, screenshots the target element (the ground truth) and snips it in
 // that same page state, then grades the snip against that fresh reference in memory.
-// Any remaining gap is real pipeline behavior, not drift. Nothing on disk is touched;
-// this is a measurement, not a re-capture.
+// Any remaining gap is real pipeline behavior, not drift. Nothing on disk is touched.
+// This is a measurement, not a re-capture.
 //
 // Requires `npm run build`. Run: `node tests/corpus-fair.mjs [--only <substr>]`.
 
@@ -51,7 +51,7 @@ async function findBundles(dataDir, only) {
 				if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
 				bundles.push({ tier: tier.name, name: c.name, source: JSON.parse(raw) });
 			} catch {
-				// No/!unreadable source.json; skip.
+				// The source.json is missing or unreadable, so skip it.
 			}
 		}
 	}
@@ -74,8 +74,9 @@ async function captureAndSnip(context, bundle, tmpDir) {
 
 		const locator = page.locator(src.selector).first();
 		if ((await locator.count()) === 0) throw new Error(`selector matched 0 elements: ${src.selector}`);
-		// Non-fatal: an element that never settles (a looping carousel) would time out, but
-		// the snip's own settle still scrolls it, so grade it rather than dropping the bundle.
+		// This is non-fatal. An element that never settles (a looping carousel) would time
+		// out, but the snip's own settle still scrolls it, so grade it rather than dropping
+		// the bundle.
 		await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
 		await page.waitForTimeout(SETTLE_MS);
 		const refPng = await locator.screenshot({ type: 'png', timeout: 15000 });

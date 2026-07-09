@@ -1,18 +1,17 @@
 /**
- * assistive/fonts.ts: assistive font extraction
+ * assistive/fonts.ts: assistive font extraction.
  *
- * Pipeline position: capture; assistive runs the capture phase only
- * Reads from Captured: root
- * Writes to Captured: n/a; returns a font list
+ * Pipeline position: capture. Assistive runs the capture phase only.
+ * Reads from Captured: root.
+ * It does not write to Captured. It returns a font list.
  *
- * Principles applied: none; extraction.
+ * No principles apply here, since this is extraction.
  *
- * Why this exists: assistive mode reports the font families a component renders
- * with so an agent can load or substitute them. This reuses the same "first non-
- * generic family per element" idea as resolve/fonts.ts but reads it straight from
- * the live subtree's computed styles, since assistive runs only the capture phase, so there are
- * no baked styles yet. Generic keywords are skipped without a keyword Set
- * because the first family token is what renders.
+ * Why this exists: assistive mode reports the font families a component renders with so an
+ * agent can load or substitute them. This reuses the same "first non-generic family per
+ * element" idea as resolve/fonts.ts, but it reads it straight from the live subtree's computed
+ * styles. Assistive runs only the capture phase, so there are no baked styles yet. Generic
+ * keywords are skipped without a keyword Set because the first family token is what renders.
  */
 
 /**

@@ -2,8 +2,8 @@
  * minimize/reset.ts: inject the canonical reset preamble
  *
  * Pipeline position: minimize, after var inlining and before the closing prune rerun
- * Reads from Captured: page.viewport via the oracle; warnings on graceful skip
- * Writes to Captured: nothing; transforms the stylesheet string
+ * Reads from Captured: page.viewport via the oracle, plus warnings on graceful skip
+ * Writes to Captured: nothing. It transforms the stylesheet string.
  *
  * Why this exists: the reproduce phase bakes `box-sizing: border-box` onto every rule,
  * restates the inherited font on every control, and repeats the same link, list, and button
@@ -13,7 +13,7 @@
  * restatements the reset now makes redundant, so `box-sizing` and `cursor: pointer` appear
  * once instead of on hundreds of rules.
  *
- * Each reset line is an addition candidate, the reverse of prune's deletion: it is inserted
+ * Each reset line is an addition candidate, the reverse of prune's deletion. It is inserted
  * at the top of the sheet and kept only when the computed-style oracle confirms it changed no
  * element's render. A low-specificity selector, `*` or a bare element, is overridden by any
  * real rule, so a sheet that already computes the reset value everywhere is unchanged by the
@@ -22,7 +22,7 @@
  * longhand, a non-painting line like `cursor: pointer` is verified exactly like a painting one,
  * and a restatement is only pruned once the preamble supplies the identical computed value.
  * Lines stay fine grained, one property to a line, because acceptance is all or nothing per
- * line: one deviant element would veto a whole coarse line and lose the rest with it.
+ * line. One deviant element would veto a whole coarse line and lose the rest with it.
  */
 import type { Captured } from '../types';
 import { withOracle, type RenderOracle } from './oracle';
@@ -50,12 +50,12 @@ const RESET_RULES = [
 
 /**
  * Injects the canonical reset lines the oracle confirms are render-neutral at the top of the
- * sheet. Graceful by contract: returns the input unchanged on any infrastructure failure.
- * Deterministic: the reset lines are tried in a fixed order. The redundant per-rule
- * restatements this makes removable are dropped by the prune pass that runs after it.
+ * sheet. It is graceful by contract, returning the input unchanged on any infrastructure
+ * failure. It is deterministic, so the reset lines are tried in a fixed order. The redundant
+ * per-rule restatements this makes removable are dropped by the prune pass that runs after it.
  *
  * @param css - the stylesheet after var inlining
- * @param captured - source of the viewport size; warnings are appended here on skip
+ * @param captured - source of the viewport size. Warnings are appended here on skip.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @returns the stylesheet with the accepted reset lines prepended, or the input unchanged
  */
@@ -67,10 +67,10 @@ export async function injectReset(css: string, captured: Captured, markup: strin
 			try {
 				oracle.sheet.insertRule(rule, injected); // Keep accepted resets first, in order.
 			} catch {
-				continue; // Unparseable in this engine; skip it.
+				continue; // Unparseable in this engine, so skip it.
 			}
 			if (renderNeutral(oracle, rule)) injected++;
-			else oracle.sheet.deleteRule(injected); // Not neutral here; do not inject.
+			else oracle.sheet.deleteRule(injected); // Not neutral here, so do not inject.
 		}
 		if (injected === 0) return css;
 		return serializeRules(Array.from(oracle.sheet.cssRules));
@@ -82,8 +82,8 @@ export async function injectReset(css: string, captured: Captured, markup: strin
  * `button`, can change only the elements its selector matches and their descendants, so it is
  * verified against just that subtree, far cheaper than reading the whole render for each of the
  * many element-scoped lines. The universal `*` line reaches every element, so it is checked
- * against the whole render; a selector that will not parse falls back to the same whole-render
- * check. Subtree soundness is the same the prune and logical phases rely on; see subtreeTargets.
+ * against the whole render. A selector that will not parse falls back to the same whole-render
+ * check. Subtree soundness is the same one the prune and logical phases rely on (see subtreeTargets).
  *
  * @param oracle - the mounted render with the candidate reset line inserted
  * @param rule - the reset rule text, its selector read from before the brace

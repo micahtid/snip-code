@@ -3,13 +3,13 @@
  *
  * Pipeline position: minimize, after normalize and before merge and the at-rule purge
  * Reads from Captured: nothing
- * Writes to Captured: nothing; transforms the normalized stylesheet string
+ * Writes to Captured: nothing. It transforms the normalized stylesheet string.
  *
  * Why this exists: a Tailwind `transition-colors` or `transition` utility bakes a long
- * enumerated list, `color, background-color, border-color, outline-color, fill, stroke,
- * --tw-gradient-from, ...`, each layer carrying the same duration and easing, onto the resting
+ * enumerated list (`color, background-color, border-color, outline-color, fill, stroke,
+ * --tw-gradient-from, ...`), each layer carrying the same duration and easing, onto the resting
  * rule. Most of those properties no state or animation ever changes, so their layers can never
- * produce motion; a human would list only the properties that actually move. This drops every
+ * produce motion. A human would list only the properties that actually move. This drops every
  * layer whose property nothing changes, and when the survivors all share one timing it emits
  * the grouped form a human writes, `transition-property: color, background-color;
  * transition-duration: 0.15s; transition-timing-function: ...`, rather than repeating the
@@ -20,10 +20,10 @@
  * registration, and before merge so rules a fold makes identical collapse together.
  *
  * Liveness is judged by construction, never by the resting oracle, for the same reason the
- * at-rule purge is textual: a transition paints no resting pixel, yet getComputedStyle
+ * at-rule purge is textual. A transition paints no resting pixel, yet getComputedStyle
  * enumerates transition-property and the timing longhands, so the oracle would read a dropped
  * layer as a render change and wrongly veto it. A layer for a property nothing changes is
- * unobservable, so removing it is render-neutral by construction; the grouped form cycles one
+ * unobservable, so removing it is render-neutral by construction. The grouped form cycles one
  * timing across the property list, exactly the engine's own rule, so it animates identically.
  * The corpus pixel backstop and the forced-state checks verify the batch at the gate.
  */
@@ -46,8 +46,8 @@ interface Layer {
  * Drops every transition layer whose property no state rule or animation changes, and groups a
  * surviving list that shares one timing. Parses the css into a constructable stylesheet, the
  * same side-effect-free cssom parse the at-rule purge uses, so nothing touches the live page.
- * Graceful by contract: returns the input unchanged when it will not parse or holds no
- * transition. Deterministic: a pure function of the input text.
+ * It is graceful by contract, returning the input unchanged when it will not parse or holds no
+ * transition. It is deterministic, a pure function of the input text.
  *
  * @param css - the normalized stylesheet, after normalize and before merge
  * @returns the stylesheet with dead transition layers dropped and shared timing grouped
@@ -79,8 +79,8 @@ function foldRules(rules: CSSRule[], changed: Set<string>, reads: Set<string>, s
 
 /**
  * The set of longhands every withheld state or pseudo rule and every @keyframes changes,
- * lowercased. A transition layer whose property expands to one of these can produce motion;
- * one that expands to none cannot. The cssom stores each rule's declarations as expanded
+ * lowercased. A transition layer whose property expands to one of these can produce motion,
+ * while one that expands to none cannot. The cssom stores each rule's declarations as expanded
  * longhands, so a state rule's `background` shorthand contributes `background-color` and the
  * rest, matching a `background-color` transition layer correctly.
  */
@@ -138,11 +138,11 @@ function foldRuleTransition(rule: CSSStyleRule, changed: Set<string>, reads: Set
 	const dropped = kept.length < layers.length;
 	const shareable = kept.length >= 2 && kept.every((layer) => sameTiming(layer, kept[0]!));
 	// Rewrite only when a layer was dropped, or grouping a shared-timing list is shorter than
-	// the current serialization; otherwise leave the rule's transition exactly as it was.
+	// the current serialization. Otherwise leave the rule's transition exactly as it was.
 	if (!dropped && !(shareable && groupedText(kept, priority).length < currentText(style).length)) return;
 
 	clearTransition(style);
-	if (kept.length === 0) return; // Every layer was dead: the rule animates nothing.
+	if (kept.length === 0) return; // Every layer was dead, so the rule animates nothing.
 	if (shareable) applyGrouped(style, kept, priority);
 	else applyList(style, kept, priority);
 }
@@ -158,11 +158,11 @@ function sameTiming(a: Layer, b: Layer): boolean {
 }
 
 /**
- * Whether a transition layer for `property` can produce motion: some state rule or animation
- * changes the property, or a longhand it expands to. A custom property additionally must be
- * read through a `var()`, since a value nothing paints from animates nothing visible. The
- * keywords `all` and `none` are always kept, since `all` is not an enumerable property to test
- * and `none` disables the transition outright.
+ * Whether a transition layer for `property` can produce motion. It can when some state rule or
+ * animation changes the property, or a longhand it expands to. A custom property additionally
+ * must be read through a `var()`, since a value nothing paints from animates nothing visible.
+ * The keywords `all` and `none` are always kept, since `all` is not an enumerable property to
+ * test and `none` disables the transition outright.
  */
 function producesMotion(property: string, changed: Set<string>, reads: Set<string>, scratch: CSSStyleDeclaration): boolean {
 	const name = property.toLowerCase();

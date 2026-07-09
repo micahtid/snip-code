@@ -1,7 +1,7 @@
 // Forced-state fidelity check for the measured-interactive-states work. Renders a static
 // output.html, screenshots it at rest, then forces :hover (and optionally :active) on a marker
-// element via Playwright's own CDP — the artifact is static, so its state is reproduced exactly
-// by forcing the pseudo — and screenshots again. The before/after pair is the re-runnable
+// element via Playwright's own CDP and screenshots again. Because the artifact is static,
+// forcing the pseudo reproduces its state exactly. The before/after pair is the re-runnable
 // fidelity measurement the feedback loop reads by eye (the corpus grader only scores resting).
 //
 // Usage: node tests/verify-state.mjs <output.html> <markerSelector> [width] [height] [state]

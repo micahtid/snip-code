@@ -43,8 +43,8 @@ const clamp = (v: number, min: number, max: number): number => Math.min(max, Mat
 
 /**
  * Indexes into a non-empty template list, wrapping with modulo so any id maps to a
- * real entry. The throw is unreachable for the constant lists below but lets the
- * type checker prove the result is defined without a non-null assertion; the rest
+ * real entry. The throw is unreachable for the constant lists below, but it lets the
+ * type checker prove the result is defined without a non-null assertion. The rest
  * of the codebase avoids `!`.
  *
  * @param list - a non-empty constant template list

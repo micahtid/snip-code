@@ -7,8 +7,8 @@
  *
  * Principles applied: none, ui only.
  *
- * Why this exists: a page scan ships one discriminated InspectResult; App listens,
- * see App.tsx. This is the panel-side terminus: it selects the matching view by
+ * Why this exists: a page scan ships one discriminated InspectResult, and App listens
+ * (see App.tsx). This is the panel-side terminus. It selects the matching view by
  * `kind`, a card grid for fonts/colors/assets or a code block for the schema, and
  * shows a shared warnings line beneath it, so each view only renders its own cards.
  */

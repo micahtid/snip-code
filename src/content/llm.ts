@@ -1,15 +1,15 @@
 /**
  * content/llm.ts: the shared client for the background byok llm broker
  *
- * Pipeline position: n/a; cross-cutting, used by the polish phase and the inspect ai pass
+ * Pipeline position: n/a, cross-cutting, used by the polish phase and the inspect ai pass
  * Reads from Captured: n/a
  * Writes to Captured: n/a
  *
- * Why this exists: content scripts are bound by the host page's csp and cannot reach
+ * It exists because content scripts are bound by the host page's csp and cannot reach
  * provider hosts, so every byok llm call is delegated to the background worker over an
  * LLM_REQUEST message. Both the polish phase and the inspect ai pass send that exact
  * request and read back the same { text, usage }, or an error. This is that one
- * transport; each caller parses the reply into its own shape and decides skip-vs-warn.
+ * transport. Each caller parses the reply into its own shape and decides skip-vs-warn.
  */
 import type { Provider, TokenUsage } from './types';
 
@@ -30,7 +30,7 @@ export interface LlmReply {
  * and report the cause. A failed-but-billed reply also returns its token usage so the
  * spent tokens still count toward the session total.
  *
- * @param max - optional output-token ceiling; the schema pass raises it, polish omits it
+ * @param max - optional output-token ceiling. The schema pass raises it, polish omits it
  */
 export async function requestLlm(provider: Provider, model: string, prompt: string, max?: number): Promise<LlmReply> {
 	try {

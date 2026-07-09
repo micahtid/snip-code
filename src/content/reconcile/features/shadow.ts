@@ -9,19 +9,19 @@
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM
  * Detection criterion: an element in the subtree exposing an open shadowRoot.
- * Early-returns when none do.
- * Transform contract: for each open shadow host, inlines the shadow's
- * adoptedStyleSheets + <style> css as a <style>, with :host rescoped to a data-*
- * marker on the clone host, and appends a clone of the shadow tree to the clone
+ * It early-returns when none do.
+ * Transform contract: for each open shadow host, it inlines the shadow's
+ * adoptedStyleSheets and <style> css as a <style>, with :host rescoped to a data-*
+ * marker on the clone host. It then appends a clone of the shadow tree to the clone
  * host so its rendered markup travels. Closed roots cannot be read from a content
- * script, only counted via cdp pierce at capture, and are surfaced as a warning.
- * Mutates clone only.
+ * script and can only be counted via cdp pierce at capture, so they are surfaced as
+ * a warning. It mutates the clone only.
  *
  * Why this exists: cloneNode(true) does not copy shadow roots, so a web
  * component's entire rendered content and its scoped styles vanish from the clone.
  * Flattening the open shadow tree into light dom, with styles rescoped, keeps the
- * component visible standalone. Slot distribution is approximated: shadow content
- * is appended after the host's light children; ::part/::slotted styles are
+ * component visible standalone. Slot distribution is approximated. Shadow content
+ * is appended after the host's light children, and ::part and ::slotted styles are
  * carried verbatim. Shadow content is appended last so match.pairedSubtrees keeps
  * the light-dom pairing aligned for downstream handlers.
  */
@@ -39,7 +39,7 @@ export function apply(captured: Captured): Captured {
 
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const shadow = (original as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot;
-		if (!shadow) continue; // No open shadow root; closed roots read as null here
+		if (!shadow) continue; // No open shadow root, and closed roots read as null here
 		sawShadow = true;
 
 		const id = hostId++;
@@ -63,7 +63,7 @@ export function apply(captured: Captured): Captured {
 	return captured;
 }
 
-/** Concatenate a shadow root's adopted + inline stylesheet css. */
+/** Concatenate a shadow root's adopted and inline stylesheet css. */
 function collectShadowCss(shadow: ShadowRoot): string {
 	const parts: string[] = [];
 	// Constructable stylesheets attached via adoptedStyleSheets.
@@ -71,7 +71,7 @@ function collectShadowCss(shadow: ShadowRoot): string {
 		try {
 			for (const rule of Array.from(sheet.cssRules)) parts.push(rule.cssText);
 		} catch {
-			// Cross-origin constructable sheet, rare; skip.
+			// Cross-origin constructable sheet, rare, so skip it.
 		}
 	}
 	// Inline <style> blocks inside the shadow root.

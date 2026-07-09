@@ -7,26 +7,26 @@
  *
  * Removal is render-identical by construction, never aesthetic surgery.
  *
- * Why this exists: bake.ts and the feature handlers bake every winning property
- * onto each element, including many that merely restate a default (animation-
- * timing-function: ease, vertical-align: baseline), have no effect in context,
- * such as transform-origin with no transform, or just repeat an inherited value. The
+ * It exists because bake.ts and the feature handlers bake every winning property
+ * onto each element. Many of those merely restate a default (animation-timing-
+ * function: ease, vertical-align: baseline), have no effect in context (such as
+ * transform-origin with no transform), or just repeat an inherited value. The
  * result renders correctly but reads as noise. This step drops those declarations
- * against ground truth: a per-tag ua default read from a clean probe element, what
- * a non-inherited property falls back to, and the immediate parent's computed value,
- * what an inherited property falls back to. It runs on bakedStyles before convert,
- * so every output format ships the smaller result and the polish llm sees clean
- * markup.
+ * against ground truth. It compares against a per-tag ua default read from a clean
+ * probe element, which is what a non-inherited property falls back to, and against
+ * the immediate parent's computed value, which is what an inherited property falls
+ * back to. It runs on bakedStyles before convert, so every output format ships the
+ * smaller result and the polish llm sees clean markup.
  *
  * Two further drops ride the same ground-truth machinery. A css-wide keyword
  * (initial/inherit/unset) reaches the output verbatim because bake.ts prefers the
- * authored value when it round-trips; resolveCssWideKeyword resolves it to the value
- * it actually produces so isRedundantDecl can match it against the fallback and drop
- * it when inert. And a legacy vendor-prefixed flexbox longhand such as -webkit-box-align
- * and friends is dropped when its standard counterpart is present and the legacy box model
- * is not in use, since every engine then ignores the prefixed form.
+ * authored value when it round-trips. resolveCssWideKeyword resolves it to the value
+ * it actually produces, so isRedundantDecl can match it against the fallback and drop
+ * it when inert. A legacy vendor-prefixed flexbox longhand such as -webkit-box-align
+ * and friends is dropped when its standard counterpart is present and the legacy box
+ * model is not in use, since every engine then ignores the prefixed form.
  *
- * Like bake.ts, it trusts no hand-curated "is this noise" Set: the decision lives in
+ * Like bake.ts, it trusts no hand-curated "is this noise" Set. The decision lives in
  * match.ts's isRedundantDecl, which only ever removes a measured no-op. The probe is
  * off-screen and laid out, not display:none and not detached, because getComputedStyle
  * returns empty or blockified values otherwise.
@@ -61,11 +61,11 @@ export function denoise(captured: Captured): void {
 					// The snip root loses its ancestor chain, so an inherited value baked
 					// onto it by bake.ts's inherited-divergence pass has no parent to fall
 					// back to and must stay. Non-inherited values on the root are still
-					// de-noised: their default is parent-independent.
+					// de-noised, because their default is parent-independent.
 					if (isRoot && inherits) continue;
 					// A css-wide keyword is resolved to the value it produces before the
-					// comparison, so isRedundantDecl can match it against the fallback;
-					// non-keyword values pass through untouched.
+					// comparison, so isRedundantDecl can match it against the fallback.
+					// Non-keyword values pass through untouched.
 					const resolved = resolveCssWideKeyword(captured, clone, prop, value) ?? value;
 					const redundant = isRedundantDecl(prop, resolved, {
 						defaultValue: defaults.get(prop),
@@ -99,7 +99,7 @@ function dropDecl(baked: Map<string, string>, clone: Element, prop: string): voi
 	try {
 		(clone as HTMLElement).style.removeProperty(prop);
 	} catch {
-		// Not removable for this element; the baked-map delete is enough.
+		// Not removable for this element, so the baked-map delete is enough.
 	}
 }
 
@@ -112,17 +112,17 @@ function dropDecl(baked: Map<string, string>, clone: Element, prop: string): voi
  * drop the keyword wherever the value it produces equals the fallback, with no new
  * comparison logic.
  *
- * `initial` resolves to the spec initial value, from the all:initial probe, deliberately
- * not the ua default since the two differ for e.g. display. `inherit` resolves to
- * the element's effective inherited value, but only for a property that actually
- * inherits: on a non-inherited property, box-sizing being the common one via the
- * `* { box-sizing: inherit }` idiom, `inherit` pulls the parent's used value, which the
- * baked chain does not carry, so it is left untouched rather than mis-resolved to the
- * initial and wrongly dropped. `unset` resolves to the inherited value for an inherited
- * property, else the spec initial, matching the spec definition, where it is identical
- * to `initial` and never the parent's value, so it is always safe to resolve. `revert` is
- * left untouched: it reverts to the ua/author origin, which the standalone snip does
- * not carry, so it is never provably inert.
+ * `initial` resolves to the spec initial value from the all:initial probe. That is
+ * deliberately not the ua default, since the two differ for e.g. display. `inherit`
+ * resolves to the element's effective inherited value, but only for a property that
+ * actually inherits. On a non-inherited property (box-sizing being the common one,
+ * via the `* { box-sizing: inherit }` idiom), `inherit` pulls the parent's used value,
+ * which the baked chain does not carry. So it is left untouched rather than mis-resolved
+ * to the initial and wrongly dropped. `unset` resolves to the inherited value for an
+ * inherited property, else the spec initial. That matches the spec definition, where it
+ * is identical to `initial` and never the parent's value, so it is always safe to
+ * resolve. `revert` is left untouched. It reverts to the ua/author origin, which the
+ * standalone snip does not carry, so it is never provably inert.
  *
  * @param captured - source of the per-clone baked maps, for inherited resolution
  * @param clone - the element whose declaration is under test
@@ -148,20 +148,20 @@ export function resolveCssWideKeyword(captured: Captured, clone: Element, prop: 
  * on the same element. A prefixed property is honored only when its old display model
  * is actually in use, so when the modern standard property sits beside it AND that old
  * model is not active, every engine ignores the prefixed form, making its removal a
- * provable no-op. A prefixed property with no standard sibling is never dropped: there
- * it could still be load-bearing.
+ * provable no-op. A prefixed property with no standard sibling is never dropped,
+ * because there it could still be load-bearing.
  *
- * The display guard is load-bearing, not belt-and-suspenders: under `display:
+ * The display guard is load-bearing, not belt-and-suspenders. Under `display:
  * -webkit-box`/`-webkit-inline-box` the old box model is live, so `-webkit-box-orient:
  * vertical`, the `-webkit-line-clamp` multi-line-ellipsis idiom, and its siblings still
  * drive layout even with a standard property present. It is checked against the BAKED
- * display, not the live computed display: the output renders with the baked value, so
+ * display, not the live computed display. The output renders with the baked value, so
  * that is the value that decides whether the prefixed prop is load-bearing, and live
  * getComputedStyle is unreliable here anyway, since a -webkit-box element with line-clamp
  * reports `flow-root`. The old box props are honored on the element itself
  * (orient/direction/align/pack) or on a child of an old box (flex/ordinal-group), so the
  * guard checks the element's own baked display and its parent's. The
- * `-webkit-flex-*`/`-webkit-align-*` aliases need no guard: modern engines treat them as
+ * `-webkit-flex-*`/`-webkit-align-*` aliases need no guard. Modern engines treat them as
  * plain aliases of the standard names, so the standard sibling wins regardless.
  *
  * @param captured - source of the per-clone baked maps, for the parent display check
@@ -175,7 +175,7 @@ function dropDeadPrefixes(captured: Captured, baked: Map<string, string>, clone:
 		if (!baked.has(prefixed) || !baked.has(standard)) continue;
 		if (scope === 'box-self' && selfOldBox) continue;
 		if (scope === 'box-item') {
-			// Resolved lazily: most elements carry no old box item property at all.
+			// Resolved lazily, since most elements carry no old box item property at all.
 			if (parentOldBox === undefined) {
 				const parent = clone.parentElement;
 				parentOldBox = isOldBox(parent ? captured.bakedStyles.get(parent)?.get('display') : undefined);
@@ -192,11 +192,11 @@ function isOldBox(display: string | undefined): boolean {
 }
 
 /**
- * The value `prop` actually inherits in the standalone snip: the nearest clone
+ * The value `prop` actually inherits in the standalone snip. It is the nearest clone
  * ancestor that bakes it, or the css initial value. This is what the element falls
  * back to when its own declaration is dropped, read deliberately from the baked
  * clone chain rather than the live page. A value the live ancestor only inherits
- * from the page, a global body font say, does not travel with the snip, so
+ * from the page (a global body font, say) does not travel with the snip, so
  * comparing against the live parent would drop a declaration the snip still needs.
  *
  * @param captured - source of the per-clone baked maps
@@ -215,13 +215,14 @@ export function effectiveInherited(captured: Captured, clone: Element, prop: str
 }
 
 /**
- * Builds a probe that returns an element's ua default computed style: a shallow copy
- * of the element, its attributes minus the style attribute, laid out alone in the
- * hidden iframe. The default a standalone snip falls back to depends on the element's
- * attributes, not just its tag: `a[href]` is underlined, `a` without href is not;
- * `input[type=checkbox]` differs from a text input. The shallow copy captures those
- * attributes, while the iframe strips the page's own author rules, which do not travel
- * with the snip. Results are cached per attribute signature for the snip.
+ * Builds a probe that returns an element's ua default computed style. The probe is a
+ * shallow copy of the element, carrying its attributes minus the style attribute,
+ * laid out alone in the hidden iframe. The default a standalone snip falls back to
+ * depends on the element's attributes, not just its tag. `a[href]` is underlined
+ * while `a` without href is not, and `input[type=checkbox]` differs from a text input.
+ * The shallow copy captures those attributes, while the iframe strips the page's own
+ * author rules, which do not travel with the snip. Results are cached per attribute
+ * signature for the snip.
  *
  * @param doc - the probe iframe document
  * @param win - the probe iframe window (its getComputedStyle)
@@ -245,8 +246,8 @@ function elementDefaultProbe(doc: Document, win: Window): (el: Element) => Map<s
 }
 
 /**
- * A cache key over the attributes that affect an element's ua styling. Excludes style,
- * the thing under test, plus id, class, and the data- and aria- families, which
+ * A cache key over the attributes that affect an element's ua styling. Excludes style
+ * (the thing under test), plus id, class, and the data- and aria- families, which
  * never match a ua rule, so folding them in would only fragment the cache.
  *
  * @param el - the element to key
@@ -263,13 +264,13 @@ function probeKey(el: Element): string {
 }
 
 /**
- * The ua default computed style for a pseudo-element on a given element: a shallow
- * copy of the element laid out alone in the hidden iframe, read at `pseudo`. This is
- * the real ua default for that pseudo on that element, such as ::placeholder's grey
- * color or ::marker's disc, the baseline a non-inherited pseudo declaration falls back to.
- * Like elementDefaultProbe it strips the page's author rules, which do not travel
- * with the snip, so the pseudo handler can de-noise against the same ground truth
- * the element pass uses. Cached per attribute signature + pseudo for the snip.
+ * The ua default computed style for a pseudo-element on a given element. It comes from
+ * a shallow copy of the element laid out alone in the hidden iframe, read at `pseudo`.
+ * This is the real ua default for that pseudo on that element, such as ::placeholder's
+ * grey color or ::marker's disc. It is the baseline a non-inherited pseudo declaration
+ * falls back to. Like elementDefaultProbe it strips the page's author rules, which do
+ * not travel with the snip, so the pseudo handler can de-noise against the same ground
+ * truth the element pass uses. Cached per attribute signature + pseudo for the snip.
  *
  * @param el - the originating element
  * @param pseudo - the pseudo-element selector, e.g. '::placeholder'
@@ -346,20 +347,20 @@ let INITIAL_CACHE: Map<string, string> | null = null;
 const PSEUDO_DEFAULT_CACHE = new Map<string, Map<string, string>>();
 
 /**
- * How a prefixed flexbox property is honored, which decides its display guard:
+ * How a prefixed flexbox property is honored, which decides its display guard.
  * `box-self` is a 2009 box property honored on its own `-webkit-box` element
- * (orient/direction/align/pack), `box-item` one honored on a child of a `-webkit-box`
- * (flex/ordinal-group), and `alias` a 2011 `-webkit-flex-*`/`-webkit-align-*` name that
+ * (orient/direction/align/pack). `box-item` is one honored on a child of a `-webkit-box`
+ * (flex/ordinal-group). `alias` is a 2011 `-webkit-flex-*`/`-webkit-align-*` name that
  * modern engines treat as a plain alias of the standard property, needing no guard.
  */
 type PrefixScope = 'box-self' | 'box-item' | 'alias';
 
 /**
  * Legacy vendor-prefixed flexbox longhands paired with the standard property that
- * supersedes them and the scope that decides their display guard: the 2009
+ * supersedes them and the scope that decides their display guard. These cover the 2009
  * `-webkit-box-*` syntax and the 2011 `-webkit-flex-*` aliases. A prefixed property is
  * dropped only when its standard counterpart is present and its old display model is
- * not active; see dropDeadPrefixes. Value equivalence is irrelevant: the gate is the
+ * not active (see dropDeadPrefixes). Value equivalence is irrelevant. The gate is the
  * standard sibling plus the display guard, never a value match.
  */
 const PREFIXED_FLEX_PAIRS: Array<[string, string, PrefixScope]> = [

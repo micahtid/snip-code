@@ -8,7 +8,7 @@
  * Travel-with-the-snip rule for fonts: a used custom font must carry its
  * @font-face and an absolute src so it loads from the snip's new home.
  *
- * Why this exists: @font-face src urls are usually relative to the source page;
+ * Why this exists: @font-face src urls are usually relative to the source page, so
  * pasted elsewhere they 404. This resolves them to absolute urls and narrows the
  * captured @font-face list to the faces the snip actually renders. A source page
  * commonly ships every weight of a family, light through bold, while a snipped
@@ -38,11 +38,11 @@ const PSEUDO_ELEMENTS = ['::before', '::after', '::marker', '::placeholder', '::
 
 /** One (weight, style) a family is rendered at somewhere in the subtree. */
 interface FaceRequest {
-	weight: number; // Numeric css weight (1-1000); normal -> 400, bold -> 700
+	weight: number; // Numeric css weight (1-1000), where normal -> 400 and bold -> 700
 	style: string; // 'normal' | 'italic' | 'oblique'
 }
 
-/** The css2 generic font families; a stack ending in one of these has a safe fallback. */
+/** The css2 generic font families. A stack ending in one of these has a safe fallback. */
 const GENERIC_FAMILIES = new Set([
 	'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif',
 	'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong',
@@ -51,7 +51,7 @@ const GENERIC_FAMILIES = new Set([
 /**
  * Guarantees every baked font-family stack ends in a generic family, so text never
  * falls back to the browser default serif, Times New Roman, when a custom font is
- * unavailable. A stack that already ends in a generic is left untouched; otherwise a
+ * unavailable. A stack that already ends in a generic is left untouched. Otherwise a
  * generic is appended, inferred from the first family's monospace hint, else sans-serif,
  * the overwhelmingly common case for ui type. Runs after the standalone
  * reconciliation has baked the resolved family stacks.
@@ -71,7 +71,7 @@ export function appendGenericFallbacks(captured: Captured): void {
 		try {
 			(clone as HTMLElement).style.setProperty('font-family', next);
 		} catch {
-			// Invalid for this element; the baked-map entry still ships to emit.
+			// Invalid for this element, but the baked-map entry still ships to emit.
 		}
 	}
 }
@@ -186,16 +186,16 @@ function renderedPseudos(el: Element): string[] {
 	try {
 		if (el.matches('input[type="file"]')) out.push('::file-selector-button');
 	} catch {
-		// Matches unsupported; ignore.
+		// Matches unsupported, so ignore.
 	}
 	return out.filter((pseudo) => PSEUDO_ELEMENTS.includes(pseudo));
 }
 
 /**
  * The captured faces one weight request resolves to, empty when the family has none.
- * Faces of the requested style win; if the family has no face in that style the browser
+ * Faces of the requested style win. If the family has no face in that style the browser
  * synthesizes it from any weight, so all faces stay eligible. The css weight-matching
- * algorithm picks one weight; every face at that matched (weight, style) whose
+ * algorithm picks one weight. Every face at that matched (weight, style) whose
  * unicode-range covers a rendered codepoint is kept, because subset faces partition the
  * codepoint space and the snip may render glyphs from several subsets. If no subset
  * covers the text, whether an exotic repertoire or an unparseable range, the weight winner is
@@ -218,7 +218,7 @@ function selectFaces(request: FaceRequest, faces: FontFace[], codepoints: Set<nu
 
 /**
  * Whether a face renders any codepoint the snip shows. A face with no unicode-range
- * descriptor covers the full repertoire, so it always qualifies; otherwise at least one
+ * descriptor covers the full repertoire, so it always qualifies. Otherwise at least one
  * of its declared ranges must contain a rendered codepoint. An empty codepoint set, meaning
  * no text, or an unparseable range qualifies too, so coverage never wrongly drops a face.
  *
@@ -228,9 +228,9 @@ function selectFaces(request: FaceRequest, faces: FontFace[], codepoints: Set<nu
 function faceCoversCodepoints(font: FontFace, codepoints: Set<number>): boolean {
 	const descriptor = font.descriptors['unicode-range'];
 	if (!descriptor) return true; // No subsetting: the face covers everything.
-	if (codepoints.size === 0) return true; // Nothing to render; do not drop on coverage.
+	if (codepoints.size === 0) return true; // Nothing to render, so do not drop on coverage.
 	const ranges = parseUnicodeRange(descriptor);
-	if (ranges.length === 0) return true; // Unparseable; keep rather than wrongly drop.
+	if (ranges.length === 0) return true; // Unparseable, so keep rather than wrongly drop.
 	for (const cp of codepoints) {
 		for (const [lo, hi] of ranges) if (cp >= lo && cp <= hi) return true;
 	}
@@ -239,7 +239,7 @@ function faceCoversCodepoints(font: FontFace, codepoints: Set<number>): boolean 
 
 /**
  * Parses a css unicode-range descriptor into [lo, hi] codepoint ranges. Handles the
- * single (U+41), range (U+460-52F), and wildcard (U+00??) forms; a token it cannot read
+ * single (U+41), range (U+460-52F), and wildcard (U+00??) forms. A token it cannot read
  * is skipped rather than failing the whole descriptor.
  *
  * @param descriptor - the unicode-range value
@@ -285,13 +285,13 @@ function matchWeight(desired: number, ranges: Array<[number, number]>): number {
 		const index = ranges.findIndex((range) => boundary(range) === weight);
 		if (index !== -1) return index;
 	}
-	return 0; // Unreachable for a non-empty pool; keep the first face defensively
+	return 0; // Unreachable for a non-empty pool, so keep the first face defensively
 }
 
 /**
  * The order css font-matching prefers candidate weights in, for a request with
  * no exact face. The 400-500 band searches up to 500 first, then down, then the
- * heavier weights; below 400 prefers lighter; above 500 prefers heavier.
+ * heavier weights. Below 400 prefers lighter, and above 500 prefers heavier.
  */
 function weightSearchOrder(desired: number, weights: number[]): number[] {
 	const unique = [...new Set(weights)];
@@ -346,7 +346,7 @@ function absolutizeSrc(src: string, base: string): string {
 	});
 }
 
-/** Strip quotes and trim a font-family token. The `font` shorthand may carry size/style noise; the last comma-list entries are still family names. */
+/** Strip quotes and trim a font-family token. The `font` shorthand may carry size/style noise, but the last comma-list entries are still family names. */
 function normalizeFamily(raw: string): string {
 	return raw
 		.replace(/^["']|["']$/g, '')
@@ -376,7 +376,7 @@ const FONT_MAGIC: Array<[string, string]> = [
  * Relabels every embedded font data uri with the mime its bytes actually are, reading the
  * container from the leading magic bytes rather than trusting the source's label. A source that
  * serves a woff2 as `binary/octet-stream`, as f1 does, is corrected to `font/woff2`. Browsers
- * sniff the bytes regardless, so this is a serialization fix, not a behavior change; the honest
+ * sniff the bytes regardless, so this is a serialization fix, not a behavior change. The honest
  * label also gives the split-asset writer the right file extension. Runs after inlineResources
  * has embedded the bytes, so `font.src` carries the data uri.
  *
@@ -385,7 +385,7 @@ const FONT_MAGIC: Array<[string, string]> = [
 export function correctFontMime(captured: Captured): void {
 	for (const font of captured.fonts) {
 		font.src = font.src.replace(/data:([^;,)]*)(;base64)?,([A-Za-z0-9+/=]+)/g, (whole, _mime: string, base64: string, payload: string) => {
-			if (!base64) return whole; // A url-encoded data uri is left as written; its bytes are not base64.
+			if (!base64) return whole; // A url-encoded data uri is left as written, since its bytes are not base64.
 			const mime = fontMimeFromBytes(payload);
 			return mime ? `data:${mime};base64,${payload}` : whole;
 		});
@@ -445,7 +445,7 @@ function faceMergeKey(font: FontFace): string {
 		.map(([name, value]) => `${name}:${value}`)
 		.join(';');
 	const payload = font.src.match(/data:[^,]*,([A-Za-z0-9+/=]+)/);
-	// The data uri payload identifies the bytes; a face still on a url groups by that url instead.
+	// The data uri payload identifies the bytes. A face still on a url groups by that url instead.
 	return `${normalizeFamily(font.family).toLowerCase()}|${descriptors}|${payload ? payload[1] : font.src}`;
 }
 

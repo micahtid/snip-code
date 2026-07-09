@@ -3,7 +3,7 @@
  *
  * Pipeline position: resolve, after var resolution
  * Reads from Captured: clone, bakedStyles
- * Writes to Captured: bakedStyles + clone; a spec-equivalent rewrite of one property family
+ * Writes to Captured: bakedStyles + clone (a spec-equivalent rewrite of one property family)
  *
  * Why this exists: a common Tailwind pattern sets a multi-entry `transition-property` list,
  * `color, background-color, border-color, ...`, against a `transition-duration` and
@@ -35,8 +35,8 @@ export const TIMING_LONGHANDS = ['transition-duration', 'transition-timing-funct
  * Pads every clone element's transition timing sub-lists to its `transition-property` length by
  * css cycling, so the later fold into the `transition` shorthand keeps each layer's timing
  * rather than dropping it onto the first. Mutates the clone inline styles and their baked maps
- * in place; a no-op for any element without a genuine multi-property transition whose timing
- * sub-list is shorter than its property list.
+ * in place. It is a no-op for any element without a genuine multi-property transition whose
+ * timing sub-list is shorter than its property list.
  *
  * @param captured - clone + bakedStyles are mutated in place
  */
@@ -50,14 +50,14 @@ export function resolveTransitionTiming(captured: Captured): void {
 		const baked = captured.bakedStyles.get(el);
 		for (const longhand of TIMING_LONGHANDS) {
 			const raw = style.getPropertyValue(longhand);
-			if (!raw.trim()) continue; // Longhand absent in this engine, e.g. transition-behavior; leave it.
+			if (!raw.trim()) continue; // Longhand absent in this engine, e.g. transition-behavior, so leave it.
 			const values = splitTopLevelCommas(raw);
 			if (values.length === 0 || values.length >= properties.length) continue; // Already full length.
 			const cycled = properties.map((_, i) => values[i % values.length]).join(', ');
 			try {
 				style.setProperty(longhand, cycled, style.getPropertyPriority(longhand));
 			} catch {
-				// Invalid for this element; skip it rather than throw.
+				// Invalid for this element, so skip it rather than throw.
 			}
 			baked?.set(longhand, cycled); // Keep the baked map in step with the inline style.
 		}

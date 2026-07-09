@@ -3,7 +3,7 @@
  *
  * Pipeline position: convert
  * Reads from Captured: clone, inline-styled
- * Writes to Captured: nothing; deep-copies the clone, canonical clone untouched
+ * Writes to Captured: nothing. It deep-copies the clone, so the canonical clone is untouched.
  *
  * A format transform of the baked result.
  *
@@ -16,7 +16,7 @@
  * and dropping the per-case branches.
  *
  * Beyond identical-set dedup, it factors a shared base class out of near-identical
- * rules; see factorBaseClasses. Rules sharing a large declaration subset are split
+ * rules. See factorBaseClasses. Rules sharing a large declaration subset are split
  * into one base class holding the intersection and per-member modifier classes
  * carrying only the differences, so the common declarations ship once. The split is
  * render-neutral by construction, using flat equal-specificity selectors plus a family
@@ -37,7 +37,7 @@ interface ClassRule {
 /**
  * Emits the snip as bem-classed markup plus a css or scss stylesheet.
  *
- * @param captured - read-only; a deep copy of the clone is transformed
+ * @param captured - read-only, so a deep copy of the clone is transformed
  * @param scss - true for nested scss output, false for flat css
  */
 export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
@@ -70,7 +70,7 @@ export function emitBem(captured: Captured, scss: boolean): HtmlOutput {
 
 	// Factor a shared base class out of near-identical rules, demoting each member to
 	// a modifier carrying only its differences. Render-neutral by construction, so it
-	// runs unconditionally; the screenshot grader is the backstop.
+	// runs unconditionally. The screenshot grader is the backstop.
 	const { rules: finalRules, renames } = factorBaseClasses(block, rules, tagCounters);
 	applyBaseClasses(elements, renames);
 
@@ -101,7 +101,7 @@ function readDecls(el: HTMLElement): Array<[string, string]> {
  * top-level `;` and `:` only: a `;` or `:` inside parentheses, such as a `url(data:...;base64,)`
  * background or a nested function, or a quoted string is part of the value, never a
  * separator. An `!important` priority is stripped, matching the prior getPropertyValue
- * read; the class rules carry no competing selectors, so priority changes nothing.
+ * read. The class rules carry no competing selectors, so priority changes nothing.
  *
  * @param cssText - the element's serialized inline style
  */
@@ -177,7 +177,7 @@ interface FactorGroup {
  * with a fixed greedy intersection, no enumeration-order or random dependence.
  *
  * @param block - the bem block base, used to name the generated base classes
- * @param rules - the deduped class rules; members are mutated into modifiers in place
+ * @param rules - the deduped class rules, whose members are mutated into modifiers in place
  * @param counters - per-tag name counters, shared so generated base names stay unique
  * @returns the rules in emission order (each base before its members) and a map from
  *   every grouped member's old class name to its new `base base--modifier` string
@@ -204,7 +204,7 @@ function factorBaseClasses(
 			const modifierDecls = member.decls.filter(([p, v]) => !baseSet.has(`${p}:${v}`));
 			const oldClassName = member.className;
 			if (modifierDecls.length === 0) {
-				// The member's whole set is the base; it needs no modifier rule.
+				// The member's whole set is the base, so it needs no modifier rule.
 				renames.set(oldClassName, baseClassName);
 				dropped.add(member);
 				continue;
@@ -237,7 +237,7 @@ function factorBaseClasses(
  * class-name order seeds a group, then every other unassigned rule joins when it still
  * leaves the running intersection at or above the shared-declaration threshold. A group
  * is kept only when it has enough members and the family-guarded base is still large
- * enough; otherwise its seed stays solo. Class-name ordering makes the result
+ * enough. Otherwise its seed stays solo. Class-name ordering makes the result
  * deterministic.
  *
  * @param rules - the deduped class rules, with the root excluded from grouping
@@ -245,7 +245,7 @@ function factorBaseClasses(
  */
 function buildGroups(rules: ClassRule[]): FactorGroup[] {
 	// Richest rules seed first so a dominant pattern, for example a button reset, forms its
-	// group before a sparse rule can claim its members; ties break by class name so the
+	// group before a sparse rule can claim its members. Ties break by class name so the
 	// order stays deterministic.
 	const candidates = rules
 		.filter((r) => !r.isRoot)
@@ -302,7 +302,7 @@ function intersectDecls(base: Map<string, string>, decls: Array<[string, string]
  * shared longhand. When a member holds such a pair both properties are excluded from the
  * base and kept whole inside each modifier, preserving the member's original order.
  *
- * Order-sensitivity is read from the engine; see orderSensitive. It is never a hand-listed
+ * Order-sensitivity is read from the engine. See orderSensitive. It is never a hand-listed
  * shorthand table, so it covers every shorthand the browser knows, and any it gains
  * later, and never misclassifies independent properties. Identical independent
  * declarations therefore still hoist to the base even when a sibling differs across
@@ -339,7 +339,7 @@ function familyGuardedBase(base: Map<string, string>, members: ClassRule[]): Map
 /**
  * Whether two declarations' relative order changes the result, asked of the engine: it
  * sets them on a throwaway style in both orders and compares the resulting declaration
- * blocks. Equal blocks mean the two are independent and safe to separate; different
+ * blocks. Equal blocks mean the two are independent and safe to separate. Different
  * blocks mean they share a longhand one overrides, so order is significant. A false
  * positive only makes factoring more cautious, and the test has no false negatives, since
  * if order genuinely matters the blocks differ, so the guard stays render-safe. Memoized

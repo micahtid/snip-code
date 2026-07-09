@@ -1,11 +1,11 @@
 /**
  * inspect/schema/extract.ts: the page-schema extractor
  *
- * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
- * Reads from DOM: document/window; live, the whole page must be loaded
- * Writes to: nothing; pure extraction, returns a PageSchema
+ * Pipeline position: inspect, page-scoped. It reads the live dom directly and does not run the element pipeline.
+ * Reads from DOM: document/window. This runs live, so the whole page must be loaded.
+ * Writes to: nothing. This is pure extraction, and it returns a PageSchema.
  *
- * Principles applied: none; extraction.
+ * Principles applied: none. This is extraction.
  *
  * Why this exists: the schema inspector turns a whole page into a compressed
  * design-system schema. It walks the visible dom, stratified by section so a long
@@ -16,7 +16,7 @@
  * decorative and responsive language. The result is optimized (inspect/schema/optimize.ts) and,
  * with a key, synthesized by the ai pass (inspect/ai.ts). Ported by rewriting from
  * v1 schema/schema-extractor.ts as plain functions, dropping the class/logger
- * ceremony and v1's discarded root-variable pass; cross-origin stylesheets are read
+ * ceremony and v1's discarded root-variable pass. Cross-origin stylesheets are read
  * only when same-origin-readable, matching the other page-scoped inspectors.
  */
 import { computeFingerprint } from './fingerprint';
@@ -44,7 +44,7 @@ interface WalkedElement {
 const COLOR_PROPS = ['color', 'background-color', 'border-color', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color'];
 const SPACING_PROPS = ['padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'gap'];
 
-/** A button element or a link styled as a button; shared across the button-detection passes. */
+/** A button element or a link styled as a button. This is shared across the button-detection passes. */
 const BUTTON_SELECTOR = 'button, a[class*="btn"], a[class*="button"]';
 
 /** Whether a normalized color value is fully transparent, painting nothing. */
@@ -152,7 +152,7 @@ function readableRules(): CSSRule[] {
 		try {
 			rules = sheet.cssRules;
 		} catch {
-			continue; // Cross-origin stylesheet; not readable here.
+			continue; // Cross-origin stylesheet, not readable here.
 		}
 		for (const rule of Array.from(rules)) out.push(rule);
 	}
@@ -178,7 +178,7 @@ function walkDOM(): WalkedElement[] {
 			try {
 				if (el.matches(selector)) return true;
 			} catch {
-				// Invalid selector; skip it.
+				// Invalid selector, skip it.
 			}
 		}
 		return el.ownerDocument !== document; // Inside an iframe.
@@ -271,7 +271,7 @@ function extractPseudoColors(el: Element): string[] {
 				if (normalized) colors.push(normalized);
 			}
 		} catch {
-			// Cross-origin or unsupported pseudo; skip.
+			// Cross-origin or unsupported pseudo, skip.
 		}
 	}
 	return colors;
@@ -997,7 +997,7 @@ function extractButtonBlueprints(walked: WalkedElement[], states: StateRule[]): 
 	}
 
 	// Propagate the dominant non-flat style language to filled variants whose shadow
-	// the extraction missed; a capture gap reads as flat, not as intentional flatness.
+	// the extraction missed. A capture gap reads as flat, not as intentional flatness.
 	const tagCounts = new Map<string, number>();
 	for (const bp of blueprints) tagCounts.set(bp.styleTag, (tagCounts.get(bp.styleTag) || 0) + 1);
 	const dominantTag = Array.from(tagCounts.entries()).filter(([tag]) => tag !== 'flat').sort((a, b) => b[1] - a[1])[0];

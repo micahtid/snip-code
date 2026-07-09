@@ -3,7 +3,7 @@
 // and screenshot just that element (tight crop). Saves as original.jpg next to
 // source.json (was 0-screenshot.jpg in v1).
 //
-// Run once after capturing a fresh set of source.json files; the grader then has
+// Run once after capturing a fresh set of source.json files. The grader then has
 // a clean ground truth.
 
 import { chromium } from 'playwright';
@@ -18,7 +18,7 @@ const SETTLE_MS = 400; // Beat after fonts.ready for heavy layout/animation libs
 
 // Consent-management-platform hosts. Their scripts inject a cookie/consent banner on a
 // post-load timer and re-assert it against DOM hiding, so they fight the paint-based
-// overlay strip. Blocking the script at the network layer is deterministic: the banner
+// overlay strip. Blocking the script at the network layer is deterministic. The banner
 // never loads, so the reference shows the component, not the consent chrome. This is a
 // closed, well-known class of third-party chrome, blocked by class, never per-site.
 const CONSENT_HOSTS = /(?:^|\.)(?:cookielaw\.org|onetrust\.com|cookiebot\.com|trustarc\.com|osano\.com|usercentrics\.eu|cookieyes\.com|civiccomputing\.com|quantcast\.com|sourcepoint\.com|didomi\.io)$/i;
@@ -61,19 +61,19 @@ async function findBundles(dataDir) {
  * reference. The snipped element never includes them, so a reference that does is wrong
  * ground truth.
  *
- * Universal by construction: an overlay is found by how it paints, never by a name or
- * class pattern (which only ever catches the banners we happened to list). An element is
+ * This is universal by construction. An overlay is found by how it paints, never by a name
+ * or class pattern (which only ever catches the banners we happened to list). An element is
  * "foreign" when it is neither the target, a descendant (part of the snip), nor an
  * ancestor (hiding it would hide the snip). Two paint signals together catch any overlay:
  *  - any foreign element pinned to the viewport (position fixed or sticky), because such
  *    an element pins over an element screenshot at every scroll offset (the sticky-nav
- *    case); and
+ *    case), and
  *  - any foreign element the browser's own hit-test reports painting above the target
  *    anywhere inside its box (absolute overlays, modal backdrops, top-layer dialogs).
  * Each match is hidden at its outermost foreign container, so the whole banner goes, not
  * a leaf.
  *
- * Hide with visibility:hidden rather than removing the node: a sticky or otherwise in-flow
+ * Hide with visibility:hidden rather than removing the node. A sticky or otherwise in-flow
  * overlay occupies layout space (a sticky sidebar is often a grid or flex track), so
  * removing it reflows the page and collapses the target's own geometry, corrupting the
  * very capture this protects. visibility:hidden stops the paint (so it leaves the
@@ -81,7 +81,7 @@ async function findBundles(dataDir) {
  * browser drops hidden nodes from hit-testing, so the next pass naturally converges. Runs
  * a few passes because hiding one layer can reveal another and some banners re-mount. Must
  * run after the target is scrolled to its final screenshot position, since a sticky
- * overlay's overlap depends on scroll. Never throws; a page with no overlay is unchanged.
+ * overlay's overlap depends on scroll. Never throws, and a page with no overlay is unchanged.
  *
  * @param page - the loaded page, already scrolled to the screenshot position
  * @param selector - the target element's css selector
@@ -154,7 +154,7 @@ async function snapshotBundle(browser, bundle) {
 		try {
 			host = new URL(route.request().url()).host;
 		} catch {
-			// Opaque url (data:, blob:); let it through.
+			// Opaque url (data:, blob:), so let it through.
 		}
 		return CONSENT_HOSTS.test(host) ? route.abort() : route.continue();
 	});
@@ -166,11 +166,11 @@ async function snapshotBundle(browser, bundle) {
 		const locator = page.locator(src.selector).first();
 		if ((await locator.count()) === 0) throw new Error(`selector matched 0 elements: ${src.selector}`);
 		await locator.scrollIntoViewIfNeeded({ timeout: 5000 });
-		// Settle again after scrolling: a reveal-on-scroll animation only fires once its
+		// Settle again after scrolling. A reveal-on-scroll animation only fires once its
 		// element enters the viewport, so shooting immediately captures a mid-fade frame
 		// (a washed-out, low-opacity reference). The same wait the snip side now uses.
 		await page.waitForTimeout(SETTLE_MS);
-		// Hide foreign overlays at the final screenshot position: a sticky nav only overlaps
+		// Hide foreign overlays at the final screenshot position. A sticky nav only overlaps
 		// the element once it is scrolled into view, so this must run after the scroll, not
 		// before. Re-acquire the element box afterward in case hiding shifted layout.
 		await hideOverlays(page, src.selector);
@@ -178,7 +178,7 @@ async function snapshotBundle(browser, bundle) {
 		await page.waitForTimeout(120);
 		const pngBuf = await locator.screenshot({ type: 'png', omitBackground: false });
 
-		// Re-encode to jpg (matches the original.jpg convention; q92 keeps edges crisp).
+		// Re-encode to jpg (matches the original.jpg convention, and q92 keeps edges crisp).
 		const jpgBuf = await sharp(pngBuf).jpeg({ quality: 92 }).toBuffer();
 		await fs.writeFile(path.join(bundle.dir, 'original.jpg'), jpgBuf);
 		const meta = await sharp(jpgBuf).metadata();

@@ -8,18 +8,18 @@
  * Principles applied: none. Ui only.
  *
  * Why this exists: after a snip completes the content script ships the generated
- * code to the side panel, where App listens; see App.tsx. This renders it as v1's
- * code block, a gradient header holding a copy action, a download action that saves
+ * code to the side panel, where App listens (see App.tsx). This renders it as v1's
+ * code block. A gradient header holds a copy action, a download action that saves
  * the files to disk, and, for the self-contained html-shaped formats, a preview
- * action that opens the rendered output in a new tab,
- * over a monospace, scrollable code surface. Snip mode auto-persists the snippet in the
+ * action that opens the rendered output in a new tab. Below the header sits a
+ * monospace, scrollable code surface. Snip mode auto-persists the snippet in the
  * content script via storeSnippet, so the bookmark here is a "saved"
- * indicator, not a second write. Assistive mode shows the emitted json; a
+ * indicator, not a second write. Assistive mode shows the emitted json, and a
  * builder-gated page shows the static unsupported message.
  *
  * Note: live format switching, re-emitting all 7 formats without a re-snip, is a
- * deliberate follow-up, not wired here. `Captured` holds live dom and cannot be
- * shipped back to re-emit, and polish only applies to html/bem; the panel
+ * deliberate follow-up that is not wired here. `Captured` holds live dom and cannot be
+ * shipped back to re-emit, and polish only applies to html/bem. The panel
  * renders whichever format the pipeline produced from the settings default output.
  */
 import { useEffect, useState } from 'react';
@@ -35,9 +35,9 @@ export interface SnipResult {
 	format?: OutputFormat;
 	html?: string;
 	css?: string;
-	/** Self-contained html document for snip mode; kept for preview + storage. */
+	/** Self-contained html document for snip mode, kept for preview and storage. */
 	output?: string;
-	/** Output split into referenced files: index.html plus svgs and images; html-shaped snips only. */
+	/** Output split into referenced files: index.html plus svgs and images. Html-shaped snips only. */
 	files?: AssetFile[];
 	/** Emitted assistive json for assistive mode. */
 	json?: string;
@@ -75,8 +75,9 @@ export function ResultPanel({ result }: ResultPanelProps) {
 
 	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
 
-	// The output as switchable files: the pipeline's split, index.html plus the lifted
-	// svg/image files, for html-shaped snips, else one synthetic file for json/other formats.
+	// The output as switchable files. For html-shaped snips this is the pipeline's split,
+	// index.html plus the lifted svg/image files. Otherwise it is one synthetic file for
+	// json and other formats.
 	const files: AssetFile[] = result.files?.length
 		? result.files
 		: [{ name: result.mode === 'assistive' ? 'output.json' : 'output.html', language: result.mode === 'assistive' ? 'json' : 'html', text: code }];
@@ -84,9 +85,9 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	const copyText = activeFile.text ?? activeFile.dataUrl ?? '';
 
 	// Preview makes sense for the html-shaped formats, whose output is a self-contained
-	// document, markup plus an inline stylesheet, that renders on its own: the html
-	// format, semantic bem classes plus css, and the bem-scss/legacy bem-css variants.
-	// Tailwind/jsx/vue need a build step or a framework, so they would not render standalone.
+	// document (markup plus an inline stylesheet) that renders on its own. Those are the
+	// html format with semantic bem classes plus css, and the bem-scss/legacy bem-css
+	// variants. Tailwind/jsx/vue need a build step or a framework, so they would not render standalone.
 	const PREVIEWABLE: ReadonlySet<string> = new Set(['html', 'bem-css', 'bem-scss']);
 	// Preview renders the inlined self-contained document, so it works even though the
 	// displayed index.html references the lifted files by name.
@@ -105,7 +106,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 
 	const onPreview = (): void => {
 		// Open the generated html in a new tab. A blob url is used because data: urls
-		// are blocked for top-level navigation; the url is revoked once the new tab
+		// are blocked for top-level navigation. The url is revoked once the new tab
 		// has had time to load it.
 		const url = URL.createObjectURL(new Blob([previewSource], { type: 'text/html' }));
 		window.open(url, '_blank', 'noopener');
@@ -113,7 +114,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	};
 
 	// Save a single file to disk. Binary files (images, fonts) carry a data: url that
-	// downloads directly; text files such as html, svg, and json become a blob whose object
+	// downloads directly. Text files such as html, svg, and json become a blob whose object
 	// url is revoked once the browser has read it.
 	const downloadFile = (file: AssetFile): void => {
 		if (file.dataUrl) {
@@ -178,7 +179,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 					<img src={activeFile.dataUrl} alt={activeFile.name} style={imagePreview} />
 				</div>
 			) : activeFile.language === 'font' ? (
-				<div style={binaryNote}>Binary font file — use Download to save {activeFile.name}.</div>
+				<div style={binaryNote}>Binary font file. Use Download to save {activeFile.name}.</div>
 			) : (
 				<pre className="sc-scroll" style={display}>
 					<code>{activeFile.text}</code>
@@ -191,7 +192,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	);
 }
 
-/** The download mime type for a text file's language; image files use their data: url instead. */
+/** The download mime type for a text file's language. Image files use their data: url instead. */
 function mimeFor(language: AssetFile['language']): string {
 	if (language === 'svg') return 'image/svg+xml';
 	if (language === 'json') return 'application/json';

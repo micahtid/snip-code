@@ -1,9 +1,9 @@
 /**
- * polish/restore.ts: orphan prune after the polish edits
+ * polish/restore.ts: orphan prune after the polish edits.
  *
- * Pipeline position: polish
- * Reads from Captured: n/a; operates on html + css strings
- * Writes to Captured: n/a
+ * Pipeline position: polish.
+ * This does not read from Captured. It operates on html and css strings.
+ * It does not write to Captured.
  *
  * The orphan prune is dead-code elimination, not aesthetic surgery.
  *
@@ -25,15 +25,15 @@ export function finalize(html: string, css: string): { html: string; css: string
 }
 
 /**
- * Drops css rules whose every class-selector token is absent from the markup.
- * Conservative: a rule is removed only when none of its `.class` tokens appear as
- * a class in the html, so element/pseudo/attribute rules are always kept.
+ * Drops css rules whose every class-selector token is absent from the markup. It is
+ * conservative. A rule is removed only when none of its `.class` tokens appear as a class in
+ * the html, so element, pseudo, and attribute rules are always kept.
  */
 function pruneOrphans(css: string, html: string): string {
 	const present = htmlClassTokens(html);
 	return css.replace(/([^{}]+)\{[^}]*\}/g, (block, selector: string) => {
 		const classes = (selector.match(/\.[A-Za-z_][\w-]*/g) ?? []).map((c) => c.slice(1));
-		if (classes.length === 0) return block; // Not class-targeted; keep.
+		if (classes.length === 0) return block; // Not class-targeted, so keep.
 		return classes.some((c) => present.has(c)) ? block : '';
 	});
 }

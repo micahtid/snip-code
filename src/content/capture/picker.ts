@@ -1,27 +1,27 @@
 /**
  * capture/picker.ts: in-page element picker overlay
  *
- * Pipeline position: capture; the front door, produces the chosen Element
- * Reads from Captured: n/a; runs before Captured exists
- * Writes to Captured: n/a; hands the chosen Element + screenshot to the orchestrator
+ * Pipeline position: capture (the front door, produces the chosen Element)
+ * Reads from Captured: n/a (runs before Captured exists)
+ * Writes to Captured: n/a (hands the chosen Element + screenshot to the orchestrator)
  *
  * Why this exists: every snip starts with the user choosing an element. This
  * overlay gives live visual feedback, a highlight box, edge guide lines, and a
  * tag/size tooltip, that tracks whatever is under the pointer, then resolves to
  * the chosen element on click. Ported, rewritten not copied, from v1
- * element-selector.ts; the meaningful v2 change is the sticky arrow-climb, which
+ * element-selector.ts. The meaningful v2 change is the sticky arrow-climb, which
  * v1 lacked, letting the user grab a wrapping container instead of the leaf they
  * happen to be hovering.
  *
  * The climb is sticky: arrowup walks to the parent, arrowdown walks back down
  * toward the leaf the cursor is over, and a climbed selection is preserved while
- * the pointer stays inside it; a plain mousemove no longer snaps back to the leaf,
- * the regression that made wrapping containers unreachable. Moving the pointer
- * out of the selection re-baselines to the fresh leaf under the cursor.
+ * the pointer stays inside it. A plain mousemove no longer snaps back to the leaf,
+ * which was the regression that made wrapping containers unreachable. Moving the
+ * pointer out of the selection re-baselines to the fresh leaf under the cursor.
  *
  * Deliberately no Set<string> of "blocked" container tags, which v1 had to avoid
- * snapping to body/main: hardcoded tag-name Sets are disallowed, and the sticky
- * climb makes the heuristic unnecessary, the user climbs on purpose.
+ * snapping to body/main. Hardcoded tag-name Sets are disallowed, and the sticky
+ * climb makes the heuristic unnecessary, since the user climbs on purpose.
  */
 
 /** Options the orchestrator passes to drive selection. */
@@ -39,17 +39,17 @@ const Z_OVERLAY = 2147483647;
 const Z_GUIDES = 2147483646;
 
 /**
- * Drives the pick interaction. Construct, then call activate(); the overlay
+ * Drives the pick interaction. Construct, then call activate(). The overlay
  * tears itself down on select or cancel.
  */
 export class ElementPicker {
 	private readonly options: PickerOptions;
 	private active = false;
-	/** The element that would be snipped on click; may be a climbed ancestor of `leaf`. */
+	/** The element that would be snipped on click. May be a climbed ancestor of `leaf`. */
 	private current: Element | null = null;
-	/** The actual element under the cursor; the floor that arrowdown descends toward. */
+	/** The actual element under the cursor, the floor that arrowdown descends toward. */
 	private leaf: Element | null = null;
-	/** True once the user has climbed above the leaf; preserved across mousemove. */
+	/** True once the user has climbed above the leaf. Preserved across mousemove. */
 	private climbed = false;
 	/** Last cursor position, so a keyboard climb can re-place the tooltip. */
 	private lastX = 0;
@@ -115,7 +115,7 @@ export class ElementPicker {
 			borderRadius: '2px',
 			// Translate, which is gpu-composited, instead of top/left to avoid layout thrash.
 			transform: 'translate(0,0)',
-			// Elastic settle that matches v1's selection feel; opacity fades faster.
+			// Elastic settle that matches v1's selection feel. Opacity fades faster.
 			transition:
 				'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), width 0.25s cubic-bezier(0.22, 1, 0.36, 1), height 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out',
 			top: '0',
@@ -267,13 +267,13 @@ export class ElementPicker {
 		}
 	};
 
-	/** While scrolling, fade the chrome out; positions are stale until it settles. */
+	/** While scrolling, fade the chrome out. Positions are stale until it settles. */
 	private readonly onScrollOrResize = (): void => {
 		this.scrolling = true;
 		if (this.overlay) this.overlay.style.opacity = '0';
 		if (this.tooltip) this.tooltip.style.opacity = '0';
 		this.guides.forEach((g) => (g.style.opacity = '0'));
-		// Positions are stale after a scroll; drop the selection and any climb so the
+		// Positions are stale after a scroll. Drop the selection and any climb so the
 		// next hover starts clean.
 		this.current = null;
 		this.leaf = null;
@@ -308,7 +308,7 @@ export class ElementPicker {
 		try {
 			screenshot = await captureElementScreenshot(element);
 		} catch {
-			// A missing screenshot never blocks the snip; the code phases do not need it.
+			// A missing screenshot never blocks the snip. The code phases do not need it.
 			screenshot = '';
 		}
 		this.deactivate();
@@ -362,7 +362,7 @@ async function captureElementScreenshot(element: Element): Promise<string> {
 
 	const dpr = window.devicePixelRatio || 1;
 	const img = await loadImage(res.result.dataUrl);
-	// captureVisibleTab returns the whole viewport at device resolution; crop the
+	// captureVisibleTab returns the whole viewport at device resolution. Crop the
 	// element's padded region out of it.
 	const sx = left * dpr;
 	const sy = top * dpr;
@@ -392,7 +392,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 	});
 }
 
-/** A uuid v4 for message correlation; crypto.randomUUID is available in mv3. */
+/** A uuid v4 for message correlation. crypto.randomUUID is available in mv3. */
 function cryptoId(): string {
 	return crypto.randomUUID();
 }

@@ -1,9 +1,9 @@
-// Local fixture harness: the drift-free regression gate from FIDELITY-PLAN.md.
+// Local fixture harness: the drift-free regression gate.
 //
 // The 23-bundle live corpus drifts run to run (sites change, captures vary), so a
 // raw SSIM delta there can mislead. These fixtures are static local pages served
-// over loopback http, so a snip's output is a pure function of the pipeline code:
-// zero drift, any score change is a real code effect. Each fixture isolates one
+// over loopback http, so a snip's output is a pure function of the pipeline code.
+// With zero drift, any score change is a real code effect. Each fixture isolates one
 // root cause (token resolution, inherited typography, background image, lazy image,
 // scroll reveal, interactive-state re-emit).
 //
@@ -11,7 +11,7 @@
 //   1. captures the native browser render of the element (the ground truth),
 //   2. snips it through the built extension and grades the output against that truth,
 //   3. snips it a second time and asserts the two outputs are byte-identical
-//      (the determinism gate: the transform must be deterministic).
+//      (the determinism gate, meaning the transform must be deterministic).
 //
 // Requires `npm run build` so dist/ is current. Run: `node tests/fixtures.mjs`.
 
@@ -35,7 +35,7 @@ const SETTLE_MS = 400;
 
 /**
  * One fixture per root cause. `settle` describes how the native reference is brought
- * to its visible state (scroll for reveal-gated content); the snip path must reach
+ * to its visible state (scroll for reveal-gated content). The snip path must reach
  * the same state on its own once the relevant change lands.
  */
 const FIXTURES = [
@@ -49,7 +49,7 @@ const FIXTURES = [
 	{ name: 'object-fit-img', selector: '.cell img', viewport: { width: 900, height: 400 } },
 	{ name: 'escaped-bg-tile', selector: '.card', viewport: { width: 900, height: 360 } },
 	// Interactive states (features/states.ts). These exercise the :hover/:focus/:active
-	// re-emit path; the gate measures the RESTING render (state selectors match nothing at
+	// re-emit path. The gate measures the RESTING render (state selectors match nothing at
 	// rest), so they must stay byte-deterministic and pixel-neutral like every other fixture.
 	{ name: 'state-card', selector: '.card', viewport: { width: 900, height: 520 } },
 	{ name: 'state-form', selector: '.toolbar', viewport: { width: 900, height: 520 } },
@@ -83,7 +83,7 @@ async function ensureTile() {
 	}
 }
 
-/** Serve the fixture directory over loopback http; returns { server, base }. */
+/** Serve the fixture directory over loopback http. Returns { server, base }. */
 async function serve() {
 	const server = http.createServer(async (req, res) => {
 		const rel = decodeURIComponent((req.url || '/').split('?')[0]).replace(/^\/+/, '');
@@ -122,7 +122,7 @@ async function captureReference(browser, url, fx) {
 	}
 }
 
-/** Snip the fixture element through the extension; returns { html, probe }. */
+/** Snip the fixture element through the extension. Returns { html, probe }. */
 async function snipFixture(context, url, fx) {
 	const page = await context.newPage();
 	await page.setViewportSize(fx.viewport);

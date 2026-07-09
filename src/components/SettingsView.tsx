@@ -7,12 +7,12 @@
  *
  * Principles applied: none. Ui only.
  *
- * Why this exists: the settings tab, provider dropdown, password-masked
- * api key, model override, per-field verify buttons, default output format,
- * assistive delivery, webhook url. Everything persists to chrome.storage.local via
- * utils/storage, never sync. The key is validated against the live provider
- * through utils/byok and never logged. If no key is configured, polish silently
- * no-ops and the rest of the pipeline still produces output.
+ * Why this exists: this is the settings tab. It holds a provider dropdown, a
+ * password-masked api key, a model override, per-field verify buttons, a default
+ * output format, assistive delivery, and a webhook url. Everything persists to
+ * chrome.storage.local via utils/storage, never sync. The key is validated against
+ * the live provider through utils/byok and never logged. If no key is configured,
+ * polish silently no-ops and the rest of the pipeline still produces output.
  */
 import { useEffect, useState } from 'react';
 import { Check, ChevronDown, Eye, EyeOff, ShieldCheck } from 'lucide-react';
@@ -95,7 +95,7 @@ export function SettingsView() {
 	const [key, setKeyState] = useState('');
 	const [result, setResult] = useState<ValidationResult | null>(null);
 	const [testing, setTesting] = useState(false);
-	// The key is masked by default; the in-field eye toggles it and only appears while
+	// The key is masked by default. The in-field eye toggles it and only appears while
 	// the field is active, meaning focused or holding a key, never on an untouched empty field.
 	const [showKey, setShowKey] = useState(false);
 	const [keyFocused, setKeyFocused] = useState(false);
@@ -151,7 +151,7 @@ export function SettingsView() {
 				/>
 			</div>
 
-			{/* Each field has its own verify button; both run the same key+model validation. */}
+			{/* Each field has its own verify button, and both run the same key+model validation. */}
 			<div style={styles.field}>
 				<label style={styles.label}>API Key (Local)</label>
 				<div style={styles.inputRow}>

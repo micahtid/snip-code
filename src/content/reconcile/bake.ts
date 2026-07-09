@@ -5,30 +5,32 @@
  * Reads from Captured: root, clone, foundationRules, componentRules
  * Writes to Captured: bakedStyles per clone element, clone inline styles, and warnings
  *
- * Principles applied: prefers authored CSS values that round-trip to the same
- * computed value; bakes inherited values that diverge from defaults; bakes
- * escaped parent layout context.
+ * This module follows a few principles. It prefers authored CSS values that
+ * round-trip to the same computed value. It bakes inherited values that diverge
+ * from defaults, and it bakes escaped parent layout context.
  *
- * Why this exists: the picked subtree's styles live in stylesheets that do not
+ * It exists because the picked subtree's styles live in stylesheets that do not
  * travel with the snip. This module bakes the winning value of every authored
  * property onto each element so the snip renders standalone.
  *
- * - Per element: if the authored value, from match.ts, reproduces the captured
- * computed value when forced onto the live element, ship the authored string,
- * preserving var()/clamp()/%/oklch()/calc(). Otherwise ship computed so pixel
- * fidelity is locked at the capture viewport.
- * - Snip root only: inherited properties whose computed value at the root
- * diverges from the document default are baked onto the root, so they survive
- * when the snip loses its ancestor chain. Children inherit from the root
- * automatically, so only the root needs them. The inherited-property list is
- * read dynamically from the browser via a parent/child probe, never hardcoded;
- * the engine is the authoritative source of which properties inherit anyway.
- * - Snip root only: if the root was a flex/grid item of a parent outside the
- * snip, its box size came from that vanished context; we bake the root's
- * resolved geometry so it renders at the same size standalone. No synthetic
- * wrapper element.
+ * Per element: if the authored value from match.ts reproduces the captured
+ * computed value when forced onto the live element, ship the authored string.
+ * That preserves var(), clamp(), %, oklch(), and calc(). Otherwise ship the
+ * computed value so pixel fidelity is locked at the capture viewport.
  *
- * The probe is the whole trick: it never trusts the matched cascade blindly, it
+ * Snip root only: inherited properties whose computed value at the root diverges
+ * from the document default are baked onto the root, so they survive when the
+ * snip loses its ancestor chain. Children inherit from the root automatically, so
+ * only the root needs them. The inherited-property list is read dynamically from
+ * the browser via a parent/child probe, never hardcoded. The engine is the
+ * authoritative source of which properties inherit anyway.
+ *
+ * Snip root only: if the root was a flex/grid item of a parent outside the snip,
+ * its box size came from that vanished context. We bake the root's resolved
+ * geometry so it renders at the same size standalone, with no synthetic wrapper
+ * element.
+ *
+ * The probe is the whole trick. It never trusts the matched cascade blindly, but
  * validates each decision against ground truth (getComputedStyle). That is why
  * this file needs no hand-curated property Sets, no per-tag branches, and no
  * is<X> predicates.
@@ -41,7 +43,7 @@ import { authoredCascade } from './match';
  * clone, recording the result in bakedStyles and writing inline styles so the
  * clone serializes to standalone html.
  *
- * @param captured - the capture; clone + bakedStyles are mutated in place
+ * @param captured - the capture whose clone and bakedStyles are mutated in place
  */
 export function reconcile(captured: Captured): void {
 	const cascade = authoredCascade(captured);
@@ -66,7 +68,7 @@ export function reconcile(captured: Captured): void {
 	}
 
 	// The inherited-divergence and escaped-layout passes act only on the snip
-	// root at index 0: inherited values flow down to children automatically, and
+	// root at index 0. Inherited values flow down to children automatically, and
 	// the escaped-layout box belongs to the root.
 	const rootOriginal = originals[0];
 	const rootClone = clones[0];
@@ -105,7 +107,7 @@ function bakeRootContext(original: Element, clone: Element, captured: Captured):
  */
 function bakeInheritedDivergence(original: Element, baked: Map<string, string>): void {
 	const rootComputed = getComputedStyle(original);
-	// The value `currentcolor` resolves to on this element; every color property whose
+	// The value `currentcolor` resolves to on this element. Every color property whose
 	// initial value is `currentcolor` follows it unless set (see the guard in the loop).
 	const rootColor = rootComputed.getPropertyValue('color');
 	// A same-tag element in a neutral parent gives both the ua default values and
@@ -130,7 +132,7 @@ function bakeInheritedDivergence(original: Element, baked: Map<string, string>):
 			// onto the root that then inherits down and overrides every descendant, so a button
 			// that sets only a light `color` keeps inheriting the root's dark fill and paints dark.
 			// The `color` divergence is baked in this same pass and carries the real value to
-			// descendants, whose derived colors track their own `color` again; freezing the
+			// descendants, whose derived colors track their own `color` again. Freezing the
 			// color-derived property is therefore both redundant and harmful. `color` itself is
 			// excluded so the load-bearing divergence still bakes. A non-color property's value can
 			// never equal the color string, so this fires only for currentcolor-derived colors.
@@ -153,8 +155,8 @@ function bakeInheritedDivergence(original: Element, baked: Map<string, string>):
  * @returns true when the property inherits (and is therefore divergence-prone)
  */
 function isInherited(parent: HTMLElement, child: Element, prop: string, value: string, defaultVal: string): boolean {
-	// If the root value equals the default we never get here, so value!==default;
-	// that makes the child's pickup observable.
+	// If the root value equals the default we never get here, so value!==default,
+	// which makes the child's pickup observable.
 	parent.style.setProperty(prop, value);
 	try {
 		const childNow = getComputedStyle(child).getPropertyValue(prop);
@@ -170,8 +172,9 @@ function isInherited(parent: HTMLElement, child: Element, prop: string, value: s
  * the root keeps its size standalone. No synthetic wrapper is created.
  *
  * width/height are named explicitly here because they are the specific geometry
- * a flex/grid container imposes on its items, a bounded css-spec mechanism rather than
- * a curated heuristic Set, and only when the escaped-context condition holds.
+ * a flex/grid container imposes on its items. That is a bounded css-spec mechanism
+ * rather than a curated heuristic Set, and it applies only when the escaped-context
+ * condition holds.
  *
  * @param original - the live root
  * @param baked - the root's baked map, extended in place
@@ -203,7 +206,7 @@ function bakeElement(original: Element, authored: Map<string, string>): Map<stri
 	const computedStyle = getComputedStyle(original);
 	for (const [prop, authoredValue] of authored) {
 		const computed = computedStyle.getPropertyValue(prop);
-		// Shorthands and custom props do not appear in computed style; we cannot
+		// Shorthands and custom props do not appear in computed style. We cannot
 		// validate them against ground truth, so trust the authored value.
 		if (computed === '') {
 			baked.set(prop, authoredValue);
@@ -251,7 +254,7 @@ function writeInline(clone: Element, baked: Map<string, string>): void {
 		try {
 			style.setProperty(prop, value);
 		} catch {
-			// Invalid declaration for this element; skip it rather than throw.
+			// Invalid declaration for this element, so skip it rather than throw.
 		}
 	}
 }

@@ -2,16 +2,16 @@
  * minimize/logical.ts: fold logical properties to physical
  *
  * Pipeline position: minimize, after prune and before normalize
- * Reads from Captured: page.viewport via the oracle; warnings on graceful skip
- * Writes to Captured: nothing; transforms the stylesheet string
+ * Reads from Captured: page.viewport via the oracle, plus warnings on graceful skip
+ * Writes to Captured: nothing. It transforms the stylesheet string.
  *
  * Why this exists: the reproduce phase emits whatever the engine computed, which for a
- * left-to-right, horizontal page is a mix of logical properties, margin-inline-start,
- * border-end-end-radius, inset-block, that a human writing that page would have spelled
- * physically: margin-left, border-bottom-right-radius, top/bottom. Left as logical, four
+ * left-to-right, horizontal page is a mix of logical properties (margin-inline-start,
+ * border-end-end-radius, inset-block) that a human writing that page would have spelled
+ * physically as margin-left, border-bottom-right-radius, and top/bottom. Left as logical, four
  * corner radii never fold, because border-radius is a physical shorthand. This rewrites the
  * logical properties to their physical equivalents, but only on the rules whose every matched
- * element is horizontal-tb and ltr, where the two are exactly equivalent; the normalize pass
+ * element is horizontal-tb and ltr, where the two are exactly equivalent. The normalize pass
  * that runs next then folds the completed physical sets into border-radius, margin, and the
  * rest. An element that is vertical or rtl keeps its logical properties, which is what a human
  * would write there too.
@@ -63,12 +63,12 @@ const HAS_LOGICAL = /(?:^|[;{\s])(?:border-(?:start|end)-(?:start|end)-radius|(?
 
 /**
  * Rewrites logical properties to physical on the rules whose every matched element is
- * horizontal-tb and ltr. Graceful by contract: returns the input unchanged on any
- * infrastructure failure, and reverts any rule whose rewrite is not render-neutral.
- * Deterministic: rules and declarations are processed in document order.
+ * horizontal-tb and ltr. It is graceful by contract, returning the input unchanged on any
+ * infrastructure failure, and reverting any rule whose rewrite is not render-neutral. It is
+ * deterministic, so rules and declarations are processed in document order.
  *
  * @param css - the stylesheet after prune
- * @param captured - source of the viewport size; warnings are appended here on skip
+ * @param captured - source of the viewport size. Warnings are appended here on skip.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @returns the stylesheet with logical properties folded to physical where safe
  */
@@ -91,7 +91,7 @@ export async function foldLogical(css: string, captured: Captured, markup: strin
 			if (rewritten === null) continue;
 			const saved = styleRule.style.cssText;
 			styleRule.style.cssText = rewritten;
-			// Render-neutral by construction for a horizontal-tb ltr element; the oracle is a
+			// Render-neutral by construction for a horizontal-tb ltr element. The oracle is a
 			// backstop against a value the rewrite mishandled. Scoped to the rule's own subtree.
 			if (!oracle.matchesSubset(oracle.subtreeTargets(elements))) styleRule.style.cssText = saved;
 		}
@@ -107,7 +107,7 @@ function isHorizontalLtr(win: Window, el: Element): boolean {
 
 /**
  * Rewrites a rule's logical declarations to physical, or null when it holds none. Longhands
- * are renamed; a two-value logical shorthand splits across its two physical sides; a border
+ * are renamed. A two-value logical shorthand splits across its two physical sides, and a border
  * block/inline shorthand copies its value to both. A non-logical declaration passes through.
  */
 function rewrite(cssText: string): string | null {

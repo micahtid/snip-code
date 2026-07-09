@@ -3,7 +3,7 @@
  *
  * Pipeline position: convert
  * Reads from Captured: clone, inline-styled
- * Writes to Captured: nothing; deep-copies the clone, canonical clone untouched
+ * Writes to Captured: nothing. It deep-copies the clone, so the canonical clone is untouched.
  *
  * A format transform of the baked result.
  *
@@ -24,10 +24,10 @@ import { atRulesCss, type HtmlOutput } from './html';
 
 /**
  * Emits the snip as tailwind-classed markup plus the shared @font-face/@keyframes
- * block. Fidelity in a tailwind project comes from utilities + arbitrary values;
- * the grader uses the inline html format, so this targets clean, usable output.
+ * block. Fidelity in a tailwind project comes from utilities + arbitrary values. The
+ * grader uses the inline html format, so this targets clean, usable output.
  *
- * @param captured - read-only; a deep copy of the clone is transformed
+ * @param captured - read-only, so a deep copy of the clone is transformed
  */
 export function emitTailwind(captured: Captured): HtmlOutput {
 	const work = captured.clone.cloneNode(true) as Element;
@@ -57,7 +57,7 @@ function elementToClasses(el: HTMLElement): string[] {
 
 /**
  * Maps one (property, value) to tailwind class(es). Curated utilities for common
- * properties; arbitrary-value fallback for the rest so coverage is total.
+ * properties, and an arbitrary-value fallback for the rest so coverage is total.
  */
 function classesFor(prop: string, value: string): string[] {
 	// Colors go through the palette matcher first.
@@ -126,7 +126,7 @@ function colorClass(prefix: 'text' | 'bg' | 'border', value: string): string {
 	return `${prefix}-[${tok(value)}]`;
 }
 
-/** Display keyword -> tailwind utility; `none` becomes `hidden`. */
+/** Display keyword -> tailwind utility. `none` becomes `hidden`. */
 function displayClass(value: string): string {
 	if (value === 'none') return 'hidden';
 	if (['flex', 'grid', 'block', 'inline', 'inline-block', 'inline-flex', 'inline-grid', 'contents', 'flow-root'].includes(value)) {
@@ -160,7 +160,7 @@ function arbitrary(prop: string, value: string): string {
 	return `[${prop}:${tok(value)}]`;
 }
 
-/** Escape a value for use inside a tailwind arbitrary bracket; spaces become underscores. */
+/** Escape a value for use inside a tailwind arbitrary bracket, where spaces become underscores. */
 function tok(value: string): string {
 	return value.trim().replace(/\s+/g, '_');
 }

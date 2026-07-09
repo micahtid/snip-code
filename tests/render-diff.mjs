@@ -79,8 +79,8 @@ async function readDpr(caseDir) {
 // given devicePixelRatio. The reference screenshot was captured at the bundle's dpr,
 // so the output must render at that same dpr or it lands at the wrong scale (an element
 // authored at N css px would otherwise fill N device px against a reference that fills
-// N*dpr): the css viewport is the device size divided by dpr, scaled back up on capture.
-// reducedMotion freezes css animations at frame 0 for determinism; fonts.ready replaces
+// N*dpr). The css viewport is the device size divided by dpr, scaled back up on capture.
+// reducedMotion freezes css animations at frame 0 for determinism. fonts.ready replaces
 // a brittle timer.
 export async function renderTarget(browser, htmlPath, width, height, dpr = 1) {
 	const cssW = Math.max(1, Math.round(width / dpr));
@@ -101,9 +101,9 @@ export async function toRawRGBA(buffer, width, height) {
 	return data;
 }
 
-// Fraction of pixels that carry visible ink: any channel more than INK_DELTA
+// Fraction of pixels that carry visible ink, which is any channel more than INK_DELTA
 // below pure white. This is the blank metric (deterministic, independent of the
-// reference): a rendered output is blank when its ink coverage is near zero. Used
+// reference). A rendered output is blank when its ink coverage is near zero. Used
 // to catch bundles that render empty even when their reference has visible content.
 const INK_DELTA = 12;
 export function inkCoverage(raw, width, height) {
@@ -131,7 +131,7 @@ async function gradeBundle(browser, bundle) {
 	const diffPixels = pixelmatch(srcRaw, renderRaw, null, width, height, { threshold: 0.1, includeAA: false });
 	const pixelScore = 1 - diffPixels / totalPixels;
 	const ssimScore = ssim({ data: srcRaw, width, height }, { data: renderRaw, width, height }).mssim;
-	// Ink coverage of both the render and the reference; a bundle is blank when its
+	// Ink coverage of both the render and the reference. A bundle is blank when its
 	// render ink is near zero while the reference's is not (see loop.mjs).
 	const ink = inkCoverage(renderRaw, width, height);
 	const refInk = inkCoverage(srcRaw, width, height);

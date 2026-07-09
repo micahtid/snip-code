@@ -3,26 +3,27 @@
  *
  * Pipeline position: reconcile
  * Reads from Captured: clone, bakedStyles, variables, and the synthesized <style> for
- *   used custom props; the @property scan itself lives in reconcile/properties.ts
+ *   used custom props. The @property scan itself lives in reconcile/properties.ts
  * Writes to Captured: clone, appending an @property <style>, and warnings
  *
  * A feature handler for the cascade-layering and registered-property mechanisms.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/@property
  * Detection criterion: a registered @property in the document whose name is a
- * custom property the snip uses. Early-returns when none match.
- * Transform contract: appends a <style> of the matching @property rules to the
- * clone. Reads document.styleSheets, the in-memory cssom. Clone only.
+ * custom property the snip uses. Otherwise it early-returns when none match.
+ * Transform contract: it appends a <style> of the matching @property rules to the
+ * clone. It reads document.styleSheets, the in-memory cssom. It touches the clone
+ * only.
  *
  * Why this exists: @layer order and @scope are already resolved into the baked
- * inline styles, match.ts builds the cascade and bake.ts's probe validates
- * every value against the computed result, which the browser produced with layer
- * and scope precedence applied. So they need no separate handling. @property is
- * the part that does not survive: a registered custom property carries a syntax,
- * inherits flag, and initial-value that govern how it falls back and interpolates,
- * for example an animated --angle gradient. Re-emitting the @property registration
- * keeps that behavior. Only the syntax registration is re-emitted, not a
- * synthetic layer order.
+ * inline styles. match.ts builds the cascade, and bake.ts's probe validates every
+ * value against the computed result, which the browser produced with layer and
+ * scope precedence applied. So they need no separate handling. @property is the part
+ * that does not survive. A registered custom property carries a syntax, inherits
+ * flag, and initial-value that govern how it falls back and interpolates, for
+ * example an animated --angle gradient. Re-emitting the @property registration keeps
+ * that behavior. Only the syntax registration is re-emitted, not a synthetic layer
+ * order.
  */
 import type { Captured } from '../../types';
 import { registeredProperties } from '../properties';

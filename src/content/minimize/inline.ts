@@ -2,30 +2,30 @@
  * minimize/inline.ts: inline the custom-property dumps
  *
  * Pipeline position: minimize, after the at-rule purge and before format
- * Reads from Captured: page.viewport via the oracle; warnings on graceful skip
- * Writes to Captured: nothing; transforms the stylesheet string
+ * Reads from Captured: page.viewport via the oracle, plus warnings on graceful skip
+ * Writes to Captured: nothing. It transforms the stylesheet string.
  *
- * Why this exists: the reproduce phase bakes a wall of custom properties, `--text-sm`,
- * `--border`, `--spacing`, onto the emitted rules and then reads them back through var(),
+ * Why this exists: the reproduce phase bakes a wall of custom properties (`--text-sm`,
+ * `--border`, `--spacing`) onto the emitted rules and then reads them back through var(),
  * an indirection a human writing this by hand would not keep. This phase resolves each
  * `var(--x)` to the value it actually holds at that site, read from the mounted frame, and
  * then drops the custom-property declarations nothing references any more, so the sheet
  * reads as the literal values it paints.
  *
- * Two safeties bound it. The inlining is oracle-gated: every var() a rule holds is resolved
+ * Two safeties bound it. The inlining is oracle-gated. Every var() a rule holds is resolved
  * over exactly the elements the rule matches, substituted only when they all agree, and the
  * whole batch is reverted if the computed-style oracle sees any render change. The deletion
  * is by construction, not oracle-gated, because getComputedStyle enumerates a custom
  * property, so removing its declaration changes that property's own computed value even
- * though nothing paints from it any more, which the oracle would wrongly veto; a name with no
+ * though nothing paints from it any more, which the oracle would wrongly veto. A name with no
  * surviving var() reference governs nothing, so dropping its declaration is render-neutral.
  *
  * A custom property is left alone, both its var() references and its declaration, when it
  * carries motion the resting frame cannot see: named inside an @keyframes, listed in a
  * transition or animation, or redefined by a state or pseudo rule. That last case matters
- * most: a resting `color: var(--x)` is dynamic, so if a
- * :hover rule redefines `--x` the color follows it on hover; inlining the resting reference
- * to its resting sample would freeze the color and strip the state change.
+ * most. A resting `color: var(--x)` is dynamic, so if a :hover rule redefines `--x` the color
+ * follows it on hover. Inlining the resting reference to its resting sample would freeze the
+ * color and strip the state change.
  */
 import type { Captured } from '../types';
 import { withOracle, type RenderOracle } from './oracle';
@@ -33,13 +33,13 @@ import { inScopeRule, parseSegments, serializeRules, WITHHELD } from './declarat
 
 /**
  * Resolves `var()` references to their per-site values and drops the custom-property
- * declarations left unreferenced. Graceful by contract: returns the input unchanged on any
- * infrastructure failure, and reverts the inlining alone if it is not render-neutral while
- * still dropping the dead declarations. Deterministic: rules and declarations are processed
- * in document order.
+ * declarations left unreferenced. It is graceful by contract, returning the input unchanged on
+ * any infrastructure failure, and reverting the inlining alone if it is not render-neutral
+ * while still dropping the dead declarations. It is deterministic, so rules and declarations
+ * are processed in document order.
  *
  * @param css - the stylesheet after the at-rule purge
- * @param captured - source of the viewport size; warnings are appended here on skip
+ * @param captured - source of the viewport size. Warnings are appended here on skip.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @returns the stylesheet with var() inlined and dead custom properties removed
  */
@@ -59,9 +59,9 @@ export async function inlineVars(css: string, captured: Captured, markup: string
 		if (!oracle.matchesReference()) inScope.forEach((r, i) => (r.style.cssText = saved[i]!));
 
 		// Drop custom-property declarations no longer referenced by any surviving var() and not
-		// held for motion. By construction, not oracle-gated: an unreferenced custom property
-		// paints nothing, so removing its declaration is render-neutral even though the oracle,
-		// which enumerates custom-property computed values, would read the change as one.
+		// held for motion. This is by construction, not oracle-gated. An unreferenced custom
+		// property paints nothing, so removing its declaration is render-neutral even though the
+		// oracle, which enumerates custom-property computed values, would read the change as one.
 		dropDeadCustomProps(oracle.sheet, inScope, held);
 		return serializeRules(Array.from(oracle.sheet.cssRules));
 	});
@@ -71,7 +71,7 @@ export async function inlineVars(css: string, captured: Captured, markup: string
  * The custom-property names that must not be inlined or dropped because their value carries
  * motion the resting frame cannot sample: a name written inside an @keyframes block, or a
  * name listed in a transition/animation value. A bare `@property` registration is not itself
- * a reason to hold: a registered name nothing animates or reads governs no motion, and
+ * a reason to hold, because a registered name nothing animates or reads governs no motion, and
  * holding it would keep alive the very dead pair the at-rule purge exists to drop. The real
  * motion carriers are keyframe writes, transition and animation mentions, and the withheld
  * state redefinitions addStateRedefinedNames adds below.
@@ -91,7 +91,7 @@ function motionHeldNames(css: string): Set<string> {
 /**
  * Adds to `held` every custom property a withheld state or pseudo rule declares. Such a
  * property changes value with the interactive state, so a resting rule that reads it through
- * var() is dynamic: inlining that reference to the resting value would freeze it and drop the
+ * var() is dynamic. Inlining that reference to the resting value would freeze it and drop the
  * state change the withheld rule reproduces.
  *
  * @param sheet - the mounted stylesheet
@@ -109,7 +109,7 @@ function addStateRedefinedNames(sheet: CSSStyleSheet, held: Set<string>): void {
 /**
  * Inlines one rule's var() references in place. For each declaration, each `var(--x)` whose
  * name is not motion-held is resolved to the value `--x` holds on every element the rule
- * matches; when they all agree on a non-empty value it is substituted, otherwise the
+ * matches. When they all agree on a non-empty value it is substituted, otherwise the
  * reference is left as written.
  */
 function inlineRule(oracle: RenderOracle, rule: CSSStyleRule, held: Set<string>): void {
@@ -127,9 +127,9 @@ function inlineRule(oracle: RenderOracle, rule: CSSStyleRule, held: Set<string>)
 		let value: string | null = null;
 		for (const el of elements) {
 			const v = win.getComputedStyle(el).getPropertyValue(name).trim();
-			if (!v) return null; // Unset here (a fallback would apply); leave the reference.
+			if (!v) return null; // Unset here (a fallback would apply), so leave the reference.
 			if (value === null) value = v;
-			else if (value !== v) return null; // Differs across the rule's elements; not one value.
+			else if (value !== v) return null; // Differs across the rule's elements, so not one value.
 		}
 		return value;
 	};

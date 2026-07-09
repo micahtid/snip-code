@@ -1,19 +1,18 @@
 /**
  * content/types.ts: the shared contracts that bind every pipeline phase
  *
- * Pipeline position: spans every phase; the type every phase reads/writes
- * Reads from Captured: n/a; defines it
- * Writes to Captured: n/a; defines it
+ * Pipeline position: spans every phase, the type every phase reads/writes
+ * Reads from Captured: n/a, it defines it
+ * Writes to Captured: n/a, it defines it
  *
- * Principles applied: none; type definitions only.
+ * Principles applied: none, type definitions only.
  *
- * Why this exists: the entire extension is a pipeline that threads one mutable
+ * It exists because the entire extension is a pipeline that threads one mutable
  * object (`Captured`) through five phases. Defining that object, plus the
- * message envelope and the storage schemas, in
- * one place is what lets the phases stay decoupled: each phase only needs to
- * know the shape, not the other phases. These definitions are the canonical
- * contract and must not drift; deviations break
- * inter-module assumptions.
+ * message envelope and the storage schemas, in one place is what lets the phases
+ * stay decoupled. Each phase only needs to know the shape, not the other phases.
+ * These definitions are the canonical contract and must not drift, because
+ * deviations break inter-module assumptions.
  *
  * Feature handlers (src/content/reconcile/features/*) may extend `Captured` via
  * typescript module augmentation in a paired `<module>.d.ts`, but only with a
@@ -52,8 +51,8 @@ export interface Captured {
 	// Captured pixels
 	screenshot: string; // "Data:image/png;base64,..."
 
-	// Dom: only valid during capture + reconcile phases; serialized at html emit
-	root: Element; // Original element reference; live dom
+	// Dom: only valid during capture + reconcile phases, serialized at html emit
+	root: Element; // Original element reference, live dom
 	clone: Element; // Detached working copy that bake.ts mutates
 
 	// Css
@@ -73,10 +72,10 @@ export interface Captured {
 	// Reconciliation working state: populated by bake.ts, consumed by emit
 	bakedStyles: Map<Element, Map<string, string>>;
 
-	// Interactive states measured by forcing them live: capture phase writes via
-	// capture/states-measure.ts; reconcile phase reads via reconcile/features/states.ts.
+	// Interactive states measured by forcing them live. The capture phase writes via
+	// capture/states-measure.ts, and the reconcile phase reads via reconcile/features/states.ts.
 	// Null means measurement did not run for this snip because cdp was unavailable, and states.ts
-	// falls back to copying authored rules; an empty array means measurement ran and found
+	// falls back to copying authored rules. An empty array means measurement ran and found
 	// no in-subtree state effect.
 	measuredStates: MeasuredState[] | null;
 
@@ -95,7 +94,7 @@ export interface MeasuredStateDecl {
 
 /** One layer of one element the forced state restyled, with the properties that changed. */
 export interface MeasuredAffected {
-	/** The original live element; reconcile maps it to its clone via pairedSubtrees. */
+	/** The original live element. Reconcile maps it to its clone via pairedSubtrees. */
 	element: Element;
 	/** The layer the delta lives on: '' for the element box, '::before'/'::after' for a generated
 	 * box whose own computed style changed, such as a glow/underline/reveal a pseudo-element carries. */
@@ -114,7 +113,7 @@ export interface MeasuredState {
 	affected: MeasuredAffected[];
 }
 
-/** Metadata about one discovered stylesheet, not its rules; those are flattened into CssRule[]. */
+/** Metadata about one discovered stylesheet, not its rules. Those are flattened into CssRule[]. */
 export interface Stylesheet {
 	href: string | null;
 	origin: 'same-origin' | 'cross-origin' | 'inline' | 'shadow';
@@ -175,7 +174,7 @@ export type MessageType =
 
 /**
  * One-way, fire-and-forget signals between the side panel and the content script.
- * These are NOT members of `MessageType`; that union is only for the request/response
+ * These are NOT members of `MessageType`. That union is only for the request/response
  * broker `Envelope`. They carry no requestId and expect no Response. They live here,
  * exported once, so sender and receiver share the exact string and a single typo can
  * never silently drop the message.
@@ -196,7 +195,7 @@ export interface Envelope<TPayload, TResult = unknown> {
 	requestId: string; // Uuid v4, used for response correlation
 	payload: TPayload;
 	// TResult is part of the documented contract so callers can
-	// annotate the response type they expect; it is intentionally phantom here.
+	// annotate the response type they expect. It is intentionally phantom here.
 	__result?: TResult;
 }
 
@@ -230,8 +229,8 @@ export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' 
 /**
  * One file in a split snip result: the index.html document plus the inline svgs,
  * data-uri images, and @font-face fonts lifted out into their own referenced files
- * (convert/assets.ts). Text files, html/svg/json, carry `text`; binary files, images and
- * fonts, carry the original `dataUrl` so the panel can render or download them.
+ * (convert/assets.ts). Text files (html/svg/json) carry `text`. Binary files (images and
+ * fonts) carry the original `dataUrl` so the panel can render or download them.
  */
 export interface AssetFile {
 	name: string; // 'index.html', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
@@ -242,7 +241,7 @@ export interface AssetFile {
 
 /**
  * Token usage reported by a provider for one polish call, the only billed ai
- * step. Counts are exact, read straight from the response; dollars are not
+ * step. Counts are exact, read straight from the response. Dollars are not
  * tracked because providers return tokens, not cost, and per-model rates vary.
  */
 export interface TokenUsage {
@@ -250,7 +249,7 @@ export interface TokenUsage {
 	output: number;
 }
 
-/** One stored snippet; last 50, fifo. */
+/** One stored snippet. Only the last 50 are kept, fifo. */
 export interface SnippetRecord {
 	id: string; // Uuid v4
 	capturedAt: string;

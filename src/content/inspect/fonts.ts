@@ -1,16 +1,16 @@
 /**
  * inspect/fonts.ts: page-wide font extractor
  *
- * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
- * Reads from DOM: document/window; live, the page must be loaded
- * Writes to: nothing; pure extraction, no side effects
+ * Pipeline position: inspect, page-scoped. It reads the live dom directly and does not run the element pipeline.
+ * Reads from DOM: document/window. This runs live, so the page must be loaded.
+ * Writes to: nothing. This is pure extraction with no side effects.
  *
- * Principles applied: none; extraction.
+ * Principles applied: none. This is extraction.
  *
  * Why this exists: the fonts inspector lists every font family the page renders,
  * most-used first, so the panel can show an "Aa" preview, the web/system origin,
- * and the variant count. Web vs system is decided by the FontFaceSet
- * (`document.fonts`), which mirrors every @font-face the page declares; usage and
+ * and the variant count. Web versus system is decided by the FontFaceSet
+ * (`document.fonts`), which mirrors every @font-face the page declares. Usage and
  * variants come from a single walk of the rendered text. Ported by rewriting from
  * v1 fonts/font-extractor.ts, dropping the class/logger ceremony and the
  * @font-face url + load-state fields the panel never showed.
@@ -20,7 +20,7 @@ import type { FontReport, FontVariant } from './types';
 /** Non-text tags whose computed font-family carries no rendered-text signal. */
 const SKIP_TAGS = new Set(['SCRIPT', 'NOSCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'LINK', 'META', 'HEAD', 'BASE', 'BR', 'WBR']);
 
-/** Generic css families are keywords, not real font names; they never list as fonts. */
+/** Generic css families are keywords, not real font names. They never list as fonts. */
 const GENERIC_FAMILIES = new Set([
 	'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
 	'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
@@ -107,7 +107,7 @@ function walkRenderedFonts(): Map<string, FamilyUsage> {
 	return usage;
 }
 
-/** The first listed family in a font-family stack, normalized; '' if absent. */
+/** The first listed family in a font-family stack, normalized. Returns '' if absent. */
 function firstFamily(stack: string): string {
 	return normalizeFamily(stack.split(',')[0] ?? '');
 }

@@ -2,8 +2,8 @@
  * convert/vault.ts: verbatim data vault
  *
  * Pipeline position: convert to stash, and polish to restore
- * Reads from Captured: nothing; operates on the emitted code string
- * Writes to Captured: nothing; the caller owns the vault instance
+ * Reads from Captured: nothing. It operates on the emitted code string.
+ * Writes to Captured: nothing. The caller owns the vault instance.
  *
  * A token-economy mechanism.
  *
@@ -11,10 +11,10 @@
  * token, and some values are both token-heavy and fragile: inline svgs, long
  * urls, gradients, multi-layer shadows, transitions, filters. Replacing them with
  * short @@V*@@ placeholders before the llm sees them cuts tokens and makes it
- * impossible for the model to corrupt data it never sees; restore() swaps the
+ * impossible for the model to corrupt data it never sees, and restore() swaps the
  * originals back afterward. Html and css are vaulted with separate patterns so a
  * css regex never matches inside an html attribute, for example a tailwind arbitrary
- * value. Ported verbatim from v1 verbatim-vault.ts, rewritten; the one fix is
+ * value. Ported verbatim from v1 verbatim-vault.ts, rewritten. The one fix is
  * restore() using split/join instead of String.replace so a vaulted value
  * containing "$" cannot be mangled by replacement-pattern interpretation.
  */

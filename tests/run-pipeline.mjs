@@ -1,13 +1,13 @@
 // Run-pipeline: drive the built snipcode v2 extension on each training-data
 // bundle and save its deterministic output as output.html (was 4-final-ai.html
-// in v1). Uses the headless snip bridge in src/content/index.ts: the runner
+// in v1). Uses the headless snip bridge in src/content/index.ts. The runner
 // dispatches a "snip-runner:snip" CustomEvent on the page document, the content
 // script runs capture -> reconcile -> resolve -> convert(html), and dispatches
 // the result on "snip-extension:result". The byok llm polish step is not run,
 // so this measures the deterministic pipeline.
 //
 // window.postMessage and chrome.runtime messages do not cross the content
-// script's isolated world; CustomEvents on `document` do (page + content script
+// script's isolated world. CustomEvents on `document` do (page + content script
 // share the document). The script signals readiness via data-snip-injected.
 //
 // Requires `npm run build` so dist/ is current. Chromium loads extensions only
@@ -49,7 +49,7 @@ export async function findBundles(dataDir = DEFAULT_DATA_DIR) {
 				if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1); // Strip utf-8 bom
 				bundles.push({ tier: tier.name, name: c.name, dir: path.join(tierDir, c.name), source: JSON.parse(raw) });
 			} catch {
-				// No source.json or unreadable; skip
+				// No source.json, or it is unreadable, so skip
 			}
 		}
 	}
@@ -78,9 +78,9 @@ export async function snipOne(context, bundle, extraDetail = {}) {
 		if (!injected) throw new Error('extension content script did not inject');
 
 		// Scroll the target into view before snipping, the same as snapshot-bundles and
-		// corpus-fair do: a reveal-on-scroll animation only fires once its element enters
+		// corpus-fair do. A reveal-on-scroll animation only fires once its element enters
 		// the viewport, so snipping a still-off-screen element captures its pre-reveal
-		// state (opacity 0, translated) and the output renders blank. Non-fatal: an
+		// state (opacity 0, translated) and the output renders blank. This is non-fatal. An
 		// element that never settles is still snipped, just without the extra wait.
 		const locator = page.locator(src.selector).first();
 		await locator.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
@@ -141,7 +141,7 @@ export async function launchExtensionContext(dpr = 1) {
 /**
  * Write a split-asset file set into a bundle directory: index.html plus each lifted
  * icon-N.svg / image-N.ext / font-N.ext, so the training data carries the same split the
- * sidebar ships. Text files (html, svg) write verbatim; binary files (images, fonts) decode
+ * sidebar ships. Text files (html, svg) write verbatim. Binary files (images, fonts) decode
  * their data uri to bytes, base64 or url-encoded, and write binary, so the relative
  * references in index.html resolve.
  */

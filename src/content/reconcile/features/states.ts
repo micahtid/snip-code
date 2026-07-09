@@ -5,50 +5,54 @@
  * Reads from Captured: root, clone, measuredStates, foundationRules, componentRules, bakedStyles
  * Writes to Captured: clone, marking elements and appending a <style> of state rules, and warnings
  *
- * Extends the "ship what renders" approach to the interactive states a static snapshot
- * drops: a button that lightens on hover, a link that underlines, an input that rings on
- * focus. The resting cascade discards them because the element is not hovered/focused at
- * capture time, since el.matches('.btn:hover') is false at rest, flattening each property to its
- * resting value. This handler re-emits them so they reproduce in the standalone artifact.
+ * This extends the "ship what renders" approach to the interactive states a static
+ * snapshot drops, such as a button that lightens on hover, a link that underlines, and an
+ * input that rings on focus. The resting cascade discards them because the element is not
+ * hovered or focused at capture time, since el.matches('.btn:hover') is false at rest, so
+ * each property flattens to its resting value. This handler re-emits them so they reproduce
+ * in the standalone artifact.
  *
  * There are two sources of truth, and this handler prefers ground truth. When the capture
- * phase measured the states live, meaning capture/states-measure.ts forced each state and read
- * what actually computed so captured.measuredStates is non-null, this emits those concrete
- * literals: the engine already resolved the cascade, the inheritance, and every group-hover /
- * descendant / sibling relationship, so there is nothing left to parse. When measurement did
- * not run, meaning cdp was busy so measuredStates is null, it falls back to copying the page's
- * authored state rules and re-anchoring their selectors, which reproduces the common case, an
- * element's own `:hover`, but cannot follow a relationship a framework encodes out of reach.
+ * phase measured the states live (meaning capture/states-measure.ts forced each state and read
+ * what actually computed, so captured.measuredStates is non-null), this emits those concrete
+ * literals. The engine already resolved the cascade, the inheritance, and every group-hover,
+ * descendant, and sibling relationship, so there is nothing left to parse. When measurement did
+ * not run (meaning cdp was busy, so measuredStates is null), it falls back to copying the page's
+ * authored state rules and re-anchoring their selectors. That reproduces the common case of an
+ * element's own `:hover`, but it cannot follow a relationship a framework encodes out of reach.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/:hover, plus
- * :focus / :focus-visible / :focus-within / :active. The trigger set is the closed spec
- * category of dynamic interactive pseudo-classes; the form-state pseudos such as :checked
+ * :focus, :focus-visible, :focus-within, and :active. The trigger set is the closed spec
+ * category of dynamic interactive pseudo-classes. The form-state pseudos such as :checked
  * and :disabled are excluded because they reflect current dom state and are already captured
  * at rest.
  *
  * Why a naive re-emit gets it wrong, and how both paths answer it:
  *  - A resting value ships as an inline style attribute, and a normal inline declaration
  *    outranks every normal selector, since it is resolved before specificity is consulted. So a
- *    state rule in a <style> block has zero effect unless it is !important; the same reason
- *    the email inliner juice keeps :hover in a surviving <style>. State declarations are
- *    therefore emitted !important; because the state selector matches only while the state is
+ *    state rule in a <style> block has zero effect unless it is !important. This is the same
+ *    reason the email inliner juice keeps :hover in a surviving <style>. State declarations are
+ *    therefore emitted !important. Because the state selector matches only while the state is
  *    active, the override applies only during interaction and reverts cleanly at rest.
  *  - A captured selector (`body.dark .nav > .btn:hover`) is written against the live page's
  *    classes and ancestor chain, which the emitters rewrite and the artifact does not carry.
  *    Each marked element is re-anchored to a unique data-snip-state marker, a data-* attribute,
- *    so it survives the tailwind/bem emitters that rewrite class, joined by a combinator that
- *    is sound because the markers are unique: descendant when the trigger contains the affected
- *    element, general-sibling when they share a parent and the trigger precedes it.
- *  - The one irreducible boundary: a state whose trigger element is outside the snipped subtree
- *    (`.outside:hover .snipped`) cannot be reproduced: the artifact does not contain the thing
- *    to force. That effect is dropped with a warning, never a silent or wrong result.
+ *    so it survives the tailwind and bem emitters that rewrite class. The markers are joined by
+ *    a combinator that is sound because the markers are unique. It is descendant when the
+ *    trigger contains the affected element, and general-sibling when they share a parent and the
+ *    trigger precedes it.
+ *  - There is one irreducible boundary. A state whose trigger element is outside the snipped
+ *    subtree (`.outside:hover .snipped`) cannot be reproduced, because the artifact does not
+ *    contain the thing to force. That effect is dropped with a warning, never a silent or wrong
+ *    result.
  *
- * Transform contract: tags each marked, in-subtree element with a data-snip-state marker and
+ * Transform contract: it tags each marked, in-subtree element with a data-snip-state marker and
  * adds `[data-snip-state="n"]:hover {...}` rules, denoised against the resting baked value and
- * emitted !important, to the clone's shared synthesized <style>; see reconcile/synthesized.ts.
- * Clone only; state selectors match nothing at rest, so the resting render is byte-identical.
+ * emitted !important, to the clone's shared synthesized <style>. See reconcile/synthesized.ts.
+ * It touches the clone only. State selectors match nothing at rest, so the resting render is
+ * byte-identical.
  * Test fixtures: tests/fixtures/state-{card,form,var,localvar,url,pseudo,transform}.html,
- * registered in tests/fixtures.mjs; the gate measures the resting, state-inactive render.
+ * registered in tests/fixtures.mjs. The gate measures the resting, state-inactive render.
  */
 import type { Captured, CssRule, MeasuredState, MeasuredStateDecl } from '../../types';
 import { pairedSubtrees, mediaApplies } from '../match';
@@ -76,9 +80,9 @@ interface MarkedCompound {
 
 /** One rule branch successfully bound to concrete subtree elements, ready to re-anchor. */
 interface Candidate {
-	/** The marked compounds, left-to-right; the last is the subject, where declarations land. */
+	/** The marked compounds, left to right. The last is the subject, where declarations land. */
 	marked: MarkedCompound[];
-	/** The combinator between each pair of marked compounds; its length is marked.length - 1. */
+	/** The combinator between each pair of marked compounds. Its length is marked.length - 1. */
 	combinators: Combinator[];
 	/** The rule whose declarations this branch contributes. */
 	rule: CssRule;
@@ -106,13 +110,13 @@ export function apply(captured: Captured): Captured {
 }
 
 /**
- * Emits the measured states: each is already a list of concrete computed deltas keyed to the
- * original elements and their generating pseudo layers, so this maps those to clones, marks
+ * Emits the measured states. Each is already a list of concrete computed deltas keyed to the
+ * original elements and their generating pseudo layers. So this maps those to clones, marks
  * them, builds the marker selector with a safe generalized combinator and the layer's
  * pseudo-element, denoises against the resting baseline, and emits the rest !important. A pinned
- * endpoint also gets a coherent transition re-emitted on the element's resting rule so it animates
- * in both directions rather than snapping on the way out. No cascade merge and no var() survival
- * remain: the engine resolved both when the value was measured.
+ * endpoint also gets a coherent transition re-emitted on the element's resting rule, so it
+ * animates in both directions rather than snapping on the way out. No cascade merge and no var()
+ * survival remain, because the engine resolved both when the value was measured.
  *
  * @param captured - clone is mutated in place: markers and an appended <style>
  * @param measuredStates - the computed deltas per trigger and state from capture/states-measure.ts
@@ -122,7 +126,7 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 	const pairs = pairedSubtrees(captured.root, captured.clone);
 	const originalToClone = new Map<Element, Element>(pairs.map(([original, clone]) => [original, clone]));
 
-	// Resolve each measured trigger, state, and affected-element triple to clone elements; an
+	// Resolve each measured trigger, state, and affected-element triple to clone elements. An
 	// element a later feature handler did not carry into the clone is skipped, since it cannot
 	// be re-anchored.
 	const units = resolveMeasuredUnits(measuredStates, originalToClone);
@@ -134,7 +138,7 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 	for (const [el, id] of markerIds) el.setAttribute(MARKER, String(id));
 
 	// Group declarations by the selector they re-anchor to. Distinct trigger, state, and affected
-	// triples produce distinct marker selectors, so a group is normally one triple; the merge is
+	// triples produce distinct marker selectors, so a group is normally one triple. The merge is
 	// just the natural home for its denoised declarations.
 	const groups = new Map<string, Map<string, string>>();
 	// The element-box props each affected clone pins across all its states, plus its live original,
@@ -148,14 +152,14 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 		}
 		const winners = groups.get(selector) ?? new Map<string, string>();
 		// A pseudo layer is denoised against its own resting pseudo, already shed at capture by the
-		// per-pseudo diff, not the element's baked map, which describes a different box; the element
+		// per-pseudo diff, not the element's baked map, which describes a different box. The element
 		// box keeps its baked-value baseline.
 		const resting = unit.pseudoElement ? undefined : captured.bakedStyles.get(unit.affectedClone);
 		denoiseMeasured(unit.decls, resting, winners);
 		groups.set(selector, winners);
-		// Collect the element box's pinned props; a coherent transition over them is emitted on the
-		// resting rule below. Pseudo layers are excluded: a pseudo's own resting transition, shipped
-		// on its pseudo rule, already governs its fade in both directions.
+		// Collect the element box's pinned props. A coherent transition over them is emitted on the
+		// resting rule below. Pseudo layers are excluded, because a pseudo's own resting transition,
+		// shipped on its pseudo rule, already governs its fade in both directions.
 		if (!unit.pseudoElement) {
 			const entry = pinned.get(unit.affectedClone) ?? { original: unit.affectedOriginal, props: new Set<string>() };
 			for (const prop of winners.keys()) entry.props.add(prop);
@@ -169,11 +173,12 @@ function applyMeasured(captured: Captured, measuredStates: MeasuredState[]): Cap
 		if (lines.length > 0) rules.push(`${selector} {\n${lines.join('\n')}\n}`);
 	}
 	// Re-emit a coherent transition on each affected element's resting rule, not its state rule, so
-	// the pinned endpoints animate when both entering AND leaving the state. A transition lives on
-	// the base rule by spec: the engine reads timing from the after-change style, which is the
+	// the pinned endpoints animate when both entering and leaving the state. A transition lives on
+	// the base rule by spec. The engine reads timing from the after-change style, which is the
 	// hovered state on the way in and the resting state on the way out, so a transition placed only
 	// on the :hover rule animates the entry and snaps the exit. The base rule governs both. This is
-	// render-neutral: a transition produces no pixels at rest, so the resting render is unchanged.
+	// render-neutral, since a transition produces no pixels at rest, so the resting render is
+	// unchanged.
 	for (const [clone, { original, props }] of pinned) {
 		const id = markerIds.get(clone);
 		if (id === undefined || props.size === 0) continue;
@@ -244,10 +249,10 @@ function assignMeasuredMarkers(pairs: Array<[Element, Element]>, units: Measured
 }
 
 /**
- * Builds the output selector for one unit: the trigger marker carrying its state pseudos, then,
- * when the affected element is not the trigger itself, the generalized combinator and the
- * affected marker. The affected layer's pseudo-element, if any, is appended to the subject:
- * `[marker]:hover::after` when the trigger is the subject, `[trigger]:hover [affected]::after`
+ * Builds the output selector for one unit. It is the trigger marker carrying its state pseudos,
+ * then, when the affected element is not the trigger itself, the generalized combinator and the
+ * affected marker. The affected layer's pseudo-element, if any, is appended to the subject, as in
+ * `[marker]:hover::after` when the trigger is the subject, or `[trigger]:hover [affected]::after`
  * for a descendant. Returns null when the relationship is not expressible by a single combinator.
  *
  * @param unit - the emit unit
@@ -266,14 +271,14 @@ function buildMeasuredSelector(unit: MeasuredUnit, markerIds: Map<Element, numbe
 }
 
 /**
- * Color-family properties that resolve to `currentColor` when not pinned to a divergent value:
- * either by css default (border/outline/decoration/emphasis/caret/column-rule/text-stroke) or
- * because reconcile/features/colors.ts normalized an icon's matching literal back to it
- * (fill/stroke). A measured change to one of these that equals the forced `color` is carried by
- * the `color` declaration we already emit; a color pinned to its own divergent value would not
- * have tracked `color` into the diff in the first place, so dropping it is sound. `color`, the
- * source, and `-webkit-text-fill-color`, the one channel the resting bake pins per element,
- * severing the inheritance a text recolor rides, are never dropped this way.
+ * Color-family properties that resolve to `currentColor` when not pinned to a divergent value.
+ * This happens either by css default (border, outline, decoration, emphasis, caret, column-rule,
+ * and text-stroke) or because reconcile/features/colors.ts normalized an icon's matching literal
+ * back to it (fill and stroke). A measured change to one of these that equals the forced `color`
+ * is carried by the `color` declaration we already emit. A color pinned to its own divergent
+ * value would not have tracked `color` into the diff in the first place, so dropping it is sound.
+ * `color` itself, the source, and `-webkit-text-fill-color`, the one channel the resting bake
+ * pins per element and so severs the inheritance a text recolor rides, are never dropped this way.
  */
 const CURRENT_COLOR_TRACKERS = new Set([
 	'caret-color', 'outline-color', 'text-decoration-color', 'text-emphasis-color', 'column-rule-color',
@@ -287,12 +292,12 @@ const AUTO_SIZED_PROPS = new Set(['width', 'height', 'inline-size', 'block-size'
 /**
  * Whether a measured property's resting base resolves to `auto`, and so cannot interpolate to
  * the concrete length measured in the state. A transition animates between two values only when
- * both are interpolable; `auto` is not, so a size pinned onto the state over an `auto` base can
+ * both are interpolable. `auto` is not, so a size pinned onto the state over an `auto` base can
  * only snap while every concrete-valued neighbour eases. An `auto`-sized box is content-driven,
  * and the content deltas that grow it are pinned in their own right, so left unpinned it resizes
  * standalone exactly as the live element does when its own `auto` box flows. The base is read as
  * `auto` from the resting bake, or inferred for a size property the bake left unset since its
- * initial value is `auto`; a base already pinned to a concrete length stays pinned and animates.
+ * initial value is `auto`. A base already pinned to a concrete length stays pinned and animates.
  *
  * @param property - the measured longhand
  * @param resting - the affected element's resting baked value for it, or undefined when unset
@@ -328,7 +333,7 @@ function denoiseMeasured(decls: MeasuredStateDecl[], resting: Map<string, string
 	for (const decl of decls) {
 		const rest = resting?.get(decl.property);
 		if (rest !== undefined && rest.trim() === decl.value.trim()) continue;
-		if (baseIsAuto(decl.property, rest)) continue; // Auto base cannot interpolate; leave it content-driven.
+		if (baseIsAuto(decl.property, rest)) continue; // Auto base cannot interpolate, so leave it content-driven.
 		if (decl.property === 'transform-origin' && !hasTransform) continue;
 		if (decl.property === 'perspective-origin' && !hasTransform && !hasPerspective) continue;
 		if (forcedColor !== undefined && CURRENT_COLOR_TRACKERS.has(decl.property) && decl.value.trim() === forcedColor.trim()) continue;
@@ -338,13 +343,13 @@ function denoiseMeasured(decls: MeasuredStateDecl[], resting: Map<string, string
 
 /**
  * The transition to broaden onto an affected element's resting rule so its pinned endpoints
- * animate coherently in both directions, or null when none is needed. Reads the element's resting
- * transition live from the original; the measurement shim suppressed it, so it is only readable
- * here, at emit, with the page at rest. Returns null when the element has no real resting
+ * animate coherently in both directions, or null when none is needed. It reads the element's
+ * resting transition live from the original. The measurement shim suppressed it, so it is only
+ * readable here, at emit, with the page at rest. Returns null when the element has no real resting
  * transition, since the live element snaps too and adding motion would be wrong, or when the
  * resting transition already covers every changed property, in which case the resting baked
  * transition shipped at rest governs the animation and re-emitting would be redundant. Otherwise
- * broadens to `all` with the element's longest-running timing, so a property the resting
+ * it broadens to `all` with the element's longest-running timing, so a property the resting
  * transition does not cover, such as the dot's colors-only timing vs our pinned width, animates
  * in step rather than snapping. This is the deliberate approximation: coordinated motion at the
  * element's rhythm, not exact per-property timing.
@@ -359,7 +364,7 @@ function broadenedTransition(original: Element, changed: Set<string>): string | 
 	const timings = splitCommas(cs.getPropertyValue('transition-timing-function'));
 	const delays = splitCommas(cs.getPropertyValue('transition-delay'));
 	// Pair each transitioned property with its timing, repeating the shorter lists as the cascade
-	// does; keep only the ones that actually animate (a real, positive duration).
+	// does. Keep only the ones that actually animate (a real, positive duration).
 	const entries = properties
 		.map((property, i) => ({
 			property,
@@ -376,7 +381,7 @@ function broadenedTransition(original: Element, changed: Set<string>): string | 
 	return `all ${rep.duration} ${rep.timing} ${rep.delay}`;
 }
 
-/** Seconds for a CSS <time> (`0.3s`, `300ms`, `0s`); 0 for anything unparseable. */
+/** Seconds for a CSS <time> (`0.3s`, `300ms`, `0s`), or 0 for anything unparseable. */
 function durationSeconds(value: string): number {
 	const v = value.trim();
 	if (v.endsWith('ms')) return parseFloat(v) / 1000 || 0;
@@ -405,8 +410,8 @@ function splitCommas(value: string): string[] {
 
 /**
  * Reproduces the page's interactive-state rules on the clone by copying their authored
- * declarations. This is the fallback used only when live measurement did not run; it cannot
- * follow a relationship a framework buries in `:is()`/group-hover grammar.
+ * declarations. This is the fallback used only when live measurement did not run. It cannot
+ * follow a relationship a framework buries in `:is()` or group-hover grammar.
  *
  * @param captured - clone is mutated in place: markers and an appended <style>
  */
@@ -425,7 +430,7 @@ function applyCopied(captured: Captured): Captured {
 		if (clone) clone.setAttribute(MARKER, String(id));
 	}
 
-	// Group candidates by the selector they re-anchor to: candidates that target the same
+	// Group candidates by the selector they re-anchor to. Candidates that target the same
 	// elements in the same state share an output rule, and their declarations merge by the
 	// cascade. Building the selector also catches an inexpressible marker relationship.
 	const groups = new Map<string, { subjectClone: Element; winners: Map<string, RankedStateDecl> }>();
@@ -459,7 +464,7 @@ function applyCopied(captured: Captured): Captured {
  * A rule is considered when its selector mentions a dynamic interactive pseudo-class and
  * its @media gate currently applies, the same frozen viewport the resting cascade uses.
  *
- * @param captured - the capture; reads the flattened rule lists + root subtree
+ * @param captured - the capture, read for the flattened rule lists and root subtree
  * @param pairs - the [original, clone] subtree pairs, in document order
  * @param originalToClone - membership test + clone lookup for the subtree
  * @returns one candidate per rule-branch and subject-element pair that bound entirely in-subtree
@@ -513,14 +518,14 @@ function collectCandidates(
 /**
  * Binds every marked compound of a branch, the subject plus each compound carrying a
  * dynamic pseudo, to a concrete element, walking the combinator chain leftward from the
- * subject. Structural-only intermediate compounds are gates: bound only as stepping
+ * subject. Structural-only intermediate compounds are gates. They are bound only as stepping
  * stones, never marked.
  *
  * @param branch - the parsed complex selector
  * @param subjectEl - the element matched by the branch's full structural selector
  * @param inSubtree - whether an element belongs to the snipped subtree
- * @returns the marked compounds + their combinators, or null if a state-bearing compound
- *   bound outside the subtree, the irreducible boundary, or could not be bound at all
+ * @returns the marked compounds and their combinators, or null if a state-bearing compound
+ *   bound outside the subtree (the irreducible boundary) or could not be bound at all
  */
 function bindMarkedCompounds(
 	branch: Complex,
@@ -545,9 +550,9 @@ function bindMarkedCompounds(
 		if (!compound) return null;
 		const isSubject = k === n - 1;
 		const isStateBearing = compound.dynamicPseudos.length > 0;
-		if (!isSubject && !isStateBearing) continue; // A purely-structural gate: dropped.
+		if (!isSubject && !isStateBearing) continue; // A purely-structural gate, so it is dropped.
 		const el = bound[k] ?? null;
-		// A state-bearing compound must bind inside the subtree; otherwise its trigger is
+		// A state-bearing compound must bind inside the subtree. Otherwise its trigger is
 		// not present in the artifact and the effect cannot be reproduced.
 		if (!inSubtree(el)) return null;
 		if (marked.length > 0) {
@@ -592,10 +597,10 @@ function findRelated(right: Element, combinator: Combinator, compound: Compound)
 /**
  * The combinator that safely expresses the relationship between two marked elements in
  * the artifact. Because each marker is unique, a looser combinator cannot match a wrong
- * element, so the only requirement is that it be true for this concrete pair: descendant
- * when right is contained in left, general-sibling when they share a parent and left
+ * element, so the only requirement is that it be true for this concrete pair. It is descendant
+ * when right is contained in left, and general-sibling when they share a parent and left
  * precedes right. Any other relationship, such as an "uncle", is not expressible by a single
- * combinator and the caller drops the branch.
+ * combinator, so the caller drops the branch.
  *
  * @param left - the earlier marked element
  * @param right - the later marked element
@@ -611,7 +616,7 @@ function generalize(left: Element, right: Element): Combinator | null {
 }
 
 /**
- * Builds the output selector for a candidate from its marked compounds: each becomes a
+ * Builds the output selector for a candidate from its marked compounds. Each becomes a
  * `[data-snip-state="n"]` marker carrying its dynamic pseudos and pseudo-element, joined
  * by the generalized combinators.
  *
@@ -674,7 +679,7 @@ function mergeRule(rule: CssRule, order: number, winners: Map<string, RankedStat
 	}
 }
 
-/** Cascade ordering: !important beats normal; then higher specificity; then later capture order. */
+/** Cascade ordering: !important beats normal, then higher specificity, then later capture order. */
 function stateWins(a: RankedStateDecl, b: RankedStateDecl): boolean {
 	if (a.important !== b.important) return a.important;
 	if (a.specificity !== b.specificity) return a.specificity > b.specificity;
@@ -683,7 +688,7 @@ function stateWins(a: RankedStateDecl, b: RankedStateDecl): boolean {
 
 /**
  * Drops every state declaration that merely restates the element's resting value, so the
- * emitted rule stays proportional to the real state change; a `:hover` that restates the
+ * emitted rule stays proportional to the real state change. A `:hover` that restates the
  * resting color contributes nothing. The remainder is emitted !important so it outranks
  * the inline resting value while the state is active.
  *

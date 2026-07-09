@@ -1,18 +1,18 @@
 /**
  * inspect/prompts.ts: the byok ai prompts for colors and schema
  *
- * Pipeline position: inspect, page-scoped; the prompt text the ai pass sends
- * Reads from DOM: nothing; pure string builders
- * Writes to: nothing; pure string builders
+ * Pipeline position: inspect, page-scoped. This is the prompt text the ai pass sends.
+ * Reads from DOM: nothing. These are pure string builders.
+ * Writes to: nothing. These are pure string builders.
  *
- * Principles applied: none; prompt text.
+ * Principles applied: none. This is prompt text.
  *
  * Why this exists: two inspectors gain an optional ai pass (inspect/ai.ts) and
  * each needs a prompt. The colors prompt asks the model to assign a semantic role
- * to every extracted color; the schema prompt synthesizes the raw page schema
+ * to every extracted color. The schema prompt synthesizes the raw page schema
  * into a design-system json. Keeping the prompt text out of the orchestrator keeps
  * ai.ts short and lets the prompts be read on their own. The colors prompt is
- * trimmed to the role-only output the panel renders; the schema prompt is ported
+ * trimmed to the role-only output the panel renders. The schema prompt is ported
  * verbatim from the v1 server (marketing-website/lib/schema-prompts.ts), which is
  * the synthesis behavior and must not drift. The style-map abbreviations the
  * schema prompt documents must match inspect/schema/fingerprint.ts exactly.

@@ -1,9 +1,9 @@
 /**
  * capture/settle.ts: bring the target to its settled, revealed state before capture
  *
- * Pipeline position: capture; runs first, before clone + computed read
- * Reads from Captured: n/a; operates on the live root before Captured is built
- * Writes to Captured: n/a; returns a warning string the caller records
+ * Pipeline position: capture (runs first, before clone + computed read)
+ * Reads from Captured: n/a (operates on the live root before Captured is built)
+ * Writes to Captured: n/a (returns a warning string the caller records)
  *
  * Why this exists: the capture path reads a transient frame. Many components enter
  * with a scroll-driven reveal, an element styled `opacity: 0` plus a transform
@@ -17,12 +17,12 @@
  * scroll it into view so observers and scroll reveals fire, await the reveal, finish
  * any running transitions/animations to their end state, so the capture is stable and
  * deterministic, not a mid-flight frame, force lazy images to load and decode, and
- * await fonts. Infinite animations are left alone, finishing them is meaningless and
- * the guard keeps the settle deterministic.
+ * await fonts. Infinite animations are left alone, because finishing them is
+ * meaningless and the guard keeps the settle deterministic.
  *
- * It does not mutate authored styles or structure, it only nudges the page's own
+ * It does not mutate authored styles or structure. It only nudges the page's own
  * reveal machinery and waits. A reveal that is gated on an event we cannot fire, such as
- * a click or a custom timer, will not settle; that residual is detected and returned as a
+ * a click or a custom timer, will not settle. That residual is detected and returned as a
  * warning so the snip is flagged rather than shipped silently blank.
  */
 
@@ -51,7 +51,7 @@ export async function settle(root: Element): Promise<{ warning?: string }> {
 		// rather than nearest so an observer with a viewport-margin threshold still trips.
 		root.scrollIntoView({ block: 'center', inline: 'nearest' });
 	} catch {
-		// Detached or non-scrollable context; the awaits below still help.
+		// Detached or non-scrollable context. The awaits below still help.
 	}
 	// Let the observer callback run and any reveal class apply before measuring.
 	await nextFrames(2);
@@ -73,7 +73,7 @@ export async function settle(root: Element): Promise<{ warning?: string }> {
 /**
  * Forces every image in the subtree to load eagerly and awaits decode, so the capture
  * reads loaded dimensions and the resolved currentSrc rather than a lazy spacer. Decode
- * failures, whether cross-origin or broken, are ignored, the snip proceeds either way.
+ * failures, whether cross-origin or broken, are ignored, and the snip proceeds either way.
  *
  * @param root - the live subtree
  */
@@ -86,10 +86,10 @@ async function loadImages(root: Element): Promise<void> {
 		try {
 			el.loading = 'eager';
 		} catch {
-			// Read-only in some contexts; scrolling still triggers native lazy load.
+			// Read-only in some contexts, but scrolling still triggers native lazy load.
 		}
-		// Decode resolves once the current source is ready; catch so a broken image
-		// or a still-pending lazy swap, never rejects the settle.
+		// Decode resolves once the current source is ready. Catch so a broken image
+		// or a still-pending lazy swap never rejects the settle.
 		decodes.push(el.decode().catch(() => undefined));
 	}
 	await Promise.all(decodes);
@@ -115,7 +115,7 @@ function finishTransientAnimations(root: Element): void {
 	for (const anim of animations) {
 		try {
 			const timing = anim.effect?.getComputedTiming?.();
-			if (timing && timing.iterations === Infinity) continue; // Looping; leave it.
+			if (timing && timing.iterations === Infinity) continue; // Looping, so leave it.
 			anim.finish();
 		} catch {
 			// Some animations reject finish, e.g. an infinite one the guard did not catch.
@@ -126,7 +126,7 @@ function finishTransientAnimations(root: Element): void {
 /**
  * Heuristic check for a reveal that never fired: after settling, the root still paints
  * nothing because it, or its only child wrapper, is held invisible. Returns a warning
- * string so the snip is flagged. This never blocks or alters the snip, it only reports.
+ * string so the snip is flagged. This never blocks or alters the snip. It only reports.
  *
  * @param root - the live subtree, post-settle
  */
@@ -138,7 +138,7 @@ function detectUnrevealed(root: Element): { warning?: string } {
 			return { warning: 'settle: element still hidden after reveal attempt; a non-scroll trigger (click/timer) may gate it' };
 		}
 	} catch {
-		// No computed style available; nothing to report.
+		// No computed style available, so nothing to report.
 	}
 	return {};
 }

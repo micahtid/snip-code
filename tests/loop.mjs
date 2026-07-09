@@ -3,7 +3,7 @@
 // --target <file> which file in each bundle to score (default output.html).
 // --cached no-op: we score files already on disk (kept for forward compat).
 // --bisect compare per-case scores between the last two scores.jsonl
-// entries with the same target; print regressions.
+// entries with the same target, then print regressions.
 // --note <text> free-form label saved on the history entry (e.g. "v2 baseline").
 //
 // Default invocation runs the grader, prints results, and appends one json line
@@ -19,8 +19,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCORES_PATH = path.join(HERE, 'scores.jsonl');
 const REGRESSION_THRESHOLD = 0.01; // 1 score-point drop counts as a regression
 
-// Success-criteria thresholds, from FIDELITY-PLAN.md. A bundle is blank when its
-// render carries less than INK_FLOOR ink while its reference clears REF_INK_MIN.
+// Success-criteria thresholds. A bundle is blank when its render carries less than
+// INK_FLOOR ink while its reference clears REF_INK_MIN.
 const INK_FLOOR = 0.02; // 2% non-white pixels
 const REF_INK_MIN = 0.02; // Reference must itself have visible content to count
 const MEAN_SSIM_TARGET = 0.97;
@@ -32,7 +32,7 @@ function isBlank(c) {
 }
 
 /**
- * Reports whether the corpus meets the plan's exit condition: no blanks, mean SSIM
+ * Reports whether the corpus meets the exit condition: no blanks, mean SSIM
  * at or above target, and no single bundle below the floor. Prints the verdict and
  * lists every bundle that still fails a criterion.
  */
@@ -79,7 +79,7 @@ async function appendHistory(entry) {
 	await fs.appendFile(SCORES_PATH, JSON.stringify(entry) + '\n');
 }
 
-// Compare the last two runs with the same target; report cases whose pixel or
+// Compare the last two runs with the same target. Report cases whose pixel or
 // ssim dropped by more than the threshold, plus new/dropped cases.
 async function bisect(targetOverride) {
 	const history = await readHistory();

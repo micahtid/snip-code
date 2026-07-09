@@ -2,8 +2,8 @@
  * convert/snap.ts: value snapper
  *
  * Pipeline position: convert
- * Reads from Captured: nothing; operates on property/value pairs
- * Writes to Captured: nothing; a pure value transform
+ * Reads from Captured: nothing. It operates on property/value pairs.
+ * Writes to Captured: nothing. It is a pure value transform.
  *
  * A readability and normalization pass feeding the tailwind converter.
  *
@@ -18,13 +18,13 @@
  * track fr conversion, and the animation-artifact detector.
  *
  * Which properties keep px, namely border/outline widths, shadows, and spacing, vs convert
- * to rem is decided by a category predicate, not a hardcoded property-name list;
- * border widths are a px-native css mechanism.
+ * to rem is decided by a category predicate, not a hardcoded property-name list.
+ * Border widths are a px-native css mechanism.
  */
 
 const PX_LEN = /(-?\d*\.?\d+(?:e[+-]?\d+)?)px\b/gi;
 const RGB_FN = /rgba?\(([^)]+)\)/gi;
-const ROOT_FONT_SIZE = 16; // Px; tailwind/browser default root.
+const ROOT_FONT_SIZE = 16; // Px, the tailwind/browser default root.
 
 /** The result of a snap: the possibly transformed value and whether it changed. */
 export interface SnapResult {
@@ -37,7 +37,7 @@ export interface SnapResult {
  * lengths to rem, though a px-native property such as a border width keeps its exact px, never
  * rounded. Multi-token values such as "10px 20px" snap each length independently. A
  * custom property, or any value carrying a css function, passes through untouched, since
- * rewriting it could change what it means once substituted; see the body.
+ * rewriting it could change what it means once substituted. See the body.
  *
  * @param property - the css property, which decides px-vs-rem treatment
  * @param value - the declaration value
@@ -97,7 +97,7 @@ function pixelNative(property: string): boolean {
 	);
 }
 
-/** Px -> rem string (÷16), trimmed of trailing zeros; "0" stays unitless. */
+/** Px -> rem string (÷16), trimmed of trailing zeros. "0" stays unitless. */
 function pxToRem(px: number): string {
 	if (px === 0) return '0';
 	const rem = px / ROOT_FONT_SIZE;
@@ -108,7 +108,7 @@ function pxToRem(px: number): string {
 	return `${parseFloat(rem.toFixed(6))}rem`;
 }
 
-/** Convert an opaque rgb()/rgba() to #hex; preserve rgba() when it carries alpha. */
+/** Convert an opaque rgb()/rgba() to #hex, preserving rgba() when it carries alpha. */
 function rgbToHex(original: string, body: string): string {
 	const parts = body.split(/[\s,/]+/).filter(Boolean);
 	const r = Number(parts[0]);

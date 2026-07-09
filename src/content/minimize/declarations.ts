@@ -40,7 +40,7 @@ export function inScopeRule(rule: CSSRule): CSSStyleRule | null {
 /**
  * Serializes a stylesheet's top-level rules back to text. A style rule is emitted only when
  * it still carries declarations, so a rule a phase emptied is dropped, whether it is in scope
- * or a withheld state or pseudo rule the merge collapsed into a selector list; at-rules and
+ * or a withheld state or pseudo rule the merge collapsed into a selector list. At-rules and
  * grouping rules are emitted verbatim in their original position.
  *
  * @param topRules - a frame stylesheet's top-level rules

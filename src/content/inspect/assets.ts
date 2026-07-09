@@ -1,11 +1,11 @@
 /**
  * inspect/assets.ts: page-wide asset extractor
  *
- * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
- * Reads from DOM: document/window; live, the page must be loaded
- * Writes to: nothing; pure extraction, no side effects
+ * Pipeline position: inspect, page-scoped. It reads the live dom directly and does not run the element pipeline.
+ * Reads from DOM: document/window. This runs live, so the page must be loaded.
+ * Writes to: nothing. This is pure extraction with no side effects.
  *
- * Principles applied: none; extraction.
+ * Principles applied: none. This is extraction.
  *
  * Why this exists: the assets inspector lists every image, media file, css
  * background, favicon, and inline svg the page uses so the panel can preview each
@@ -26,8 +26,8 @@ const LAZY_ATTRS = ['data-src', 'data-lazy', 'data-original', 'data-srcset'];
 
 /** Caps so a media-heavy page cannot stall the scan or ship oversized markup. */
 const MAX_BG_ELEMENTS = 1500;
-const MIN_SVG_SIZE = 4; // px; smaller svgs are decorative glyphs, not assets
-const MAX_SVG_MARKUP = 50000; // chars; larger svgs are maps/charts, skipped
+const MIN_SVG_SIZE = 4; // px. Smaller svgs are decorative glyphs, not assets.
+const MAX_SVG_MARKUP = 50000; // chars. Larger svgs are maps or charts, so they are skipped.
 const SVG_THUMB_CHARS = 2000; // truncation for the shipped thumbnail markup
 
 /** Collects every visual asset on the page, in discovery order, deduped. */
@@ -43,7 +43,7 @@ export function extractPageAssets(): AssetReport[] {
 		assets.push(asset);
 	};
 
-	/** Record a url-bearing asset, absolutized; data: and unparseable urls are dropped. */
+	/** Record a url-bearing asset, absolutized. Any data: url and any unparseable url is dropped. */
 	const addUrl = (raw: string, type: AssetType, width?: number, height?: number): void => {
 		if (!raw || raw.startsWith('data:')) return;
 		const src = toAbsoluteUrl(raw, base);
@@ -145,7 +145,7 @@ function dims(width?: number, height?: number): { width?: number; height?: numbe
 	return out;
 }
 
-/** The decoded last path segment of a url, capped; 'unknown' if unparseable. */
+/** The decoded last path segment of a url, capped. Returns 'unknown' if unparseable. */
 function filenameOf(url: string): string {
 	try {
 		const last = new URL(url).pathname.split('/').pop();

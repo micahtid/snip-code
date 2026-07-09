@@ -1,9 +1,9 @@
 /**
  * capture/gate.ts: website-builder gate
  *
- * Pipeline position: capture; final step, refuses unsupported pages
- * Reads from Captured: root; runs before Captured exists, on the live element
- * Writes to Captured: n/a; gates the pipeline before it builds Captured
+ * Pipeline position: capture (final step, refuses unsupported pages)
+ * Reads from Captured: root (runs before Captured exists, on the live element)
+ * Writes to Captured: n/a (gates the pipeline before it builds Captured)
  *
  * Why this exists: framer / wix / webflow / elementor / readymag render runtime-
  * dependent, non-portable markup: scale-to-fit transforms, hashed class soups,
@@ -11,10 +11,10 @@
  * so v2 refuses with a static "unsupported" message instead of degrading
  * silently. Detection is purely structural: data-*
  * rendering-chrome attributes and class-name fingerprints, sampled from a
- * bounded subtree walk. Ported, rewritten, from v1 vision/builder-detection.ts;
- * the v1 version routed to a vision model, v2 drops that path and blocks.
+ * bounded subtree walk. Ported, rewritten, from v1 vision/builder-detection.ts.
+ * The v1 version routed to a vision model, but v2 drops that path and blocks.
  *
- * Note: the runtime Set in collectSampleClassNames dedups sampled class names; it
+ * Note: the runtime Set in collectSampleClassNames dedups sampled class names. It
  * is not a hardcoded tag/role/property enumeration.
  */
 
@@ -52,7 +52,7 @@ const NAME_THRESHOLD = 0.3;
  * to run unconditionally on every snip.
  *
  * @param root - the live picked element
- * @returns the gate verdict; `blocked` gates the rest of the pipeline
+ * @returns the gate verdict. `blocked` gates the rest of the pipeline
  */
 export function detectBuilder(root: Element): GateResult {
 	const classes = collectSampleClassNames(root, 50);

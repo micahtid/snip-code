@@ -3,7 +3,7 @@
  *
  * Pipeline position: convert
  * Reads from Captured: clone, to test selector and usage
- * Writes to Captured: nothing; operates on the emitted css string
+ * Writes to Captured: nothing. It operates on the emitted css string.
  *
  * Cleanup is dead-code elimination, not aesthetic surgery.
  *
@@ -15,8 +15,8 @@
  * 3. @font-face whose family is never used
  * 4. @keyframes whose name is never referenced by an animation
  *
- * this is the antithesis of v1's 2,477-line cleaner.ts: no hand-curated property
- * Sets, no is<X> predicates, no "shading-critical" / "vertical text spacing"
+ * This is the antithesis of v1's 2,477-line cleaner.ts: no hand-curated property
+ * sets, no is<X> predicates, no "shading-critical" / "vertical text spacing"
  * heuristics. Usage is measured against ground truth, the
  * actual clone subtree and the actual declarations, so the cleaner can never
  * remove something the output depends on. It is reused by every format emitter,
@@ -25,7 +25,7 @@
  * Selector usage is measured against whatever markup the caller passes: the bem
  * emitters generate their class names on a private copy and leave captured.clone
  * inline-styled, so a generated `.block__el` selector matched against the clone would
- * find nothing and wrongly drop a live rule; those callers pass the emitted markup.
+ * find nothing and wrongly drop a live rule, so those callers pass the emitted markup.
  * The html path passes no markup and keeps matching against the clone, its
  * established behavior, since it ships only inline styles plus at-rules, no class rules.
  */
@@ -39,8 +39,8 @@ const DROP = '';
  * Removes dead code from an emitted stylesheet.
  *
  * @param css - the stylesheet text to prune
- * @param captured - the snip; font/animation/var usage is read from its baked styles
- * @param markup - the emitted markup selectors are matched against; falls back to the
+ * @param captured - the snip, whose baked styles are read for font/animation/var usage
+ * @param markup - the emitted markup selectors are matched against, falling back to the
  *   inline-styled clone when absent. The html path passes none and matches the clone,
  *   its established behavior, since it ships only inline styles plus at-rules
  * @returns the cleaned stylesheet text
@@ -95,8 +95,8 @@ interface Usage {
  */
 function keepRule(rule: CSSRule, matchRoot: Element, usage: Usage): string {
 	if (rule instanceof CSSStyleRule) {
-		// Keep custom-property-only :root rules pruned to referenced vars;
-		// keep element rules only if some element in the markup matches them.
+		// Keep custom-property-only :root rules pruned to referenced vars.
+		// Keep element rules only if some element in the markup matches them.
 		if (isRootVarRule(rule)) return pruneVarRule(rule, usage);
 		return selectorMatchesSubtree(rule.selectorText, matchRoot) ? rule.cssText : DROP;
 	}
@@ -108,7 +108,7 @@ function keepRule(rule: CSSRule, matchRoot: Element, usage: Usage): string {
 		return usage.animations.has(rule.name) ? rule.cssText : DROP; // An unreferenced @keyframes
 	}
 	if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule) {
-		// Recurse; keep the wrapper only if it still has live inner rules.
+		// Recurse. Keep the wrapper only if it still has live inner rules.
 		const inner: string[] = [];
 		for (const child of Array.from(rule.cssRules)) {
 			const text = keepRule(child, matchRoot, usage);
@@ -178,7 +178,7 @@ function collectUsage(captured: Captured, css: string): Usage {
 		addAnimations(baked.get('animation-name'), animations);
 		for (const value of baked.values()) addVars(value, vars);
 	}
-	// From the css text; this covers class-based rules and any @media bodies.
+	// From the css text. This covers class-based rules and any @media bodies.
 	addFamilies(matchAll(css, /font-family\s*:\s*([^;}{]+)/gi), families);
 	addAnimations(matchAll(css, /animation(?:-name)?\s*:\s*([^;}{]+)/gi), animations);
 	addVars(css, vars);
@@ -198,7 +198,7 @@ function addFamilies(value: string | string[] | undefined, into: Set<string>): v
 	}
 }
 
-/** Collect animation-name tokens; a name can never collide with a duration token. */
+/** Collect animation-name tokens. A name can never collide with a duration token. */
 function addAnimations(value: string | string[] | undefined, into: Set<string>): void {
 	if (!value) return;
 	const values = Array.isArray(value) ? value : [value];

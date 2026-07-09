@@ -5,23 +5,24 @@
  * Reads from Captured: root, clone
  * Writes to Captured: bakedStyles + clone, the appearance/accent-color + live state
  *
- * Principles applied: extends the "ship what renders" rule to form-control
- * styling and preserves the live control state cloneNode drops.
+ * Principles applied: this extends the "ship what renders" rule to form-control
+ * styling, and it preserves the live control state that cloneNode drops.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/appearance
- * also covers accent-color; ::file-selector-button is emitted by features/pseudo.
- * Detection criterion: an element matching the form-control selector, the form-
- * element spec surface expressed as a selector, not a tag Set.
- * Transform contract: bakes non-default appearance/-webkit-appearance/accent-color
- * onto matching clone controls, and mirrors live value/checked/selected state
- * onto the clone as attributes so the rendered control matches the capture.
- * bakedStyles + clone only.
+ * also covers accent-color. ::file-selector-button is emitted by features/pseudo.
+ * Detection criterion: an element matching the form-control selector. That selector
+ * is the form-element spec surface expressed as a selector rather than a tag Set.
+ * Transform contract: it bakes non-default appearance, -webkit-appearance, and
+ * accent-color onto matching clone controls. It also mirrors the live value,
+ * checked, and selected state onto the clone as attributes, so the rendered control
+ * matches the capture. It touches bakedStyles and the clone only.
  *
  * Why this exists: appearance: none is how authors replace native control chrome
- * with custom styling, lost, the control snaps back to the os widget. Accent-
- * color tints checkboxes/radios/range. And cloneNode copies a control's attributes
- * but not its current value/checked/selected, so a filled input or ticked checkbox
- * renders empty in the clone. Mirroring the state fixes that.
+ * with custom styling. If it is lost, the control snaps back to the os widget.
+ * Accent-color tints checkboxes, radios, and range inputs. And cloneNode copies a
+ * control's attributes but not its current value, checked, or selected state, so a
+ * filled input or ticked checkbox renders empty in the clone. Mirroring the state
+ * fixes that.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
@@ -84,6 +85,6 @@ function bake(clone: Element, baked: Map<string, string>, prop: string, value: s
 	try {
 		(clone as HTMLElement).style.setProperty(prop, value);
 	} catch {
-		// Invalid for this element; skip.
+		// Invalid for this element, so skip it.
 	}
 }

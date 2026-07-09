@@ -1,7 +1,7 @@
 /**
  * resolve/inline.ts: inline external resources so the snip is self-contained
  *
- * Pipeline position: resolve; the closing step, after the standalone reconciliation
+ * Pipeline position: resolve (the closing step, after the standalone reconciliation)
  * Reads from Captured: clone, bakedStyles, fonts, page
  * Writes to Captured: clone img src, bakedStyles background url, fonts src, and warnings
  *
@@ -14,7 +14,7 @@
  * reference to a base64 data uri, so the snip carries its pixels with it.
  *
  * Best-effort and deterministic: a fetch that fails, whether blocked, oversize, or offline,
- * leaves the absolute url in place rather than throwing, so the snip still ships; given
+ * leaves the absolute url in place rather than throwing, so the snip still ships. Given
  * the same responses the rewrite is byte-identical. Bounded by a resource cap and, in
  * the background, a size cap so a heavy page cannot bloat the output without limit.
  */
@@ -30,10 +30,10 @@ const BG_PROPS = ['background-image', 'background'] as const;
 /** Cap on resources fetched per snip, so a gallery-heavy page cannot inline without bound. */
 const MAX_RESOURCES = 48;
 
-/** Concurrent background fetches; keeps the snip responsive without flooding the worker. */
+/** Concurrent background fetches. Keeps the snip responsive without flooding the worker. */
 const FETCH_CONCURRENCY = 6;
 
-/** Per-fetch deadline; a stalled resource is abandoned, keeping its url, rather than hanging the snip. */
+/** Per-fetch deadline. A stalled resource is abandoned, keeping its url, rather than hanging the snip. */
 const FETCH_TIMEOUT_MS = 8000;
 
 /** A resource larger than this is left as a url reference rather than inlined, mirroring the background cap. */
@@ -89,7 +89,7 @@ export async function inlineResources(captured: Captured): Promise<void> {
 		const data = dataByUrl.get(absolute(src, base) ?? '');
 		if (data) img.setAttribute('src', data);
 	}
-	// Rewrite baked background urls; the inline style mirrors the baked map.
+	// Rewrite baked background urls. The inline style mirrors the baked map.
 	for (const [clone, baked] of captured.bakedStyles) {
 		for (const prop of BG_PROPS) {
 			const value = baked.get(prop);
@@ -100,7 +100,7 @@ export async function inlineResources(captured: Captured): Promise<void> {
 			try {
 				(clone as HTMLElement).style.setProperty(prop, rewritten);
 			} catch {
-				// Invalid for this element; the baked-map entry still ships to emit.
+				// Invalid for this element, but the baked-map entry still ships to emit.
 			}
 		}
 	}
@@ -189,7 +189,7 @@ async function fetchData(url: string): Promise<string | null> {
 	return fetchDataViaBackground(url);
 }
 
-/** Direct content-script fetch + encode; null if blocked by cors, oversize, or non-2xx. */
+/** Direct content-script fetch + encode. Null if blocked by cors, oversize, or non-2xx. */
 async function fetchDataDirect(url: string): Promise<string | null> {
 	try {
 		const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
@@ -202,7 +202,7 @@ async function fetchDataDirect(url: string): Promise<string | null> {
 	}
 }
 
-/** Background-broker fetch, privileged; null on failure or timeout. */
+/** Background-broker fetch, privileged. Null on failure or timeout. */
 async function fetchDataViaBackground(url: string): Promise<string | null> {
 	try {
 		const reply = (await Promise.race([
@@ -244,7 +244,7 @@ function rewriteUrls(value: string, base: string, dataByUrl: Map<string, string>
 	});
 }
 
-/** Resolve a possibly-relative url against the base; null if unparseable. */
+/** Resolve a possibly-relative url against the base. Null if unparseable. */
 function absolute(url: string, base: string): string | null {
 	try {
 		return new URL(url, base).href;

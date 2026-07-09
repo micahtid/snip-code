@@ -5,24 +5,24 @@
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone, baking container context
  *
- * Extends the "ship what renders" approach to the containment context that
+ * This extends the "ship what renders" approach to the containment context that
  * container queries resolve against.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries
  * Detection criterion: an element whose computed container-type is not `normal`.
- * Early-returns per element otherwise.
- * Transform contract: bakes container-type, and container-name when set, onto the
- * matching clone element. Mutates bakedStyles + clone inline styles only.
+ * Otherwise it early-returns per element.
+ * Transform contract: it bakes container-type, and container-name when set, onto the
+ * matching clone element. It mutates bakedStyles and the clone inline styles only.
  *
- * Why this exists: @media is already flattened at capture, match.ts only admits
+ * Why this exists: @media is already flattened at capture. match.ts only admits
  * rules whose @media currently applies (matchMedia), so prefers-color-scheme,
  * prefers-reduced-motion, and breakpoint variants are resolved to the captured
- * viewport's values and baked as the computed result. @container is the part that needs help: a
- * descendant's container query resolves against an ancestor's containment
- * context, which is lost if container-type is not preserved. Baking the computed
- * container-type keeps that context inside the snip; the container's width is
- * locked by features/units.ts, so the two cooperate. Baking the real
- * computed container-type is pixel-safe.
+ * viewport's values and baked as the computed result. @container is the part that
+ * needs help. A descendant's container query resolves against an ancestor's
+ * containment context, which is lost if container-type is not preserved. Baking the
+ * computed container-type keeps that context inside the snip. The container's width
+ * is locked by features/units.ts, so the two cooperate. Baking the real computed
+ * container-type is pixel-safe.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees } from '../match';
@@ -36,7 +36,7 @@ export function apply(captured: Captured): Captured {
 	for (const [original, clone] of pairedSubtrees(captured.root, captured.clone)) {
 		const computed = getComputedStyle(original);
 		const containerType = computed.getPropertyValue('container-type');
-		// `normal` is the default, meaning no containment; nothing to preserve.
+		// `normal` is the default, meaning no containment, so there is nothing to preserve.
 		if (!containerType || containerType === 'normal') continue;
 
 		const baked = captured.bakedStyles.get(clone) ?? new Map<string, string>();
@@ -55,6 +55,6 @@ function bake(clone: Element, baked: Map<string, string>, prop: string, value: s
 	try {
 		(clone as HTMLElement).style.setProperty(prop, value);
 	} catch {
-		// Invalid for this element; skip.
+		// Invalid for this element, so skip it.
 	}
 }

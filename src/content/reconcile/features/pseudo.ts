@@ -9,19 +9,20 @@
  * styles cannot express.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/Pseudo-elements
- * Detection criterion: ::before/::after with computed content other than `none`;
- * ::marker on display:list-item elements; ::placeholder on elements with a
- * placeholder attribute; ::file-selector-button on file inputs.
- * Transform contract: tags the matching clone element with a data-snip-pseudo marker
- * and adds `[data-snip-pseudo="n"]::x {... }` rules snapshotted from the live pseudo's
- * computed style to the clone's shared synthesized <style>; see reconcile/synthesized.ts.
- * Clone only.
+ * Detection criterion: ::before and ::after with computed content other than `none`,
+ * ::marker on display:list-item elements, ::placeholder on elements with a
+ * placeholder attribute, and ::file-selector-button on file inputs.
+ * Transform contract: it tags the matching clone element with a data-snip-pseudo
+ * marker and adds `[data-snip-pseudo="n"]::x {... }` rules, snapshotted from the live
+ * pseudo's computed style, to the clone's shared synthesized <style>. See
+ * reconcile/synthesized.ts. It touches the clone only.
  *
- * Why this exists: ::before/::after content such as counters, quote glyphs,
- * decorative bars, and css icons, and styled ::marker/::placeholder render no dom
- * node, so a clone loses them entirely. Inline styles cannot target a pseudo-element,
- * so the faithful fix is a real css rule. The marker is a data-* attribute, not a
- * class, so it survives the tailwind/bem emitters, which rewrite class but keep data-*.
+ * Why this exists: ::before and ::after content such as counters, quote glyphs,
+ * decorative bars, and css icons, plus styled ::marker and ::placeholder, render no
+ * dom node, so a clone loses them entirely. Inline styles cannot target a
+ * pseudo-element, so the faithful fix is a real css rule. The marker is a data-*
+ * attribute rather than a class, so it survives the tailwind and bem emitters, which
+ * rewrite class but keep data-*.
  */
 import type { Captured } from '../../types';
 import { pairedSubtrees, isRedundantDecl, transformContext, inheritsProperty } from '../match';
@@ -31,8 +32,8 @@ import { appendSynthesizedRules } from '../synthesized';
 const MARKER = 'data-snip-pseudo';
 
 /**
- * The visual properties snapshotted for a pseudo-element, the bounded css-spec
- * surface that defines a generated box's appearance.
+ * The visual properties snapshotted for a pseudo-element. This is the bounded
+ * css-spec surface that defines a generated box's appearance.
  */
 const PSEUDO_PROPS = [
 	'content', 'display', 'position', 'top', 'right', 'bottom', 'left',
@@ -75,14 +76,14 @@ function pseudosFor(el: Element): string[] {
 	const out: string[] = [];
 	if (hasContent(el, '::before')) out.push('::before');
 	if (hasContent(el, '::after')) out.push('::after');
-	// A styled list marker only renders on display:list-item, a spec mechanism, not a tag check.
+	// A styled list marker only renders on display:list-item, which is a spec mechanism rather than a tag check.
 	if (getComputedStyle(el).display === 'list-item') out.push('::marker');
 	// A placeholder pseudo only exists where a placeholder attribute does.
 	if (el.hasAttribute('placeholder')) out.push('::placeholder');
 	try {
 		if (el.matches('input[type="file"]')) out.push('::file-selector-button');
 	} catch {
-		// Matches unsupported; ignore.
+		// Matches unsupported, so ignore.
 	}
 	return out;
 }
@@ -96,18 +97,19 @@ function hasContent(el: Element, pseudo: string): boolean {
 /** Build one `[data-snip-pseudo="n"]pseudo {... }` rule from the live pseudo's computed style. */
 function ruleFor(el: Element, clone: Element, pseudo: string, id: number, captured: Captured): string | null {
 	const computed = getComputedStyle(el, pseudo);
-	// Every pseudo is de-noised against the same ground truth the element pass uses: the
-	// ua default for this pseudo on this element, read from a clean iframe probe so the
-	// page's author rules are stripped, is the baseline a non-inherited value falls back
-	// to, and the originating element's effective snip value (effectiveInherited), never
-	// the live page, is what an inherited value falls back to. This drops the inert pseudo
-	// noise such as list-style-type: disc, vertical-align: baseline, and content: normal on
-	// a placeholder, while keeping the real ::placeholder/::marker appearance.
+	// Every pseudo is de-noised against the same ground truth the element pass uses.
+	// The ua default for this pseudo on this element, read from a clean iframe probe so
+	// the page's author rules are stripped, is the baseline a non-inherited value falls
+	// back to. For an inherited value, the fallback is the originating element's
+	// effective snip value (effectiveInherited), never the live page. This drops the
+	// inert pseudo noise such as list-style-type: disc, vertical-align: baseline, and
+	// content: normal on a placeholder, while keeping the real ::placeholder and
+	// ::marker appearance.
 	const defaults = pseudoDefaults(el, pseudo);
 	const { hasTransform, hasPerspective } = transformContext(computed);
-	// Generated content is load-bearing for the box-generating pseudos and always kept;
-	// for ::placeholder/::file-selector-button content is just `normal` noise, so it
-	// falls through to the inert-keyword check below and drops.
+	// Generated content is load-bearing for the box-generating pseudos and is always
+	// kept. For ::placeholder and ::file-selector-button, content is just `normal`
+	// noise, so it falls through to the inert-keyword check below and drops.
 	const keepContent = pseudo === '::before' || pseudo === '::after' || pseudo === '::marker';
 
 	const decls: string[] = [];

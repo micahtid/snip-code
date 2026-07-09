@@ -10,8 +10,8 @@
 //   silently dropped elements                 -> structural drop
 //
 // All inputs are deterministic and drift-free (the probe diffs computed styles in an
-// isolated iframe; the url scan is a static read), so this table is a stable baseline
-// the measurement loop compares against. Run: `node tests/classify.mjs`.
+// isolated iframe, and the url scan is a static read), so this table is a stable
+// baseline the measurement loop compares against. Run: `node tests/classify.mjs`.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -20,16 +20,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const DATA_DIR = path.join(os.homedir(), 'Downloads', 'training-data');
 
-// A delta is "material" only above this many diverging properties: a handful of
-// sub-pixel or enum-spelling differences is noise, not a family-defining residual.
+// A delta counts as "material" only above this many diverging properties. A handful
+// of sub-pixel or enum-spelling differences is noise, not a family-defining residual.
 const MATERIAL = 3;
 
 /**
- * Count fetchable http(s) RESOURCE urls in the output: the self-containment gate is
+ * Count fetchable http(s) RESOURCE urls in the output. The self-containment gate is
  * about resources the artifact must fetch to render (a font src, an image src/srcset, a
  * css url()), not navigation targets. An `<a href>` to another page is a legitimate
- * external link, never a self-containment violation, so it is excluded; so are w3.org
- * xml-namespace identifiers (never fetched).
+ * external link, never a self-containment violation, so it is excluded. So are w3.org
+ * xml-namespace identifiers, which are never fetched.
  */
 function countRemoteUrls(html) {
 	const resources = [
@@ -70,8 +70,9 @@ function families(b) {
 	if (b.deltaB >= MATERIAL) fam.push('cascade');
 	if (b.absent >= MATERIAL) fam.push('absent-bake');
 	if (b.droppedEls > 0) fam.push('dropped-el');
-	// delta A material but neither cascade nor absent: a non-emit render-time mechanism
-	// (a collapsed stacking context, an unresolved external reference, generated content).
+	// delta A is material but it is neither cascade nor absent. That points to a non-emit
+	// render-time mechanism (a collapsed stacking context, an unresolved external
+	// reference, or generated content).
 	if (b.deltaA >= MATERIAL && b.deltaB < MATERIAL && b.absent < MATERIAL && b.droppedEls === 0) fam.push('render-time');
 	if (fam.length === 0) fam.push('clean');
 	return fam;
@@ -87,7 +88,7 @@ async function main() {
 		try {
 			remoteUrls = countRemoteUrls(await fs.readFile(path.join(bundle.dir, 'output.html'), 'utf8'));
 		} catch {
-			// No output.html; leave at 0 (the row will read as un-snipped).
+			// No output.html, so leave it at 0. The row will read as un-snipped.
 		}
 		rows.push({
 			key: `${bundle.tier}/${bundle.name}`,
@@ -116,7 +117,7 @@ async function main() {
 		);
 	}
 
-	// Per-family roll-up, so an empty family (no work needed in that area) is visible.
+	// This is a per-family roll-up, so an empty family (no work needed in that area) is visible.
 	const tally = new Map();
 	for (const r of rows) for (const f of families(r)) tally.set(f, (tally.get(f) ?? 0) + 1);
 	console.log('\nfamily roll-up:');

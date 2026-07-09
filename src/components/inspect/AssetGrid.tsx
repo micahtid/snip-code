@@ -9,8 +9,8 @@
  *
  * Why this exists: renders the page's images, media, backgrounds, favicons, and
  * inline svgs as a grid of thumbnail cards showing the filename, type, and
- * dimensions. Clicking a card downloads the asset: remote urls download directly,
- * inline svgs download their serialized markup as a .svg file.
+ * dimensions. Clicking a card downloads the asset. Remote urls download directly,
+ * and inline svgs download their serialized markup as a .svg file.
  */
 import { useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
@@ -54,7 +54,7 @@ function metaOf(asset: AssetReport): string {
 	return `${asset.type}${dims}`;
 }
 
-/** Downloads one asset via a transient anchor; inline svgs become a blob .svg. */
+/** Downloads one asset via a transient anchor. Inline svgs become a blob .svg. */
 function downloadAsset(asset: AssetReport): void {
 	if (asset.type === 'inline-svg' && asset.markup) {
 		const url = URL.createObjectURL(new Blob([asset.markup], { type: 'image/svg+xml' }));

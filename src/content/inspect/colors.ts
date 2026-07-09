@@ -1,11 +1,11 @@
 /**
  * inspect/colors.ts: page-wide color extractor
  *
- * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
- * Reads from DOM: document/window; live, the page must be loaded
- * Writes to: nothing; pure extraction, no side effects
+ * Pipeline position: inspect, page-scoped. It reads the live dom directly and does not run the element pipeline.
+ * Reads from DOM: document/window. This runs live, so the page must be loaded.
+ * Writes to: nothing. This is pure extraction with no side effects.
  *
- * Principles applied: none; extraction.
+ * Principles applied: none. This is extraction.
  *
  * Why this exists: the colors inspector lists every color the page paints,
  * perceptually clustered so near-duplicate shades collapse into one swatch, most-
@@ -112,7 +112,7 @@ function collectColorVariables(): Record<string, string> {
 		try {
 			rules = sheet.cssRules;
 		} catch {
-			continue; // Cross-origin stylesheet; not readable here.
+			continue; // Cross-origin stylesheet, not readable here.
 		}
 		for (const rule of Array.from(rules)) {
 			if (!(rule instanceof CSSStyleRule) || (rule.selectorText !== ':root' && rule.selectorText !== 'html')) continue;
@@ -134,7 +134,7 @@ function looksLikeColor(value: string): boolean {
 
 /**
  * Greedy perceptual clustering in Oklab space. Colors are processed most-frequent
- * first so the most common shade seeds each cluster; a color within the threshold
+ * first so the most common shade seeds each cluster. A color within the threshold
  * of a cluster's running centroid merges into it, otherwise it starts a new one.
  */
 function clusterColors(colors: RawColor[]): ColorReport[] {
@@ -168,7 +168,7 @@ function clusterColors(colors: RawColor[]): ColorReport[] {
 
 /**
  * Parses a css color to rgb, dropping near-transparent values. The rgb/rgba fast
- * path covers computed styles, which are always serialized that way; named colors and other
+ * path covers computed styles, which are always serialized that way. Named colors and other
  * notations fall back to a 1x1 canvas paint.
  */
 function parseColor(cssColor: string): { r: number; g: number; b: number } | null {
@@ -178,7 +178,7 @@ function parseColor(cssColor: string): { r: number; g: number; b: number } | nul
 	const rgba = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
 	if (rgba) {
 		const a = rgba[4] !== undefined ? parseFloat(rgba[4]) : 1;
-		if (a < 0.05) return null; // Effectively transparent; carries no palette signal.
+		if (a < 0.05) return null; // Effectively transparent, so it carries no palette signal.
 		return { r: parseInt(rgba[1]!), g: parseInt(rgba[2]!), b: parseInt(rgba[3]!) };
 	}
 
@@ -190,7 +190,7 @@ function parseColor(cssColor: string): { r: number; g: number; b: number } | nul
 		ctx.fillStyle = value;
 		ctx.fillRect(0, 0, 1, 1);
 		const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data as unknown as [number, number, number, number];
-		if (a < 13) return null; // ~5% alpha; effectively transparent.
+		if (a < 13) return null; // ~5% alpha, effectively transparent.
 		return { r, g, b };
 	} catch {
 		return null;

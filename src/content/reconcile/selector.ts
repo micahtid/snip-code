@@ -1,23 +1,23 @@
 /**
  * reconcile/selector.ts: a compound/combinator css selector parser
  *
- * Pipeline position: reconcile; a leaf utility, used by features/states.ts
- * Reads from Captured: nothing; operates on selector strings
- * Writes to Captured: nothing; pure
+ * Pipeline position: reconcile, a leaf utility used by features/states.ts
+ * Reads from Captured: nothing, it operates on selector strings
+ * Writes to Captured: nothing, it is pure
  *
- * Why this exists: re-anchoring an interactive-state rule (`.nav > .btn:hover`)
- * to a standalone artifact means taking it apart structurally, which compound is
- * the subject, which compounds carry a `:hover`/`:focus`/`:active`, and how they are
- * joined. A regex cannot do that safely: a selector nests parens (`:is(.a, .b)`,
- * `:nth-child(2n+1)`), brackets (`[href="a > b"]`), and strings, any of which can
- * hide a comma, a combinator, or a colon. So this is a real, if small, parser that
- * walks the string with paren/bracket/quote depth tracking, the same job the vendored
- * `parsel` micro-parser does, kept here with no node dependency.
+ * It exists because re-anchoring an interactive-state rule (`.nav > .btn:hover`)
+ * to a standalone artifact means taking it apart structurally. We need to know which
+ * compound is the subject, which compounds carry a `:hover`/`:focus`/`:active`, and
+ * how they are joined. A regex cannot do that safely. A selector nests parens
+ * (`:is(.a, .b)`, `:nth-child(2n+1)`), brackets (`[href="a > b"]`), and strings, any
+ * of which can hide a comma, a combinator, or a colon. So this is a real, if small,
+ * parser that walks the string with paren/bracket/quote depth tracking, the same job
+ * the vendored `parsel` micro-parser does, kept here with no node dependency.
  *
- * It is deliberately structural-only: it identifies compounds, the combinators
+ * It is deliberately structural-only. It identifies compounds, the combinators
  * between them, each compound's dynamic interactive pseudo-classes, and any
  * pseudo-element. It does not validate that a selector is well-formed beyond
- * balanced delimiters; the live `element.matches()` in the caller is the real
+ * balanced delimiters. The live `element.matches()` in the caller is the real
  * arbiter, and an unsupported `:has()` argument throws there and the caller drops the
  * rule. Anything with unbalanced delimiters throws a SyntaxError so the caller can
  * drop + warn rather than emit a broken selector.
@@ -29,7 +29,7 @@ export type Combinator = ' ' | '>' | '+' | '~';
 /**
  * The interactive pseudo-classes whose state is not present in a resting capture, so
  * a rule using one is silently dropped by the resting cascade. This is the closed
- * css-spec set states.ts reproduces; the form-state pseudos (`:checked`, `:disabled`)
+ * css-spec set states.ts reproduces. The form-state pseudos (`:checked`, `:disabled`)
  * are excluded deliberately because they reflect current dom state already captured
  * at rest.
  */
@@ -77,7 +77,7 @@ export interface Compound {
 export interface Complex {
 	/** The compounds, in source (left-to-right) order. The last is the subject. */
 	compounds: Compound[];
-	/** combinators[i] joins compounds[i] to compounds[i + 1]; length is compounds.length - 1. */
+	/** combinators[i] joins compounds[i] to compounds[i + 1]. Its length is compounds.length - 1. */
 	combinators: Combinator[];
 }
 
@@ -119,7 +119,7 @@ export function parseSelectorList(selector: string): Complex[] {
 /** One element to force a state on: its structural selector plus the pseudos to force there. */
 export interface TriggerBearer {
 	/** The bearer compound's structural selector, matched against a live element to force it.
-	 * Empty string, a bare `:hover`, matches any element. */
+	 * An empty string (a bare `:hover`) matches any element. */
 	structural: string;
 	/** The dynamic interactive pseudo-classes to force on that element, colon form, e.g. `[':hover']`. */
 	dynamicPseudos: string[];
@@ -128,13 +128,13 @@ export interface TriggerBearer {
 /**
  * Finds every element a state rule's selector asks to force, as (structural selector,
  * pseudos) pairs. Measurement only needs the element carrying the dynamic pseudo, wherever
- * it sits, never the subject relationship: forcing that element and reading the subtree lets
- * the engine resolve descendant/group-hover/sibling effects on its own. This is strictly
- * smaller than re-anchoring the whole combinator chain.
+ * it sits, never the subject relationship. Forcing that element and reading the subtree
+ * lets the engine resolve descendant/group-hover/sibling effects on its own. This is
+ * strictly smaller than re-anchoring the whole combinator chain.
  *
  * A pseudo at a compound's top level (`.btn:hover`) yields the compound's structural part as
  * the bearer. A pseudo buried in a forgiving functional pseudo (`:is(:where(.group):hover *)`)
- * is found by descending into the argument and taking the inner bearer (`.group`); the
+ * is found by descending into the argument and taking the inner bearer (`.group`). The
  * grammar a framework encodes the relationship in is never decoded, only stepped past.
  *
  * @param selector - a full rule selector, possibly a comma list
@@ -163,7 +163,7 @@ function collectBearers(compoundText: string, out: TriggerBearer[]): void {
 	const structural: string[] = [];
 	const dynamic: string[] = [];
 	for (const piece of tokenizeSimpleSelectors(compoundText)) {
-		if (piece.startsWith('::')) continue; // Pseudo-element: irrelevant to which element to force.
+		if (piece.startsWith('::')) continue; // Pseudo-element, so irrelevant to which element to force.
 		if (piece.startsWith(':')) {
 			const name = pseudoName(piece);
 			if (LEGACY_PSEUDO_ELEMENTS.has(name)) continue;
@@ -257,7 +257,7 @@ function splitCompounds(s: string): { compoundTexts: string[]; combinators: Comb
 	}
 	if (depth !== 0 || quote) throw new SyntaxError(`unbalanced selector: ${s}`);
 	if (cur.trim() !== '') compoundTexts.push(cur.trim());
-	// A trailing combinator with no following compound, e.g. "a >", is dangling; drop it.
+	// A trailing combinator with no following compound, e.g. "a >", is dangling, so drop it.
 	if (combinators.length >= compoundTexts.length) combinators.length = Math.max(0, compoundTexts.length - 1);
 	return { compoundTexts, combinators };
 }
@@ -298,7 +298,7 @@ function splitTopLevel(s: string, delim: string): string[] {
 /**
  * Analyzes one compound into its structural part, its dynamic interactive
  * pseudo-classes, and any pseudo-element. The structural part is what binds the
- * compound to a live element; the dynamic pseudos and pseudo-element are what the
+ * compound to a live element. The dynamic pseudos and pseudo-element are what the
  * re-anchored output rule keeps after the structural part is replaced by a marker.
  *
  * @param raw - the compound's source text

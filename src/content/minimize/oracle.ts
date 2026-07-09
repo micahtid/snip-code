@@ -3,31 +3,31 @@
  *
  * Pipeline position: minimize, the deletion/rewrite verifier used by every minimize phase
  * Reads from Captured: page.viewport, to size the frame like the pasted-snip environment
- * Writes to Captured: nothing; operates on a private iframe and the emitted stylesheet
+ * Writes to Captured: nothing. It operates on a private iframe and the emitted stylesheet.
  *
- * Why this exists: the minimizer proposes a candidate edit to the emitted stylesheet,
- * deleting a declaration, folding a shorthand, hoisting a rule, and needs a fast,
+ * Why this exists: the minimizer proposes a candidate edit to the emitted stylesheet, such
+ * as deleting a declaration, folding a shorthand, or hoisting a rule, and needs a fast,
  * conservative way to decide whether that edit changed the render. This module is that
  * decision. It mounts the emitted markup plus its stylesheet in a hidden, viewport-sized
  * iframe carrying only the ua stylesheet, the same isolated environment
- * reconcile/standalone.ts validates against, snapshots getComputedStyle for every element
+ * reconcile/standalone.ts validates against. It snapshots getComputedStyle for every element
  * and its ::before/::after, then after a candidate edit re-reads and compares. Equal
  * computed styles on an unchanged dom imply an identical render, so accepting only edits
- * that leave every computed longhand unchanged is strictly conservative: it can keep a
+ * that leave every computed longhand unchanged is strictly conservative. It can keep a
  * declaration that was in fact dead, but it can never delete one that was load-bearing.
  *
  * The comparison is universal by construction. It enumerates the full computed longhand
  * set the engine reports, never a hand-picked property list, and compares before against
  * after in the SAME frame, so any divergence is caused by the edit rather than by
  * standalone context. There is no property table, no selector knowledge, and no per-site
- * tuning anywhere in the oracle: it only knows how to ask the browser whether two renders
+ * tuning anywhere in the oracle. It only knows how to ask the browser whether two renders
  * are computationally identical.
  *
  * The edit is applied to the live stylesheet the frame renders from, exposed as `sheet`,
  * so mutating a rule's declarations reflows the frame and the next comparison sees the
- * result. The whole cycle is synchronous: no await means the frame never yields to load a
- * font or run a timer mid-run, so the compared font and layout state is fixed and the
- * verdict is deterministic.
+ * result. The whole cycle is synchronous. Because there is no await, the frame never yields
+ * to load a font or run a timer mid-run, so the compared font and layout state is fixed and
+ * the verdict is deterministic.
  */
 import type { Captured } from '../types';
 import { createSizedFrame } from '../reconcile/standalone';
@@ -44,7 +44,7 @@ interface Target {
  * to `sheet`. Created by createRenderOracle, disposed by the caller.
  */
 export interface RenderOracle {
-	/** The live stylesheet the frame renders from; the minimizer mutates its rules. */
+	/** The live stylesheet the frame renders from. The minimizer mutates its rules. */
 	readonly sheet: CSSStyleSheet;
 	/** The frame window, for reading computed styles of the mounted elements. */
 	readonly win: Window;
@@ -57,14 +57,14 @@ export interface RenderOracle {
 	/**
 	 * Whether the given targets still match the reference, the rest of the tree assumed
 	 * unchanged. Sound only when the caller passes every target a removal could have
-	 * touched; see subtreeTargets. This is the fast path the bisection uses so a removal
+	 * touched (see subtreeTargets). This is the fast path the bisection uses so a removal
 	 * on a few rules is checked against a small subtree rather than the whole render.
 	 */
 	matchesSubset(targetIdxs: number[]): boolean;
 	/**
 	 * The target indices covering the given elements and all their descendants, including
 	 * pseudo targets. A removal on a rule can only change the elements it matches and their
-	 * descendants, by inheritance or containing-block sizing; any further layout shift on an
+	 * descendants, by inheritance or containing-block sizing. Any further layout shift on an
 	 * ancestor or sibling is a consequence of a size change on one of these, which is caught
 	 * on that element first. So checking this set is sound for a removal touching those rules.
 	 */
@@ -76,7 +76,7 @@ export interface RenderOracle {
 /**
  * Mounts the emitted markup and stylesheet in an isolated, viewport-sized frame and
  * returns an oracle over that render. Awaits the frame's fonts before returning so its
- * metrics match the shipped render, which also waits for fonts; without this a
+ * metrics match the shipped render, which also waits for fonts. Without this a
  * font-metric-dependent size, such as a form control's intrinsic height, would compute
  * differently here than it ships and the oracle could accept a removal that shifts it.
  * The fonts load from the stylesheet's inlined data-uris, so this settles quickly and
@@ -102,13 +102,13 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 		// transition fired by a candidate removal would otherwise make getComputedStyle return
 		// a mid-flight value on each read and defeat the before/after comparison, silently
 		// accepting a removal whose effect is still animating in. This frozen state is the
-		// oracle's own and is never part of the serialized output; motion declarations survive
+		// oracle's own and is never part of the serialized output. Motion declarations survive
 		// because prune.ts holds them out of removal.
 		//
 		// It is applied as inline styles on every element, not only a stylesheet rule, because
 		// a stylesheet `*{...!important}` loses the cascade to any author rule with a more
 		// specific `!important` selector, such as a `[data-snip-state] { transition: all
-		// !important }` measured-state rule; inline `!important` outranks every selector rule,
+		// !important }` measured-state rule. Inline `!important` outranks every selector rule,
 		// so the freeze always wins. A stylesheet rule still covers the generated pseudo boxes,
 		// which cannot carry an inline style.
 		const pseudoFreeze = sized.doc.createElement('style');
@@ -134,7 +134,7 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 			new Promise<void>((resolve) => win.setTimeout(resolve, 2000)),
 		]);
 	} catch {
-		// FontFaceSet unavailable; proceed with whatever metrics the frame reports.
+		// FontFaceSet unavailable, so proceed with whatever metrics the frame reports.
 	}
 	// Every element box, plus a generated pseudo box only when it renders content. Comparing
 	// a painting pseudo matters because a declaration on the element, say color, is inherited
@@ -160,7 +160,7 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 	// the longhands getComputedStyle enumerates, which is the same set for every element in
 	// one engine, then adds every property the stylesheet actually declares. That union
 	// matters because getComputedStyle does not enumerate some non-standard properties that
-	// still paint, such as -webkit-font-smoothing and text-rendering; without them a
+	// still paint, such as -webkit-font-smoothing and text-rendering. Without them a
 	// declaration for such a property could be deleted with no computed-style change the
 	// oracle can see, yet the render would shift. getPropertyValue reads them regardless, and
 	// a declared shorthand simply reads as empty in both snapshots, so adding extras is safe.
@@ -195,7 +195,7 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 	let reference: string[][] | null = null;
 	// Per-target prop indices whose value is paint-irrelevant and so excluded from the
 	// comparison, letting the oracle accept removing a declaration that changes computed
-	// style but paints nothing. Computed once from the reference render; see paintIrrelevant.
+	// style but paints nothing. Computed once from the reference render (see paintIrrelevant).
 	let skips: Set<number>[] = [];
 
 	const readTarget = (t: Target): CSSStyleDeclaration =>
@@ -244,8 +244,8 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 
 	/**
 	 * Whether one target's current computed values still match the reference, skipping the
-	 * paint-irrelevant properties. Exact string equality is the most conservative test: any
-	 * change a removal causes differs here, while a true no-op leaves every value identical.
+	 * paint-irrelevant properties. Exact string equality is the most conservative test, because
+	 * any change a removal causes differs here, while a true no-op leaves every value identical.
 	 * Early exit keeps the common reject path cheap.
 	 */
 	function targetMatches(ti: number): boolean {
@@ -263,14 +263,14 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 
 /**
  * Mounts a render oracle over a stylesheet and markup, runs a minimize phase's transform
- * against it, and guarantees the frame is torn down. Every phase shares this scaffold: skip
- * empty input, mount the oracle, run the transform, and on any infrastructure failure at
- * either step append `<skipLabel> (<cause>)` and ship the input css unchanged, so a snip
+ * against it, and guarantees the frame is torn down. Every phase shares this scaffold. It skips
+ * empty input, mounts the oracle, and runs the transform. On any infrastructure failure at
+ * either step it appends `<skipLabel> (<cause>)` and ships the input css unchanged, so a snip
  * never fails on a minimize step. A phase with an additional cheap precondition checks it
  * before calling this, to avoid mounting a frame it does not need.
  *
  * @param css - the stylesheet this phase transforms
- * @param captured - source of the viewport size; the skip warning is appended here
+ * @param captured - source of the viewport size. The skip warning is appended here.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @param skipLabel - the warning prefix for this phase, e.g. `merge: skipped`
  * @param transform - runs against the mounted oracle and returns the phase's result css
@@ -309,16 +309,16 @@ export async function withOracle(
  *
  * - A border side with zero width paints no line, so its color and style are irrelevant.
  * - An outline with style none paints nothing, so its color and width are irrelevant.
- * - text-emphasis paints marks only when its style is set; with style none no mark paints,
+ * - text-emphasis paints marks only when its style is set. With style none no mark paints,
  *   so the emphasis color is irrelevant however inheritance resolves it.
  * - caret-color paints only the text caret, which shows only in a focused editable field and
  *   never in this resting render, so a caret-color that already equals the color it falls
- *   back to when unset is redundant here. It is skipped only where it equals color; where it
- *   differs it is kept. This is judged per target, so an inherited value equal to an
+ *   back to when unset is redundant here. It is skipped only where it equals color, and where
+ *   it differs it is kept. This is judged per target, so an inherited value equal to an
  *   ancestor's color but not a descendant's own color is caught on that descendant and kept.
  * - a text decoration line of none paints no underline, overline, or line-through, so its
  *   color, style, and thickness are irrelevant.
- * - text-stroke paints the glyph outline only at a non-zero width; with zero width the stroke
+ * - text-stroke paints the glyph outline only at a non-zero width. With zero width the stroke
  *   color paints nothing, so it is irrelevant. -webkit-text-fill-color stays compared, since it
  *   paints the glyph body at rest and a prior relaxation of it regressed the hover color freeze.
  * - a column rule of style none paints no rule between columns, so its color and width are

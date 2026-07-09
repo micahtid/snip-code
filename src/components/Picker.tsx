@@ -14,10 +14,10 @@
  * page overlay so the user selects an element, and the page scans, colors / fonts /
  * assets / schema, which read the whole page at once. The main button's label
  * is the active-mode indicator. Element picks lift a "picking" state up via
- * onPickingChange so App can wire the panel-side esc-to-cancel; page scans need no
+ * onPickingChange so App can wire the panel-side esc-to-cancel. Page scans need no
  * overlay, so they show a transient "Scanning..." instead. The heavy lifting lives
  * in the content script, meaning overlay plus screenshot for picks and extraction
- * for scans; this component owns only the mode state and the start signal.
+ * for scans. This component owns only the mode state and the start signal.
  */
 import { Fragment, useState } from 'react';
 import { Check, ChevronUp } from 'lucide-react';
@@ -40,7 +40,7 @@ interface PickerProps {
 /**
  * The modes, in menu order. `kind` splits the menu into an element-pick group and
  * a page-scan group, with a divider between them. `label` names the mode in the
- * menu; `action` is the main button's label for that mode, so the button text is
+ * menu. `action` is the main button's label for that mode, so the button text is
  * the active-mode indicator.
  */
 const MODES: ReadonlyArray<{ id: Mode; label: string; action: string; kind: 'element' | 'page' }> = [
@@ -65,10 +65,9 @@ const styles = {
  * The side panel runs in the extension context, so it must resolve the active tab
  * id before messaging it. Failures such as no active tab, or a content script not
  * yet injected on a freshly loaded page, are surfaced to the console rather than
- * thrown, since a
- * missing overlay/scan is a recoverable user-retry, not a crash. The boolean return
- * drives the in-flight state: true once the signal was delivered, false if the page
- * could not be messaged.
+ * thrown, because a missing overlay or scan is a recoverable user-retry, not a
+ * crash. The boolean return drives the in-flight state. It is true once the signal
+ * was delivered, and false if the page could not be messaged.
  *
  * @param message - the start-picker or start-scan signal to deliver
  * @returns whether the signal was delivered
@@ -92,7 +91,7 @@ async function sendToActiveTab(message: Record<string, unknown>): Promise<boolea
 
 export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
-	// A page scan shows a transient label on the main button; it owns no overlay state.
+	// A page scan shows a transient label on the main button. It owns no overlay state.
 	const [scanning, setScanning] = useState(false);
 
 	const active = MODES.find((m) => m.id === mode) ?? MODES[0]!;
@@ -101,11 +100,11 @@ export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerP
 		if (active.kind === 'element') {
 			onPickingChange(true);
 			const started = await sendToActiveTab({ type: START_PICKER, mode });
-			if (!started) onPickingChange(false); // Could not reach the page; leave select mode.
+			if (!started) onPickingChange(false); // Could not reach the page, so leave select mode.
 			return;
 		}
 		// Page scan: flash "Scanning..." until the content script ships its result and App
-		// swaps in the InspectPanel; clear the flash shortly after either way.
+		// swaps in the InspectPanel. Either way, clear the flash shortly after.
 		setScanning(true);
 		await sendToActiveTab({ type: START_SCAN, scan: mode as ScanKind });
 		setTimeout(() => setScanning(false), 1200);

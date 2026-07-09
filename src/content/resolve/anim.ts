@@ -13,7 +13,7 @@
  * This pairs the animation references in the baked styles with the captured
  * @keyframes and keeps only the ones actually used, so the emitted css carries
  * the animations the snip needs and nothing else. clean.ts re-checks this as
- * dead-code elimination; here it is the resolve-phase pairing.
+ * dead-code elimination. Here it is the resolve-phase pairing.
  */
 import type { Captured } from '../types';
 
@@ -30,9 +30,9 @@ export function resolveAnimations(captured: Captured): void {
 
 /**
  * Collects every token that appears in an animation / animation-name value across
- * the baked styles. The animation shorthand lists name, duration, timing, etc. In
- * any order, so rather than parse the grammar we gather all tokens and let the
- * keyframe-name intersection in the caller pick the real names, a duration like
+ * the baked styles. The animation shorthand lists name, duration, timing, and so
+ * on, in any order, so rather than parse the grammar we gather all tokens and let
+ * the keyframe-name intersection in the caller pick the real names. A duration like
  * "2s" can never collide with a keyframe identifier.
  */
 function referencedAnimationNames(captured: Captured): Set<string> {

@@ -3,7 +3,7 @@
  *
  * Pipeline position: convert
  * Reads from Captured: the inline-styled clone, fonts, and keyframes
- * Writes to Captured: nothing; a pure emitter that returns the output
+ * Writes to Captured: nothing. It is a pure emitter that returns the output.
  *
  * Emits the reconciled and resolved result.
  *
@@ -33,8 +33,8 @@ export function emitHtml(captured: Captured): HtmlOutput {
 }
 
 /**
- * Builds the @font-face + @keyframes stylesheet block shared by every emitter;
- * these at-rules cannot be expressed inline or as utility classes.
+ * Builds the @font-face + @keyframes stylesheet block shared by every emitter.
+ * These at-rules cannot be expressed inline or as utility classes.
  *
  * @param captured - reads fonts + keyframes
  */

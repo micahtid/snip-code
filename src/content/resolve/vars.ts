@@ -3,7 +3,7 @@
  *
  * Pipeline position: resolve
  * Reads from Captured: root, clone, bakedStyles, variables
- * Writes to Captured: bakedStyles and clone; resolves var() refs and emits root vars
+ * Writes to Captured: bakedStyles and clone (resolves var() refs and emits root vars)
  *
  * Variables travel with their definitions, or resolve to literals.
  *
@@ -38,7 +38,7 @@ export function resolveVariables(captured: Captured): void {
 		pairedSubtrees(captured.root, captured.clone).map(([original, clone]) => [clone, original]),
 	);
 
-	// :root / html scoped definitions; survive only if we re-emit them.
+	// :root / html scoped definitions. They survive only if we re-emit them.
 	const rootVars = new Map<string, string>();
 	for (const v of captured.variables) {
 		if (v.scope === 'root') rootVars.set(v.name, v.value);
@@ -46,8 +46,8 @@ export function resolveVariables(captured: Captured): void {
 	// Ambient definitions a state rule may also lean on: every foundation-scoped custom
 	// property, meaning the `*`/html/body resets, for example older tailwind's `--tw-translate-x: 0`
 	// transform chain, on top of :root. Those resets carry no @property registration, so
-	// they inherit; re-emitting a referenced one on the root carries it to the subject. Used
-	// only by the state path; the resting path below still resolves an outside-snip var to
+	// they inherit. Re-emitting a referenced one on the root carries it to the subject. Used
+	// only by the state path. The resting path below still resolves an outside-snip var to
 	// its computed literal, unchanged.
 	const ambientVars = new Map<string, string>(rootVars);
 	for (const rule of captured.foundationRules) {
@@ -56,7 +56,7 @@ export function resolveVariables(captured: Captured): void {
 		}
 	}
 	// Definitions declared on some element inside the snip subtree already travel
-	// with that clone node; they were baked as inline custom properties.
+	// with that clone node. They were baked as inline custom properties.
 	const subtreeDefs = collectSubtreeDefs(captured);
 
 	const neededRootVars = new Set<string>();
@@ -74,10 +74,10 @@ export function resolveVariables(captured: Captured): void {
 					neededRootVars.add(name); // Survives once re-emitted on the root
 					continue;
 				}
-				mustResolveToLiteral = true; // Defined outside the snip; cannot survive
+				mustResolveToLiteral = true; // Defined outside the snip, so it cannot survive
 			}
 			if (mustResolveToLiteral && original) {
-				// The live element already resolved the var to its used value; that
+				// The live element already resolved the var to its used value. That
 				// computed literal is the faithful replacement and locks the pixel.
 				const literal = getComputedStyle(original).getPropertyValue(prop);
 				if (literal) {
@@ -89,9 +89,9 @@ export function resolveVariables(captured: Captured): void {
 	}
 
 	// Synthesized state/pseudo rules carry their own var() references, which the
-	// bakedStyles loop above never sees; they live in a <style>, not in bakedStyles.
-	// Resolve them against the ambient definitions, with one state-specific exception;
-	// see resolveSynthesizedVariables.
+	// bakedStyles loop above never sees. They live in a <style>, not in bakedStyles.
+	// Resolve them against the ambient definitions, with one state-specific exception.
+	// See resolveSynthesizedVariables.
 	resolveSynthesizedVariables(captured, subtreeDefs, ambientVars, neededAmbientVars);
 
 	// Re-emit every ambient definition a surviving reference needs: the resting :root deps
@@ -111,19 +111,19 @@ export function resolveVariables(captured: Captured): void {
  *  - a surviving definition: a subtree-baked value, a re-emitted ambient definition that is
  *    :root or foundation/`*`-scoped, or a custom property the synthesized rules define
  *    themselves, as in `:hover { --x: red; color: var(--x) }` or the tailwind `--tw-*` chain,
- *    resolved to a fixpoint so a chain of synthesized defs holds;
+ *    resolved to a fixpoint so a chain of synthesized defs holds.
  *  - a registered @property initial-value: `var(--x)` yields the registered initial even
- *    when nothing sets it, and reconcile/properties.ts ships those registrations;
+ *    when nothing sets it, and reconcile/properties.ts ships those registrations.
  *  - a fallback on the reference itself: `var(--x, black)` always produces a value.
  *
  * Only a reference that resolves through none of these is unreproducible: its state-time
  * value cannot be copied, because the live element's computed value is its RESTING value,
  * wrong for a `:hover { color: var(--accent-hover) }` whose accent only takes its hover
- * value while hovered; only a forced-state measurement could get it, the deferred
+ * value while hovered. Only a forced-state measurement could get it, the deferred
  * follow-up. That declaration is dropped with a warning rather than baked to a wrong
  * color. Dropping is transitive through the fixpoint, so no dangling var() is ever emitted.
  *
- * @param captured - the synthesized <style> is rewritten in place; warnings appended
+ * @param captured - the synthesized <style> is rewritten in place, and warnings appended
  * @param subtreeDefs - custom-property names defined on a subtree element
  * @param ambientVars - the :root + foundation custom properties available to re-emit
  * @param neededAmbientVars - accumulates the ambient vars a kept reference depends on
@@ -184,7 +184,7 @@ function resolveSynthesizedVariables(
 /**
  * Every var() reference in a value, each with whether it carries a fallback, meaning a top-level
  * comma inside its own parens. A reference with a fallback always yields a value, so it
- * never forces a declaration to drop; one without a fallback must resolve by name.
+ * never forces a declaration to drop. One without a fallback must resolve by name.
  *
  * @param value - the declaration value to scan
  */
@@ -279,6 +279,6 @@ function setInline(clone: Element, prop: string, value: string): void {
 	try {
 		(clone as HTMLElement).style.setProperty(prop, value);
 	} catch {
-		// Invalid declaration for this element; ignore.
+		// Invalid declaration for this element, so ignore.
 	}
 }

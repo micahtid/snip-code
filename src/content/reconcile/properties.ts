@@ -1,16 +1,16 @@
 /**
  * reconcile/properties.ts: registered custom properties (@property)
  *
- * Pipeline position: reconcile; a leaf utility, read live from the cssom
- * Reads from Captured: nothing; reads document.styleSheets directly
- * Writes to Captured: nothing; a pure read
+ * Pipeline position: reconcile, a leaf utility read live from the cssom
+ * Reads from Captured: nothing, it reads document.styleSheets directly
+ * Writes to Captured: nothing, it is a pure read
  *
- * Why this exists: a custom property registered with `@property` carries a syntax, an
- * inherits flag, and, often, an initial-value that govern how it falls back and
- * interpolates. Two phases need that registration: features/layers.ts re-emits the
+ * It exists because a custom property registered with `@property` carries a syntax, an
+ * inherits flag, and often an initial-value that govern how it falls back and
+ * interpolates. Two phases need that registration. features/layers.ts re-emits the
  * rules so the artifact keeps the behavior, and resolve/vars.ts treats a registered
- * property with an initial-value as resolvable, since a `var()` to it yields its initial even
- * when nothing sets it, so a state rule referencing it renders standalone. The two
+ * property with an initial-value as resolvable, since a `var()` to it yields its initial
+ * even when nothing sets it, so a state rule referencing it renders standalone. The two
  * shared this scan rather than walk the cssom twice with copied logic.
  *
  * CSSPropertyRule is not in every dom lib version, so the rule is detected
@@ -41,7 +41,7 @@ export function registeredProperties(): Map<string, RegisteredProperty> {
 		try {
 			rules = sheet.cssRules;
 		} catch {
-			continue; // Cross-origin sheet; cannot read.
+			continue; // Cross-origin sheet, cannot read.
 		}
 		collect(rules, out);
 	}

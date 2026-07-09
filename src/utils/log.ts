@@ -1,11 +1,11 @@
 /**
- * utils/log.ts: namespaced console logging
+ * utils/log.ts: namespaced console logging.
  *
- * Pipeline position: n/a; cross-cutting utility
+ * This is not part of the pipeline. It is a cross-cutting utility.
  *
- * Why this exists: a single prefixed logger so extension output is identifiable
- * in the console and easy to silence. It must never log secrets such as byok keys;
- * call sites are responsible for not passing them, and the byok layer never does.
+ * Why this exists: a single prefixed logger so extension output is identifiable in the
+ * console and easy to silence. It must never log secrets such as byok keys. Call sites are
+ * responsible for not passing them, and the byok layer never does.
  */
 
 const PREFIX = 'snipcode:';

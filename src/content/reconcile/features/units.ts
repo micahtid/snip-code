@@ -9,24 +9,24 @@
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/length#viewport-percentage_lengths
  * Detection criterion: a baked value containing a viewport (vw/vh/dvh/svh/lvh/
- * vmin/vmax) or container (cqw/cqh/cqi/cqb/...) length. Early-returns otherwise.
- * Transform contract: replaces such values with the live element's computed
- * literal (px). Mutates bakedStyles + clone inline styles only.
+ * vmin/vmax) or container (cqw/cqh/cqi/cqb/...) length. It early-returns otherwise.
+ * Transform contract: it replaces such values with the live element's computed
+ * literal (px). It mutates bakedStyles and the clone inline styles only.
  *
- * Why this exists: viewport and container units resolve against the viewport /
- * containment context, which change when the snip is reparented, a 50vw hero
+ * Why this exists: viewport and container units resolve against the viewport or
+ * containment context, which changes when the snip is reparented. A 50vw hero
  * becomes half of whatever viewport it lands in. An alternative, wrapping the
  * snip in a captured-viewport container, cannot work for a standalone element
- * crop: the grader renders output.html at the element's own dimensions, so a
+ * crop. The grader renders output.html at the element's own dimensions, so a
  * viewport-sized wrapper would clip. Resolving to the captured computed literal
  * locks the pixels exactly as preferring the computed value does when an authored
- * value would not survive, and needs no synthetic wrapper.
+ * value would not survive, and it needs no synthetic wrapper.
  *
  * Extensions in this file:
  * - Logical properties: logical props (margin-inline, inset-inline-
- * start,...) survive as the authored value when authored, but they resolve against the
- * element's direction/writing-mode, which must be baked when non-default for
- * rtl + vertical text; material v6 / tailwind v4 lean on logical props.
+ * start, ...) survive as the authored value when authored, but they resolve against the
+ * element's direction and writing-mode, which must be baked when non-default for
+ * rtl and vertical text. Material v6 and tailwind v4 lean on logical props.
  * - Aspect-ratio: the aspect-ratio property and intrinsic <img
  * width/height> attributes, baked so the box keeps its ratio standalone.
  */
@@ -50,12 +50,12 @@ export function apply(captured: Captured): Captured {
 		for (const [prop, value] of baked) {
 			if (!DYNAMIC_UNIT.test(value)) continue;
 			const literal = computed.getPropertyValue(prop);
-			if (!literal || DYNAMIC_UNIT.test(literal)) continue; // Could not resolve; leave as-is
+			if (!literal || DYNAMIC_UNIT.test(literal)) continue; // Could not resolve, so leave as-is
 			setBaked(clone, baked, prop, literal);
 		}
 
-		// Logical properties resolve against direction + writing-mode; bake them
-		// when non-default so rtl / vertical text maps inline/block axes correctly.
+		// Logical properties resolve against direction and writing-mode, so bake them
+		// when non-default so rtl and vertical text maps inline and block axes correctly.
 		bakeNonDefault(clone, baked, computed, 'direction', (v) => v === '' || v === 'ltr');
 		bakeNonDefault(clone, baked, computed, 'writing-mode', (v) => v === '' || v === 'horizontal-tb');
 
@@ -63,7 +63,7 @@ export function apply(captured: Captured): Captured {
 		bakeNonDefault(clone, baked, computed, 'aspect-ratio', (v) => v === '' || v === 'auto');
 
 		// <img> intrinsic dimensions feed aspect-ratio: auto and prevent layout
-		// shift; copy the natural size to width/height attributes when missing.
+		// shift. Copy the natural size to width/height attributes when missing.
 		if (original instanceof HTMLImageElement && clone instanceof HTMLImageElement) {
 			pinIntrinsicSize(original, clone, baked);
 		}
@@ -106,6 +106,6 @@ function setBaked(clone: Element, baked: Map<string, string>, prop: string, valu
 	try {
 		(clone as HTMLElement).style.setProperty(prop, value);
 	} catch {
-		// Invalid for this element; skip.
+		// Invalid for this element, so skip it.
 	}
 }

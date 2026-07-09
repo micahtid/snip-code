@@ -1,30 +1,30 @@
 /**
- * polish/verify.ts: render-neutrality check for the llm polish edits
+ * polish/verify.ts: render-neutrality check for the llm polish edits.
  *
- * Pipeline position: polish
- * Reads from Captured: page.viewport, to size the frames
- * Writes to Captured: nothing; operates on the pre- and post-polish html + css
+ * Pipeline position: polish.
+ * Reads from Captured: page.viewport, to size the frames.
+ * It writes nothing to Captured. It operates on the pre-polish and post-polish html and css.
  *
- * Why this exists: the polish pass takes edits from the user's own model, semantic class
- * renames, semantic tag swaps, and grouping comments, all meant to be render-neutral. A
+ * Why this exists: the polish pass takes edits from the user's own model (semantic class
+ * renames, semantic tag swaps, and grouping comments), all meant to be render-neutral. A
  * model can still get one wrong, renaming a class inconsistently or swapping a tag whose ua
  * styles differ. This confirms the polished artifact renders identically to the pre-polish
  * one before it ships, so a bad edit falls back to the deterministic output rather than
  * degrading fidelity.
  *
- * The polish edits never add or remove elements, only rename classes, swap tag names, and
- * add comments, so the two element trees are structurally identical and a lockstep walk
+ * The polish edits never add or remove elements. They only rename classes, swap tag names,
+ * and add comments, so the two element trees are structurally identical and a lockstep walk
  * pairs them by position. Each pair's full computed style is compared in the isolated
- * pasted-snip environment both artifacts ship into; equal computed styles on the paired
- * dom imply an identical render.
+ * pasted-snip environment both artifacts ship into. Equal computed styles on the paired dom
+ * imply an identical render.
  */
 import type { Captured } from '../types';
 import { createSizedFrame } from '../reconcile/standalone';
 
 /**
- * Whether the polished artifact renders identically to the pre-polish one. Mounts each in
+ * Whether the polished artifact renders identically to the pre-polish one. It mounts each in
  * its own isolated, viewport-sized frame, pairs their elements by lockstep position, and
- * requires every paired element's computed style, and its ::before/::after, to match. Any
+ * requires every paired element's computed style, and its ::before and ::after, to match. Any
  * frame or infrastructure failure returns false, so the caller keeps the safe pre-polish
  * output rather than trusting an unverifiable edit.
  *
@@ -42,7 +42,7 @@ export function polishRenderNeutral(captured: Captured, preHtml: string, preCss:
 		post = mount(captured, postHtml, postCss);
 		const preEls = Array.from(pre.body.querySelectorAll('*'));
 		const postEls = Array.from(post.body.querySelectorAll('*'));
-		if (preEls.length !== postEls.length) return false; // A structural edit; not render-neutral.
+		if (preEls.length !== postEls.length) return false; // A structural edit is not render-neutral.
 		const props = masterProps(pre.win, preEls[0]);
 		for (let i = 0; i < preEls.length; i++) {
 			if (!elementsMatch(pre.win, preEls[i]!, post.win, postEls[i]!, props)) return false;

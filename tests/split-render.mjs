@@ -2,18 +2,18 @@
 //
 // Both come from the same frozen snip (one capture), so any difference is the asset split's
 // doing, never live drift. Externalizing an inline svg to an <img> or a data-uri image to a
-// file cannot be pixel-identical: an <img>-rendered svg has an anti-aliasing floor, a
+// file cannot be pixel-identical. An <img>-rendered svg has an anti-aliasing floor, a
 // translucent surface with backdrop-filter over a lifted asset repaints slightly, and an
 // inline <img> and an inline <svg> settle a line box a sub-pixel apart. So the gate is
-// structural, not pixel-exact: element counts must match, no element may move or resize
+// structural, not pixel-exact. Element counts must match, no element may move or resize
 // beyond a few pixels of that inline-layout floor, and every lifted image must load. A real
 // in-flow regression (a mis-sized lifted asset) cascades into many, growing shifts and is
-// still caught; the isolated sub-pixel jitter of a faithful split is not. The pixel diff is
+// still caught. The isolated sub-pixel jitter of a faithful split is not. The pixel diff is
 // reported for transparency but does not fail the gate.
 //
 // Run after `node tests/run-pipeline.mjs` so the split files exist.
 
-// The inline-layout floor: an inline <img> settles within a few pixels of the inline <svg>
+// The inline-layout floor. An inline <img> settles within a few pixels of the inline <svg>
 // it replaced. A genuine regression exceeds this on many elements at once, not just one.
 const SHIFT_TOLERANCE = 8;
 
@@ -25,8 +25,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findBundles, readSource } from './run-pipeline.mjs';
 
-/** Boxes of every element that is neither an svg/img nor inside an svg: the stable page chrome
- * whose layout an asset split must not disturb. Plus the srcs of any <img> that failed to load. */
+/** Boxes of every element that is neither an svg/img nor inside an svg, which is the stable page
+ * chrome whose layout an asset split must not disturb. Plus the srcs of any <img> that failed to load. */
 const PAGE_PROBE = () => {
 	const insideSvg = (el) => { for (let p = el.parentElement; p; p = p.parentElement) if (p.tagName.toLowerCase() === 'svg') return true; return false; };
 	const chrome = [];
@@ -64,7 +64,7 @@ async function pixelDiff(a, b) {
 /**
  * Structural verdict for one bundle: the number of chrome elements whose box shifts past the
  * inline-layout tolerance and the largest shift seen. A mismatched element count, or any
- * element beyond tolerance, is a regression; isolated sub-pixel jitter is the floor.
+ * element beyond tolerance, is a regression. Isolated sub-pixel jitter is the floor.
  */
 function shiftReport(a, b) {
 	if (a.length !== b.length) return { fatal: `element count ${a.length} vs ${b.length}`, over: 0, max: 0 };

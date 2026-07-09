@@ -1,11 +1,11 @@
 /**
  * inspect/schema/classify.ts: semantic element classifier
  *
- * Pipeline position: inspect, page-scoped; reads the live dom directly and does not run the element pipeline
- * Reads from DOM: document/window; live, per-element computed styles
- * Writes to: nothing; pure classification
+ * Pipeline position: inspect, page-scoped. It reads the live dom directly and does not run the element pipeline.
+ * Reads from DOM: document/window. This runs live, on per-element computed styles.
+ * Writes to: nothing. This is pure classification.
  *
- * Principles applied: none; classification.
+ * Principles applied: none. This is classification.
  *
  * Why this exists: the schema walk needs each element's semantic role, such as
  * heading, button, card, or container, to build the structure tree and group component

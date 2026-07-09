@@ -3,39 +3,40 @@
  *
  * Pipeline position: minimize, after merge and before format
  * Reads from Captured: nothing
- * Writes to Captured: nothing; transforms the merged stylesheet string
+ * Writes to Captured: nothing. It transforms the merged stylesheet string.
  *
  * Why this exists: a tailwind-based sheet registers dozens of custom properties with
- * `@property` (67 to 123 per bundle), and after prune deletes the declarations that used
- * them, almost all of those registrations govern nothing: their property name appears
+ * `@property` (67 to 123 per bundle). After prune deletes the declarations that used them,
+ * almost all of those registrations govern nothing, because their property name appears
  * nowhere else in the sheet. A registration whose name is never set, read by var(), or
  * named in a transition is dead weight a human would never write, so this drops it.
  *
  * Liveness is judged textually and conservatively, never by the resting oracle, for two
- * reasons. A registration's real job can be invisible at rest: reconcile/properties.ts
- * re-emits registrations precisely so a custom property interpolates smoothly in a
- * transition (the shadcn ring recovery), and the resting render cannot see that motion. And
- * the render oracle is actively unfit here: getComputedStyle enumerates a registered custom
- * property, so removing its registration changes that property's computed value even though
- * it is unreferenced and paints nothing, which the oracle would read as a render change and
- * veto. So liveness is a read count: a registration is kept whenever its name is read, by a
- * var() reference or by a mention in a transition or animation property list, resting rule or
- * withheld state rule alike. A write, a declaration that merely sets the name, is not
- * liveness, since a value nothing reads governs no paint; a name only written, or present
- * only in its own registration, is dead. Because a dead name governs nothing, removing its
- * registration is a no-op at rest and in motion by construction, the same style of
- * by-construction safety colorize relies on. The corpus pixel backstop and the forced-state
- * checks verify the batch at the gate.
+ * reasons. First, a registration's real job can be invisible at rest. reconcile/properties.ts
+ * re-emits registrations precisely so a custom property interpolates smoothly in a transition
+ * (the shadcn ring recovery), and the resting render cannot see that motion. Second, the render
+ * oracle is actively unfit here. getComputedStyle enumerates a registered custom property, so
+ * removing its registration changes that property's computed value even though it is
+ * unreferenced and paints nothing, which the oracle would read as a render change and veto.
  *
- * Because the var() inlining step removes reference sites, registrations can become newly
- * dead after it; this purge is idempotent and cheap, so it runs again after that step.
+ * So liveness is a read count. A registration is kept whenever its name is read, whether by a
+ * var() reference or by a mention in a transition or animation property list, in a resting rule
+ * or a withheld state rule alike. A write, meaning a declaration that merely sets the name, is
+ * not liveness, because a value nothing reads governs no paint. A name that is only written, or
+ * present only in its own registration, is dead. Because a dead name governs nothing, removing
+ * its registration is a no-op at rest and in motion by construction, the same style of
+ * by-construction safety that colorize relies on. The corpus pixel backstop and the
+ * forced-state checks verify the batch at the gate.
+ *
+ * Because the var() inlining step removes reference sites, registrations can become newly dead
+ * after it. This purge is idempotent and cheap, so it runs again after that step.
  */
 import { serializeRules } from './declarations';
 
 /** A grouping rule (@media/@layer/@supports) whose child rules can be walked and deleted. */
 type RuleContainer = CSSStyleSheet | CSSGroupingRule;
 
-/** One registered @property in the parsed sheet: where it sits, so it can be deleted. */
+/** One registered @property in the parsed sheet, recording where it sits so it can be deleted. */
 interface PropertyRuleRef {
 	container: RuleContainer;
 	index: number;
@@ -46,9 +47,9 @@ interface PropertyRuleRef {
  * Drops every `@property` registration whose custom-property name is never read, meaning no
  * var() reference and no transition or animation mention anywhere in the sheet. Parses the css
  * into a constructable stylesheet, the same side-effect-free cssom parse formatCss uses, so
- * nothing touches the live page. Graceful by contract: returns the input unchanged when the
- * css will not parse or carries no registration. Deterministic: a pure function of the input
- * text.
+ * nothing touches the live page. It is graceful by contract, returning the input unchanged when
+ * the css will not parse or carries no registration. It is deterministic, a pure function of
+ * the input text.
  *
  * @param css - the merged stylesheet, after merge and before format
  * @returns the stylesheet with dead registrations removed, or the input unchanged
@@ -112,13 +113,13 @@ function deleteRules(refs: PropertyRuleRef[]): void {
 }
 
 /**
- * How many times a custom-property name is read in the sheet: a `var()` reference to it, or a
- * mention of it in a transition or animation property list, where it names a property to
- * interpolate. A write, a declaration that sets the name, is not a read and keeps no
- * registration alive, since a value nothing reads governs no paint; neither does the name's
- * own `@property` line. A registration with zero reads is therefore dead. The token boundary
- * rejects a name that is a prefix of another (`--tw-ring` inside `--tw-ring-color`), since a
- * hyphen is a name character, not a word boundary.
+ * How many times a custom-property name is read in the sheet. A read is a `var()` reference to
+ * it, or a mention of it in a transition or animation property list, where it names a property
+ * to interpolate. A write, meaning a declaration that sets the name, is not a read and keeps no
+ * registration alive, because a value nothing reads governs no paint. The name's own
+ * `@property` line is not a read either. A registration with zero reads is therefore dead. The
+ * token boundary rejects a name that is a prefix of another (`--tw-ring` inside
+ * `--tw-ring-color`), because a hyphen is a name character, not a word boundary.
  *
  * @param css - the whole stylesheet text
  * @param name - a custom-property name including the leading `--`

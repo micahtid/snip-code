@@ -1,30 +1,31 @@
 /**
  * convert/assets.ts: split inline svgs, data-uri images, and data-uri fonts into referenced files
  *
- * Pipeline position: convert; a delivery-time split, after the document is assembled
- * Reads from Captured: nothing; operates on the assembled document string
- * Writes to Captured: nothing; returns the file set
+ * Pipeline position: convert. This is a delivery-time split, after the document is assembled.
+ * Reads from Captured: nothing. It operates on the assembled document string.
+ * Writes to Captured: nothing. It returns the file set.
  *
  * Why this exists: the html-shaped output is one self-contained document with its
  * svg icons, data-uri images, and @font-face fonts inlined. That renders and grades as
- * a single file, but it is hard to read and reuse: a 30-line icon sits in the middle of
+ * a single file, but it is hard to read and reuse. A 30-line icon sits in the middle of
  * the markup, a base64 image is an unreadable wall, and an embedded font is hundreds of
  * KB that dwarf the stylesheet a user actually reads. This lifts each inline <svg>, each
  * data: image, and each @font-face src font into its own file and rewrites the document
  * to reference it (<img src="icon-1.svg">, url("image-1.png"), url("font-1.woff2")), so
  * the sidebar can present them as separate, switchable files. The caller keeps the
- * original self-contained document for preview and grading; this split is purely the
+ * original self-contained document for preview and grading. This split is purely the
  * user-facing delivery shape.
  *
- * Render fidelity: an svg loaded through <img> no longer inherits the page's color,
- * so each icon's currentColor is resolved by laying the document out in a hidden
- * iframe and reading the svg's computed color, which is ground truth whether the color is set
- * inline, by a presentation attribute, or by a class rule, so it is correct for every
- * output format, and baked into the file before the icon is detached. The same computed
- * box, its size, display, and vertical-align, carries onto the replacement <img> so it lays
- * out where the svg did. An svg taken out of normal flow by a non-static position or a
- * transform cannot be reproduced by an in-flow <img>, so it is left inline; likewise a sprite
- * whose <use> points outside itself. What lifts is faithful; what would not stays put.
+ * Render fidelity: an svg loaded through <img> no longer inherits the page's color.
+ * So each icon's currentColor is resolved by laying the document out in a hidden
+ * iframe and reading the svg's computed color. That computed color is ground truth
+ * whether it is set inline, by a presentation attribute, or by a class rule, so it is
+ * correct for every output format, and it is baked into the file before the icon is
+ * detached. The same computed box, its size, display, and vertical-align, carries onto
+ * the replacement <img> so it lays out where the svg did. An svg taken out of normal
+ * flow by a non-static position or a transform cannot be reproduced by an in-flow <img>,
+ * so it is left inline. The same goes for a sprite whose <use> points outside itself.
+ * What lifts is faithful. What would not stays put.
  */
 import type { AssetFile } from '../types';
 
@@ -73,7 +74,7 @@ export function splitAssets(documentHtml: string, warnings: string[]): AssetFile
 			// carrying its full positioning context, so keep it inline where it lays out right.
 			if (box && (box.position !== 'static' || box.transform !== 'none')) return svg;
 			// An svg that composes cross-references, a <mask>/<filter>, a <use> pointing at defs,
-			// or a <foreignObject>, renders through the document that hosts it; detached into a
+			// or a <foreignObject>, renders through the document that hosts it. Detached into a
 			// standalone <img> those either break or paint differently, so keep it inline.
 			if (COMPOSES_VIA_REFERENCE.test(svg)) return svg;
 			const file = bakeColor(ensureXmlns(svg), box?.color ?? DEFAULT_COLOR);
@@ -131,7 +132,7 @@ function extractSvgs(html: string, replace: (svg: string) => string): string {
 	let start: number;
 	while ((start = nextSvgStart(html, i)) !== -1) {
 		const end = matchingSvgEnd(html, start);
-		if (end === -1) break; // Unbalanced; leave the remainder verbatim
+		if (end === -1) break; // Unbalanced, so leave the remainder verbatim
 		result += html.slice(i, start) + replace(html.slice(start, end));
 		i = end;
 	}
@@ -206,7 +207,7 @@ function buildImgTag(svg: string, name: string, box: SvgBox | undefined): string
 /**
  * The box styles the <img> needs to lay out exactly where the inline svg did, minus the
  * now-baked paint props. The svg's size, display, and baseline can come from an attribute, an
- * inline style, or a class rule; only the computed box (`box`) captures all three, so it is
+ * inline style, or a class rule. Only the computed box (`box`) captures all three, so it is
  * the ground truth for those. Any other box props authored inline, a margin say, are kept as
  * written. `display`/`vertical-align` are emitted only when they deviate from the <img>
  * defaults (inline, baseline), so a plain icon stays clean.
@@ -217,7 +218,7 @@ function imgStyle(el: Element, box: SvgBox | undefined): string {
 		const colon = part.indexOf(':');
 		if (colon === -1) continue;
 		const prop = part.slice(0, colon).trim().toLowerCase();
-		// Paint is baked into the file; size, display, and baseline come from the computed box.
+		// Paint is baked into the file. Size, display, and baseline come from the computed box.
 		if (!prop || ['fill', 'stroke', 'color', 'width', 'height', 'display', 'vertical-align'].includes(prop)) continue;
 		decls.push(`${prop}: ${part.slice(colon + 1).trim()}`);
 	}
@@ -255,9 +256,10 @@ function mimeExtension(dataUrl: string): string {
 
 /**
  * A css url() carrying a data uri, with the optional format() hint that follows it in an
- * @font-face src. Groups: 1 the opening quote, 2 the data uri, 3 the whole format() span to
- * preserve, 4 the hint token. Runs after image extraction, so any remaining data uri in a
- * url() is a font or another non-image asset, filtered by mime below.
+ * @font-face src. The capture groups are the opening quote, the data uri, the whole
+ * format() span to preserve, and the hint token, in that order. This runs after image
+ * extraction, so any remaining data uri in a url() is a font or another non-image asset,
+ * which the mime check below filters.
  */
 const DATA_FONT_URL = /url\(\s*(["']?)(data:[^"')]+)\1\s*\)(\s*format\(\s*["']?([\w+-]+)["']?\s*\))?/gi;
 
@@ -285,7 +287,7 @@ function extractFontUris(html: string, replace: (dataUrl: string, ext: string) =
 	return html.replace(DATA_FONT_URL, (whole, quote: string, dataUrl: string, formatSpan: string | undefined, hint: string | undefined) => {
 		const mime = (/^data:([^;,]*)/i.exec(dataUrl)?.[1] ?? '').toLowerCase();
 		const ext = fontExtension(dataUrl, mime, hint);
-		if (!ext) return whole; // Not a font data uri; leave it as written.
+		if (!ext) return whole; // Not a font data uri, so leave it as written.
 		return `url(${quote}${replace(dataUrl, ext)}${quote})${formatSpan ?? ''}`;
 	});
 }
@@ -293,14 +295,14 @@ function extractFontUris(html: string, replace: (dataUrl: string, ext: string) =
 /**
  * The file extension for a font data uri, or null when the uri is not a font. The font's own
  * magic bytes are the ground truth and are read first, so a mislabeled uri (a woff2 served as
- * binary/octet-stream) is still recognized; the declared mime and then the format() hint are
+ * binary/octet-stream) is still recognized. The declared mime and then the format() hint are
  * fallbacks for a container, eot say, whose header carries no clean signature.
  */
 function fontExtension(dataUrl: string, mime: string, hint: string | undefined): string | null {
 	const bySignature = fontSignatureExt(dataUrl);
 	if (bySignature) return bySignature;
 	if (FONT_MIME_EXT[mime]) return FONT_MIME_EXT[mime];
-	if (/^font\//.test(mime)) return 'woff2'; // A font/* subtype we do not enumerate; woff2 is the modern default.
+	if (/^font\//.test(mime)) return 'woff2'; // A font/* subtype we do not enumerate, so woff2 is the modern default.
 	const hinted = hint ? FONT_HINT_EXT[hint.toLowerCase()] : undefined;
 	if (hinted && (mime === 'application/octet-stream' || mime === 'binary/octet-stream' || mime === '')) return hinted;
 	return null;
@@ -359,7 +361,7 @@ function resolveSvgBoxes(documentHtml: string): SvgBox[] {
 			boxes.push({ color: cs.color || DEFAULT_COLOR, display: cs.display, verticalAlign: cs.verticalAlign, width: cs.width, height: cs.height, position: cs.position, transform: cs.transform });
 		}
 	} catch {
-		// Layout unavailable; callers fall back to defaults.
+		// Layout unavailable, so callers fall back to defaults.
 	} finally {
 		frame.remove();
 	}

@@ -2,27 +2,27 @@
  * minimize/attributes.ts: strip unreferenced data attributes from the markup
  *
  * Pipeline position: minimize, last, a markup pass after the css chain
- * Reads from Captured: nothing; operates on the emitted markup + final stylesheet strings
- * Writes to Captured: nothing; returns the trimmed markup
+ * Reads from Captured: nothing. It operates on the emitted markup and final stylesheet strings.
+ * Writes to Captured: nothing. It returns the trimmed markup.
  *
  * Why this exists: a framework leaves scope and instrumentation attributes all over the
- * markup, `data-astro-cid-*`, `data-f1rd-a7s-click`, dozens per element, that no css selector
- * ever matches. A human writing this page by hand would carry none of them. This drops every
- * `data-*` attribute whose name no selector in the shipped stylesheet references, so the markup
- * reads as the elements and hooks that actually style the component.
+ * markup, such as `data-astro-cid-*` and `data-f1rd-a7s-click`, dozens per element, that no css
+ * selector ever matches. A human writing this page by hand would carry none of them. This drops
+ * every `data-*` attribute whose name no selector in the shipped stylesheet references, so the
+ * markup reads as the elements and hooks that actually style the component.
  *
- * Safety is by construction: an attribute no selector matches is inert for rendering, so
+ * Safety is by construction. An attribute no selector matches is inert for rendering, so
  * removing it cannot move a pixel. The rule is scoped to `data-*` names, so `aria-*` and every
- * functional attribute, id, class, href, src, are untouched, keeping semantics and
+ * functional attribute (id, class, href, src) are untouched, keeping semantics and
  * accessibility intact. The `data-snip-state` and `data-snip-pseudo` markers survive on their
  * own merit whenever a state or pseudo selector still names them, and are dropped only where
- * nothing does, with no special case. The referenced-name scan errs toward keeping: a stray
- * `[` inside a value only adds a name to the kept set, never removes one.
+ * nothing does, with no special case. The referenced-name scan errs toward keeping, because a
+ * stray `[` inside a value only adds a name to the kept set, and never removes one.
  *
  * The strip is textual and tag-scoped, matching each open tag and removing the dead attribute
- * inside it, so every other byte, the pretty-printer's indentation included, is preserved
- * exactly and text content is never touched. The emitter double-quotes and escapes every
- * attribute value, so a quoted value delimits cleanly and a `>` inside one does not end the tag.
+ * inside it. Every other byte, the pretty-printer's indentation included, is preserved exactly,
+ * and text content is never touched. The emitter double-quotes and escapes every attribute
+ * value, so a quoted value delimits cleanly and a `>` inside one does not end the tag.
  */
 
 /**
@@ -41,7 +41,7 @@ export function stripUnreferencedDataAttributes(html: string, css: string): stri
 
 /**
  * An open or self-closing start tag, from `<name` to its matching `>`. A double-quoted value
- * is spanned as a unit so a `>` inside it does not end the tag early; the emitter always
+ * is spanned as a unit so a `>` inside it does not end the tag early. The emitter always
  * double-quotes, so no single-quoted or unquoted value needs handling here. Comments, the
  * doctype, and closing tags do not start with a letter, so they are left alone.
  */
@@ -49,8 +49,8 @@ const OPEN_TAG = /<[a-zA-Z][a-zA-Z0-9-]*(?:[^>"]|"[^"]*")*>/g;
 
 /**
  * The attribute names any selector in the stylesheet references, lowercased. Collected from
- * every `[name` that opens an attribute selector. Over-collection is safe: a `[` that is
- * actually inside a value or a data uri only adds a spurious name to the kept set, so no
+ * every `[name` that opens an attribute selector. Over-collection is safe, because a `[` that
+ * is actually inside a value or a data uri only adds a spurious name to the kept set, so no
  * referenced attribute is ever dropped.
  *
  * @param css - the stylesheet text

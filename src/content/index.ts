@@ -1,11 +1,11 @@
 /**
  * content/index.ts: pipeline orchestrator + content-script entry point
  *
- * Pipeline position: spans the whole pipeline; this is the conductor, not a single phase
+ * Pipeline position: spans the whole pipeline, the conductor, not a single phase
  * Reads from Captured: constructs it in the capture phase, reads it downstream
  * Writes to Captured: owns the lifecycle
  *
- * Why this exists: chrome injects exactly one content script per page. This file
+ * It exists because chrome injects exactly one content script per page. This file
  * is that script. It owns the message protocol and runs the phases in order:
  *
  * capture -> content/capture/* : picker -> dom clone -> stylesheet discovery
@@ -110,9 +110,9 @@ const FEATURE_HANDLERS: Array<[string, (c: Captured) => Captured]> = [
  *
  * A handler that throws never halts the pipeline: the error is
  * recorded as a warning and the unmodified captured flows on. Output ships with
- * the warning; only output divergence affects the grader.
+ * the warning, and only output divergence affects the grader.
  *
- * @param captured - the reconciled snip; handlers mutate and return it
+ * @param captured - the reconciled snip that handlers mutate and return
  */
 function runFeatures(captured: Captured): void {
 	for (const [name, fn] of FEATURE_HANDLERS) {
@@ -146,12 +146,12 @@ async function runCoreTransform(captured: Captured): Promise<void> {
 	resolveAnimations(captured);
 	// Var resolution can collapse a cycled transition timing sub-list (a single-value var())
 	// to one literal against a multi-entry transition-property, which would serialize to a
-	// malformed `transition` shorthand; re-expand the sub-lists so the fold stays lossless.
+	// malformed `transition` shorthand. Re-expand the sub-lists so the fold stays lossless.
 	resolveTransitionTiming(captured);
 
 	// Closing reconciliation: make the standalone artifact's own render the source of
 	// truth, baking the original's resolved value for any paint/box property that does
-	// not reproduce standalone: dangling tokens, lost inherited fonts, missing
+	// not reproduce standalone, such as dangling tokens, lost inherited fonts, or missing
 	// backgrounds. Runs last so it corrects anything resolve left dangling.
 	reconcileStandalone(captured);
 	// Self-containment: guarantee every font stack ends in a generic so text never
@@ -173,7 +173,7 @@ async function runCoreTransform(captured: Captured): Promise<void> {
  * headless grader so the pass order has one authoritative home. Every css step degrades to its
  * input on failure, so the pipeline always produces a shippable pair.
  *
- * @param captured - source of the viewport size; warnings are appended here on any skip
+ * @param captured - source of the viewport size. Warnings are appended here on any skip
  * @param html - the assembled markup, mounted in each oracle and stripped at the end
  * @param css - the assembled stylesheet to reduce
  * @param stats - optional measurement sink, filled by the first prune pass when provided
@@ -194,7 +194,7 @@ async function minimizeArtifact(
 	const inlined = purgeAtRules(await inlineVars(purged, captured, html));
 	const reset = await injectReset(inlined, captured, html);
 	// Only rerun prune when a reset was actually injected, to drop the restatements it made
-	// redundant; a rejected reset leaves the css untouched and needs no second pass.
+	// redundant. A rejected reset leaves the css untouched and needs no second pass.
 	const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, html);
 	// Colorize first so canvas-canonical colors make any equal-color rules byte-identical, then
 	// regroup once more through the merge entry point to collapse a pair colorize just unified,
@@ -214,7 +214,7 @@ let activePicker: ElementPicker | null = null;
  * Captured object every later phase reads.
  *
  * @param root - the live element the user picked
- * @param screenshot - cropped png data url from the picker; may be empty
+ * @param screenshot - cropped png data url from the picker, may be empty
  * @returns the populated Captured object
  */
 async function capture(root: Element, screenshot: string): Promise<Captured> {
@@ -251,7 +251,7 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 			closedShadowRoots: 0, // Cdp shadow-pierce fills this in.
 		},
 		bakedStyles: new Map(),
-		measuredStates: null, // measureInteractiveStates fills this in; null means not measured.
+		measuredStates: null, // measureInteractiveStates fills this in. Null means not measured.
 		warnings: settled.warning ? [settled.warning] : [],
 	};
 
@@ -260,12 +260,12 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 	await augmentInheritedChainViaCDP(captured); // inherited cascade via cdp
 	await recoverCrossOriginSheets(captured); // Recover cors-blocked sheets by privileged re-fetch
 	// Fallback for the @font-face rules the re-fetch could not get, such as when a cdn waf blocks
-	// the extension origin: read the sheet text the browser already parsed over cdp. This closes
+	// the extension origin. Read the sheet text the browser already parsed over cdp. This closes
 	// the font-discovery gap cross-origin cdns leave behind the same-origin policy and bot rules.
 	await recoverCrossOriginFontsViaCDP(captured);
-	// Measure interactive states by forcing them live; soft-fails to copying authored rules
+	// Measure interactive states by forcing them live. Soft-fails to copying authored rules
 	// if cdp is busy. Runs after the clone is taken, so the transient force/shim it applies
-	// to the live page never reaches the artifact. Sequential with the cdp paths above; each
+	// to the live page never reaches the artifact. Sequential with the cdp paths above, and each
 	// attaches and detaches fully before the next, so the debugger is never doubly attached.
 	await measureInteractiveStates(captured);
 
@@ -281,8 +281,8 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
 	// Builder gate: refuse framer/wix/etc before doing any capture
-	// work. Cheap structural check; on a hit we emit a static unsupported message
-	// and stop, no degraded fallback output.
+	// work. This is a cheap structural check. On a hit we emit a static unsupported message
+	// and stop, with no degraded fallback output.
 	const gate = detectBuilder(root);
 	if (gate.blocked) {
 		shipResult({ mode, unsupported: true, builder: gate.builder, message: gate.message });
@@ -304,8 +304,8 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		return;
 	}
 
-	// Turn the captured snip into a self-contained clone: reconcile, resolve, and
-	// self-containment; see runCoreTransform for the authoritative phase order.
+	// Turn the captured snip into a self-contained clone through reconcile, resolve, and
+	// self-containment. See runCoreTransform for the authoritative phase order.
 	await runCoreTransform(captured);
 
 	// Convert phase. Emit the user's chosen format and run dead-code elimination
@@ -320,7 +320,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const classMarkup = format === 'html' || format === 'bem-css' || format === 'bem-scss' ? html : undefined;
 	let cleanedCss = cleanCss(css, captured, classMarkup);
 	let finalHtml = html;
-	// Token usage from the polish call, the only billed step; shipped so the panel
+	// Token usage from the polish call, the only billed step, shipped so the panel
 	// can total it for the session. Undefined when polish is skipped or has no key.
 	let usage: TokenUsage | undefined;
 	let output: string;
@@ -335,7 +335,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		finalHtml = assembled.html;
 		cleanedCss = assembled.css;
 
-		// Minimize phase, deterministic and key-free, class-based formats only; see
+		// Minimize phase, deterministic and key-free, class-based formats only. See
 		// minimizeArtifact for the authoritative pass order.
 		if (classMarkup !== undefined) {
 			const minimized = await minimizeArtifact(captured, assembled.html, assembled.css);
@@ -344,7 +344,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		}
 
 		// Polish phase, byok and optional, class-based formats only. Semantic class renames,
-		// tags, and grouping comments from the user's own llm; silently no-ops without a key,
+		// tags, and grouping comments from the user's own llm. Silently no-ops without a key,
 		// and reverts to the pre-polish output if an edit changes the render.
 		if (classMarkup !== undefined) {
 			const model = prefs.modelOverrides[prefs.activeProvider] ?? DEFAULT_MODELS[prefs.activeProvider];
@@ -365,7 +365,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
 	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage });
 
-	// Persist the snippet, fifo and capped at 50. Best-effort; a storage failure
+	// Persist the snippet, fifo and capped at 50. Best-effort, so a storage failure
 	// never fails the snip.
 	void storeSnippet({
 		id: crypto.randomUUID(),
@@ -413,7 +413,7 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
 
 /**
  * Sends a snip result to the sidebar, where the ResultPanel renders it. The
- * sidebar may be closed, so a delivery failure is swallowed, the snip still
+ * sidebar may be closed, so a delivery failure is swallowed and the snip still
  * succeeded.
  */
 function shipResult(payload: Record<string, unknown>): void {
@@ -443,7 +443,7 @@ async function runScan(scan: ScanKind): Promise<void> {
 
 /**
  * Builds the result for one scan. Colors and schema run the optional byok ai
- * pass inline before shipping; it skips silently without a key, mirroring how
+ * pass inline before shipping. It skips silently without a key, mirroring how
  * polish runs inline in a snip. The ai pass merges onto the raw extraction and
  * reports any configured-key failure as a warning plus its billed token usage.
  */
@@ -504,7 +504,7 @@ function shipInspect(payload: InspectResult, usage?: TokenUsage): void {
 		.catch(() => {});
 }
 
-/** Start the picker overlay; on select, run the pipeline for the chosen mode. */
+/** Start the picker overlay. On select, run the pipeline for the chosen mode. */
 function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker?.deactivate();
 	activePicker = new ElementPicker({
@@ -533,7 +533,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 		activePicker?.deactivate();
 		activePicker = null;
 	}
-	// No async response from the picker path; keep the channel synchronous.
+	// No async response from the picker path, so keep the channel synchronous.
 	return false;
 });
 
@@ -541,7 +541,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 // Headless test bridge for tests/run-pipeline.mjs, the HEADLESS_SNIP entry point.
 // The grader drives a snip by css selector instead of the picker.
 // Page and content script share the document but live in separate js worlds, so
-// chrome.runtime messages and window.postMessage do not reach the page; a
+// chrome.runtime messages and window.postMessage do not reach the page, but a
 // CustomEvent dispatched on `document` does. The runner waits on
 // data-snip-injected, dispatches "snip-runner:snip" {selector, mode}, and reads
 // the reply on "snip-extension:result".
@@ -560,7 +560,7 @@ document.addEventListener('snip-runner:snip', (ev) => {
 /**
  * Runs the full pipeline for a selector, with no picker and no screenshot, and returns a
  * self-contained output.html string. This is the deterministic path the grader
- * measures, the byok llm polish phase is intentionally not run here.
+ * measures. The byok llm polish phase is intentionally not run here.
  *
  * @param selector - css selector for the element to snip
  * @param mode - snip for code, or assistive for json
@@ -581,12 +581,12 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 
 		await runCoreTransform(captured);
 		// Completeness probe, read-only: diff the reconciled clone's standalone render
-		// against the live original. After the reconciliation this should be near zero;
-		// a residual is the deterministic, drift-free signal of what still fails to
+		// against the live original. After the reconciliation this should be near zero.
+		// A residual is the deterministic, drift-free signal of what still fails to
 		// reproduce. It mutates nothing.
 		const probe = await probeStandalone(captured);
-		// Emit the bem class-based output the default html format ships, deterministically:
-		// the byok polish phase stays out, so the classes are the generated block__tag-n names,
+		// Emit the bem class-based output the default html format ships, deterministically.
+		// The byok polish phase stays out, so the classes are the generated block__tag-n names,
 		// which are irrelevant to rendering. Assemble it the same way the sidebar does: lift pseudo
 		// styles into one stylesheet, pretty-print markup + css, compose, then the grader
 		// scores it as output.html. The inline-styled emitter rendered identically once the
@@ -603,7 +603,7 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		// Minimize phase, deterministic and key-free. htmlBaseline is the pre-minimize shipped
 		// document from this same capture, so the harness can pixel-compare pre against post
 		// minimization with no live-capture drift between them. See minimizeArtifact for the
-		// pass order; the grader threads a stats sink through it to report declaration counts.
+		// pass order. The grader threads a stats sink through it to report declaration counts.
 		const htmlBaseline = assembled.document;
 		const minimizeStats: MinimizeStats = { ms: 0, declsBefore: 0, declsAfter: 0, charsBefore: 0, charsAfter: 0 };
 		const minimized = await minimizeArtifact(captured, assembled.html, assembled.css, minimizeStats);

@@ -1,18 +1,18 @@
 /**
- * polish/rename.ts: polish edit application, class renames, semantic tags, grouping comments
+ * polish/rename.ts: polish edit application, class renames, semantic tags, grouping comments.
  *
- * Pipeline position: polish
- * Reads from Captured: n/a; operates on html + css strings
- * Writes to Captured: n/a
+ * Pipeline position: polish.
+ * This does not read from Captured. It operates on html and css strings.
+ * It does not write to Captured.
  *
- * Principles applied: none; text transforms.
+ * No principles apply here, since these are text transforms.
  *
  * Why this exists: the model's edits are applied here. A class rename must rewrite the
- * markup's class attributes and the css selectors in lockstep or the styles detach; whole
- * class tokens only, so "btn" never rewrites inside "btn-primary". A semantic tag swap
- * rewrites one uniquely-classed element's tag name. A grouping comment is inserted before
- * the rule its selector names. Each edit is best-effort and independently render-verified
- * downstream, so a bad one is caught and the whole polish falls back cleanly.
+ * markup's class attributes and the css selectors in lockstep, or the styles detach. It
+ * rewrites whole class tokens only, so "btn" never rewrites inside "btn-primary". A semantic
+ * tag swap rewrites one uniquely-classed element's tag name. A grouping comment is inserted
+ * before the rule its selector names. Each edit is best-effort and independently
+ * render-verified downstream, so a bad one is caught and the whole polish falls back cleanly.
  */
 
 /**
@@ -52,10 +52,10 @@ function renameInSelectors(css: string, oldName: string, newName: string): strin
 	return css.replace(re, `.${newName}`);
 }
 
-/** Safe html tag names the model may swap an element to. Excludes replaced, void, form,
+/** Safe html tag names the model may swap an element to. This excludes replaced, void, form,
  * and interactive tags whose ua behaviour or box differs, keeping only inert flow and
- * sectioning containers plus headings, so a swap cannot change rendering or semantics
- * beyond the tag name. Render-neutrality is still verified downstream regardless. */
+ * sectioning containers plus headings, so a swap cannot change rendering or semantics beyond
+ * the tag name. Render-neutrality is still verified downstream regardless. */
 const SAFE_TAGS = new Set([
 	'div', 'span', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure',
 	'figcaption', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'blockquote',

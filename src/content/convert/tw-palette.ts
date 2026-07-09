@@ -2,8 +2,8 @@
  * convert/tw-palette.ts: tailwind color palette matcher
  *
  * Pipeline position: convert
- * Reads from Captured: nothing; operates on color strings
- * Writes to Captured: nothing; a pure color matcher
+ * Reads from Captured: nothing. It operates on color strings.
+ * Writes to Captured: nothing. It is a pure color matcher.
  *
  * A lookup feeding the tailwind converter.
  *
@@ -57,7 +57,7 @@ let labCache: Array<{ name: string; lab: [number, number, number] }> | null = nu
 
 /** The matched palette token plus whether it is perceptually exact. */
 export interface PaletteMatch {
-	name: string; // "Slate-700"; the caller prefixes bg-/text-/border-
+	name: string; // "Slate-700", and the caller prefixes bg-/text-/border-
 	exact: boolean;
 }
 
@@ -65,7 +65,7 @@ export interface PaletteMatch {
  * Finds the nearest tailwind palette token to a css color, or null if no token
  * is within perceptual tolerance, in which case the caller should emit an arbitrary value.
  *
- * @param colorValue - any css color string; hex, rgb, or hsl, while oklch returns null
+ * @param colorValue - any css color string, hex, rgb, or hsl, while oklch returns null
  */
 export function matchColor(colorValue: string): PaletteMatch | null {
 	const hex = parseColor(colorValue);

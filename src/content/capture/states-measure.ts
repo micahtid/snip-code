@@ -24,8 +24,8 @@
  * with no var() survival or per-property cascade merge left to do.
  *
  * Each scoped element is read on two layers: its own box, and any ::before/::after that
- * generates a box at rest: the common hover idiom of a glow/underline/reveal that lives
- * entirely on a generated box, whose own element style never changes. A pseudo layer is
+ * generates a box at rest. This covers the common hover idiom of a glow/underline/reveal that
+ * lives entirely on a generated box, whose own element style never changes. A pseudo layer is
  * diffed against its own resting baseline and emitted as its own affected entry, so reconcile
  * can re-anchor it as `[marker]:hover::after { ... }` over the resting pseudo the pseudo pass
  * already ships.
@@ -66,7 +66,7 @@ const MAX_MEASURED_SCOPE = 2000;
  * concrete computed delta. Sets captured.measuredStates: an array, possibly empty, when
  * measurement ran, or null when cdp was unavailable so reconcile copies authored rules.
  *
- * @param captured - the in-flight capture; measuredStates + warnings mutated in place
+ * @param captured - the in-flight capture, with measuredStates + warnings mutated in place
  */
 export async function measureInteractiveStates(captured: Captured): Promise<void> {
 	const subtree = new Set(subtreeElements(captured.root));
@@ -77,8 +77,8 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 		return;
 	}
 
-	// Bound the forcing work before doing any of it: too many state units would mean too many CDP
-	// round-trips, so degrade to copying authored rules; this is counted before scopes are computed,
+	// Bound the forcing work before doing any of it. Too many state units would mean too many CDP
+	// round-trips, so degrade to copying authored rules. This is counted before scopes are computed,
 	// since that walk is itself proportional to the snip.
 	let unitCount = 0;
 	for (const states of triggers.values()) unitCount += states.size;
@@ -89,7 +89,7 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 	}
 
 	// Each trigger reads only its re-anchorable scope of descendants + following siblings, so the
-	// resting baseline is needed for just those elements, not the whole subtree; a large snip
+	// resting baseline is needed for just those elements, not the whole subtree. A large snip
 	// with few triggers stays cheap.
 	const scopes = new Map<Element, Element[]>();
 	const toBaseline = new Set<Element>();
@@ -99,7 +99,7 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 		for (const el of scope) toBaseline.add(el);
 	}
 	// Likewise bound the computed-style reads. A generating ::before/::after adds a read at the
-	// baseline and under every forced state, so each is weighted toward the bound; a budget sized
+	// baseline and under every forced state, so each is weighted toward the bound. A budget sized
 	// for element-only reads would otherwise be undercounted on a pseudo-heavy snip. The generating
 	// layers are resolved once here, since content does not depend on the shim, and reused for every read.
 	const generating = new Map<Element, string[]>();
@@ -141,7 +141,7 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
 		captured.warnings.push(`states: live measurement failed (${(err as Error).message}); falling back to copying authored rules`);
 		captured.measuredStates = null;
 	} finally {
-		// Detach, done in endForce, has already cleared every forced state; force one synchronous
+		// Detach, done in endForce, has already cleared every forced state. Force one synchronous
 		// recalc while the shim still suppresses transitions, so the page is materialized at rest
 		// before the shim is removed and the later resting bake reads only resting values.
 		void document.body?.offsetHeight;
@@ -153,14 +153,14 @@ export async function measureInteractiveStates(captured: Captured): Promise<void
  * Discovers which elements to force and the states to force on each, entirely from the page's
  * own state rules, never a guess about which elements "look interactive". For every rule
  * whose selector carries a dynamic interactive pseudo and whose @media gate applies, each
- * trigger bearer's structural selector is matched against the subtree; a match is an element
+ * trigger bearer's structural selector is matched against the subtree. A match is an element
  * to force, keyed to the canonical set of pseudos to force together.
  *
  * Bearers are grouped by their structural selector and resolved with one native
  * querySelectorAll per distinct selector rather than testing every rule against every element,
  * so discovery stays fast on a large snip.
  *
- * @param captured - reads the flattened rule lists; warns on a selector it cannot parse
+ * @param captured - reads the flattened rule lists, and warns on a selector it cannot parse
  * @param subtree - the snip subtree membership set
  * @returns each trigger element to the distinct pseudo-sets, in colon form, to force on it
  */
@@ -217,7 +217,7 @@ function matchInSubtree(root: Element, structural: string, subtree: Set<Element>
 	try {
 		matches = root.querySelectorAll(structural);
 	} catch {
-		return out; // An unsupported selector matches nothing standalone; drop it.
+		return out; // An unsupported selector matches nothing standalone, so drop it.
 	}
 	for (const el of matches) if (subtree.has(el)) out.push(el);
 	return out;
@@ -265,7 +265,7 @@ async function measureAll(
  * The elements a forced trigger can restyle in a way the standalone emit can re-anchor: the
  * trigger itself, its descendants via a descendant combinator, and its following same-parent
  * siblings via a general-sibling combinator. A change anywhere else cannot be expressed by a
- * single combinator between two markers, so it would be dropped at emit; not reading it keeps
+ * single combinator between two markers, so it would be dropped at emit. Not reading it keeps
  * the per-trigger cost proportional to the trigger's own scope rather than the whole snip.
  *
  * @param trigger - the element being forced
@@ -301,11 +301,11 @@ function readMeasuredLayers(el: Element, pseudos: string[] | undefined): Measure
 
 /**
  * Reads each scoped element's computed values under the currently-forced state and returns the
- * layers that differ from the resting baseline. The element box is one entry; each generating
+ * layers that differ from the resting baseline. The element box is one entry. Each generating
  * pseudo is its own entry diffed against its own baseline. The trigger itself is included when
- * one of its layers changed; a layer whose style is unchanged contributes nothing.
+ * one of its layers changed. A layer whose style is unchanged contributes nothing.
  *
- * @param scope - the trigger's re-anchorable scope; see triggerScope
+ * @param scope - the trigger's re-anchorable scope. See triggerScope
  * @param baseline - each scoped element's resting layers, read under the shim
  * @returns one entry per changed element-and-layer, with the changed properties and forced values
  */
@@ -370,7 +370,7 @@ function readMeasuredProps(el: Element, pseudo?: string): Map<string, string> {
 	return props;
 }
 
-/** Whether a property belongs in the endpoint diff; see readMeasuredProps for the why. */
+/** Whether a property belongs in the endpoint diff. See readMeasuredProps for the why. */
 function isMeasurableProperty(name: string): boolean {
 	if (name.startsWith('--')) return false;
 	if (name.startsWith('transition')) return false;
@@ -426,7 +426,7 @@ function installShim(): HTMLStyleElement {
 	return style;
 }
 
-/** Begins the background force session; returns false if cdp is unavailable, a soft-fail. */
+/** Begins the background force session. Returns false if cdp is unavailable, a soft-fail. */
 async function beginForce(): Promise<boolean> {
 	try {
 		const res = (await chrome.runtime.sendMessage({ type: 'CDP_FORCE_BEGIN', requestId: crypto.randomUUID(), payload: {} })) as { ok: boolean };
@@ -436,7 +436,7 @@ async function beginForce(): Promise<boolean> {
 	}
 }
 
-/** Forces a pseudo-state set on one node, or clears it with an empty list; false if not found. */
+/** Forces a pseudo-state set on one node, or clears it with an empty list. Returns false if not found. */
 async function forceState(selector: string, states: string[]): Promise<boolean> {
 	try {
 		const res = (await chrome.runtime.sendMessage({

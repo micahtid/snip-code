@@ -1,25 +1,25 @@
 /**
- * capture/cdp.ts: privileged capture augmentation: inherited chain + cross-origin
+ * capture/cdp.ts: privileged capture augmentation (inherited chain and cross-origin sheets)
  *
  * Pipeline position: capture
  * Reads from Captured: root, element.selector, inaccessible.crossOriginStylesheets
  * Writes to Captured: foundationRules from cdp inherited rules, componentRules,
  * variables, fonts, keyframes recovered cross-origin, inaccessible
  *
- * Feeds the inheritance bake: the cdp inherited chain is the authored ancestor
+ * Feeds the inheritance bake. The cdp inherited chain is the authored ancestor
  * cascade that bake.ts later bakes onto the snip root.
  *
- * Why this exists: two things the content script cannot do alone. First, read the
- * *authored* ancestor cascade, the devtools "inherited from" section; only the
+ * Why this exists: two things the content script cannot do alone. First, it reads
+ * the *authored* ancestor cascade, the devtools "inherited from" section. Only the
  * chrome devtools protocol exposes it, and chrome.debugger is background-only.
- * Second, read cross-origin stylesheets blocked by the same-origin policy, only a
- * background fetch with <all_urls> host permission can. Both are delegated to
- * the background worker over capture-internal messages (CDP_INHERITED /
- * FETCH_STYLESHEET).
+ * Second, it reads cross-origin stylesheets blocked by the same-origin policy,
+ * which only a background fetch with <all_urls> host permission can do. Both are
+ * delegated to the background worker over capture-internal messages
+ * (CDP_INHERITED / FETCH_STYLESHEET).
  *
- * The v2 change vs v1: DOM.getDocument runs with { pierce: true } so the document
- * tree includes closed shadow roots, letting the inherited chain resolve through
- * them; the full shadow handler lands later.
+ * The v2 change versus v1 is that DOM.getDocument runs with { pierce: true } so
+ * the document tree includes closed shadow roots, letting the inherited chain
+ * resolve through them. The full shadow handler lands later.
  */
 import type { Captured, CssRule } from '../types';
 import { parseCssText, specificityOf } from './sheets';
@@ -46,11 +46,12 @@ interface CdpInheritedResult {
  *
  * Tags the live root with a unique attribute, asks the background to attach the
  * debugger and read CSS.getMatchedStylesForNode().inherited for that node, then
- * folds the ancestor rules into foundationRules. Soft-fails: if the debugger is
- * busy, such as when devtools is open, or attach is refused, the snip continues on cssom data
- * alone with a warning, cdp is an enhancement, never a hard dependency.
+ * folds the ancestor rules into foundationRules. It soft-fails: if the debugger is
+ * busy (for example when devtools is open) or attach is refused, the snip
+ * continues on cssom data alone with a warning. cdp is an enhancement, never a
+ * hard dependency.
  *
- * @param captured - the in-flight capture; mutated in place
+ * @param captured - the in-flight capture, mutated in place
  */
 export async function augmentInheritedChainViaCDP(captured: Captured): Promise<void> {
 	const root = captured.root;
@@ -70,7 +71,7 @@ export async function augmentInheritedChainViaCDP(captured: Captured): Promise<v
 		}
 		const { inherited, closedShadowRoots, warning } = res.result;
 		if (warning) captured.warnings.push(warning);
-		// Pierce:true means cdp saw the closed roots; record how many for transparency.
+		// Pierce:true means cdp saw the closed roots, so record how many for transparency.
 		captured.inaccessible.closedShadowRoots = closedShadowRoots;
 
 		for (const rule of inherited) {
@@ -96,13 +97,13 @@ export async function augmentInheritedChainViaCDP(captured: Captured): Promise<v
 /**
  * Recovers cross-origin stylesheets that the content script could not read.
  *
- * sheets.ts records the hrefs of sheets that threw SecurityError; this fetches
+ * sheets.ts records the hrefs of sheets that threw SecurityError. This fetches
  * each through the background, whose <all_urls> permission bypasses cors, parses
  * the text into rules, and merges them into Captured. Recovered hrefs are dropped
  * from the inaccessible list. Failures stay recorded as inaccessible with a
  * warning rather than blocking the snip.
  *
- * @param captured - the in-flight capture; mutated in place
+ * @param captured - the in-flight capture, mutated in place
  */
 export async function recoverCrossOriginSheets(captured: Captured): Promise<void> {
 	const pending = captured.inaccessible.crossOriginStylesheets;
@@ -138,22 +139,23 @@ export async function recoverCrossOriginSheets(captured: Captured): Promise<void
 }
 
 /**
- * Recovers the @font-face rules cross-origin stylesheets hide, by reading the text the
- * browser already parsed over cdp. recoverCrossOriginSheets above tries a privileged
- * re-fetch, which a cdn waf often blocks for the extension origin; this fallback reads
+ * Recovers the @font-face rules that cross-origin stylesheets hide, by reading the text
+ * the browser already parsed over cdp. recoverCrossOriginSheets above tries a privileged
+ * re-fetch, which a cdn waf often blocks for the extension origin. This fallback reads
  * the same sheets through the devtools protocol, which is not bound by the same-origin
- * policy and needs no network round-trip. Runs over the hrefs still flagged inaccessible
- * after the fetch attempt, so it closes exactly the font-discovery gap those sites leave:
- * a snip whose web font lives only in a cdn-hosted, unreadable, unfetchable sheet.
+ * policy and needs no network round-trip. It runs over the hrefs still flagged
+ * inaccessible after the fetch attempt, so it closes exactly the font-discovery gap those
+ * sites leave, when a snip's web font lives only in a cdn-hosted, unreadable, unfetchable
+ * sheet.
  *
- * Scope is deliberately @font-face only: this plan recovers fonts, a resource the
+ * Scope is deliberately @font-face only. The goal is to recover fonts, a resource the
  * artifact must carry, not the full cross-origin cascade, so only the faces are
  * harvested and the inaccessible list is left untouched. parseCssText absolutizes each
  * recovered src against the sheet href, since a src is relative to its stylesheet, not the
  * page, so a relative or root-relative src on a cdn-hosted sheet resolves to the cdn
  * host rather than the wrong page origin.
  *
- * @param captured - the in-flight capture; captured.fonts is extended in place
+ * @param captured - the in-flight capture. captured.fonts is extended in place
  */
 export async function recoverCrossOriginFontsViaCDP(captured: Captured): Promise<void> {
 	const pending = captured.inaccessible.crossOriginStylesheets;
@@ -165,7 +167,7 @@ export async function recoverCrossOriginFontsViaCDP(captured: Captured): Promise
 			payload: { hrefs: pending },
 		})) as { ok: boolean; result?: { sheets: Array<{ href: string; text: string }> }; error?: { message: string } };
 
-		if (!res?.ok || !res.result?.sheets?.length) return; // Nothing recovered; leave the list as-is.
+		if (!res?.ok || !res.result?.sheets?.length) return; // Nothing recovered, so leave the list as-is.
 		for (const sheet of res.result.sheets) {
 			try {
 				const delta = await parseCssText(sheet.text, 'cdp', sheet.href);

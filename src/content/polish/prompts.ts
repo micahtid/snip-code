@@ -1,30 +1,30 @@
 /**
- * polish/prompts.ts: llm polish prompt template
+ * polish/prompts.ts: llm polish prompt template.
  *
- * Pipeline position: polish
- * Reads from Captured: n/a; operates on the vaulted code string
- * Writes to Captured: n/a
+ * Pipeline position: polish.
+ * This does not read from Captured. It operates on the vaulted code string.
+ * It does not write to Captured.
  *
- * Principles applied: none; text generation.
+ * No principles apply here, since this is text generation.
  *
  * Why this exists: the polish phase is text-only and bills per token, so the prompt is
- * deliberately minimal, it asks the model for two cheap, high-value edits and a
- * strict json reply, nothing that could corrupt the deterministic markup, which
- * is already pixel-correct from the earlier phases. Token-heavy values are vaulted
- * behind @@V*@@ placeholders before the model sees them, so it never touches
- * svgs/gradients/base64. Ported and rewritten from marketing-website
- * generation-prompts.ts, the post-stage-3-exp-14 text-only template.
+ * deliberately minimal. It asks the model for two cheap, high-value edits and a strict json
+ * reply, and nothing that could corrupt the deterministic markup, which is already
+ * pixel-correct from the earlier phases. Token-heavy values are vaulted behind @@V*@@
+ * placeholders before the model sees them, so it never touches svgs, gradients, or base64.
+ * This was ported and rewritten from marketing-website generation-prompts.ts, the text-only
+ * template.
  */
 
 /**
  * Builds the polish prompt for a vaulted code string.
  *
  * The css and markup reaching the model are already minimal and pixel-correct from the
- * earlier phases, and the interactive state and pseudo-element rules are withheld before
- * the prompt, so the model never sees or regenerates them. It is asked only for the jobs a
- * deterministic pass cannot do: naming, semantic tags, and grouping comments, all
- * render-neutral, all returned as strict json so the result is machine-applicable and the
- * artifact is re-verified before it ships. It must not rewrite declarations, touch @@V*@@
+ * earlier phases, and the interactive state and pseudo-element rules are withheld before the
+ * prompt, so the model never sees or regenerates them. It is asked only for the jobs a
+ * deterministic pass cannot do: naming, semantic tags, and grouping comments. These are all
+ * render-neutral and all returned as strict json, so the result is machine-applicable and
+ * the artifact is re-verified before it ships. It must not rewrite declarations, touch @@V*@@
  * placeholders, or change any geometry.
  *
  * @param vaultedCode - the html+css with fragile values replaced by placeholders

@@ -11,7 +11,7 @@
  * loading and empty states, has the same shape: a scrolling body that fills the
  * panel over an optional footer pinned to the bottom. Centralizing that here keeps
  * the views structurally identical and is the one place the scroll/footer treatment
- * is applied; the values themselves live in LAYOUT in theme.ts. Pass `fill` when
+ * is applied. The values themselves live in LAYOUT in theme.ts. Pass `fill` when
  * the body's single child should grow to the full height, as with the capture view's
  * code block, rather than sit at its natural height.
  */
@@ -19,7 +19,7 @@ import { LAYOUT } from '../theme';
 
 interface ViewLayoutProps {
 	children: React.ReactNode;
-	/** Pinned to the bottom; stays put while the body scrolls. Omit for no footer. */
+	/** Pinned to the bottom, so it stays put while the body scrolls. Omit for no footer. */
 	footer?: React.ReactNode;
 	/** Let the body's single child grow to the full available height. */
 	fill?: boolean;

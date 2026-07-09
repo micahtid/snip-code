@@ -11,7 +11,7 @@
  * fixed preview slot beside a name and a meta line, with one click action that
  * copies or downloads and flashes a brief confirmation. Defining it once keeps the
  * spacing, hover, and the copied/downloaded feedback identical across all three
- * grids; each grid supplies only the preview, the labels, and the action.
+ * grids. Each grid supplies only the preview, the labels, and the action.
  */
 import { useState, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
@@ -21,9 +21,9 @@ interface InspectCardProps {
 	/** The fixed-size preview: a font sample, a color swatch, or a thumbnail. */
 	preview: ReactNode;
 	name: string;
-	/** The muted second line; pass '' to show none, such as a color with no ai role. */
+	/** The muted second line. Pass '' to show none, such as a color with no ai role. */
 	meta: string;
-	/** Runs on click, either a copy or a download; the card flashes `feedback` once it resolves. */
+	/** Runs on click, either a copy or a download. The card flashes `feedback` once it resolves. */
 	onActivate: () => void | Promise<void>;
 	/** The confirmation shown briefly after a successful action ("Copied" / "Downloaded"). */
 	feedback: string;

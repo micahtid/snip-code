@@ -1,29 +1,29 @@
 /**
  * inspect/ai.ts: the optional byok ai pass for colors and schema
  *
- * Pipeline position: inspect, page-scoped; the optional byok finishing pass
- * Reads from DOM: nothing; operates on the already-extracted reports
- * Writes to: nothing; returns enhanced reports
+ * Pipeline position: inspect, page-scoped. This is the optional byok finishing pass.
+ * Reads from DOM: nothing. It operates on the already-extracted reports.
+ * Writes to: nothing. It returns enhanced reports.
  *
- * Principles applied: none; orchestration.
+ * Principles applied: none. This is orchestration.
  *
  * Why this exists: two inspectors gain an optional ai pass. Colors asks the user's
- * own llm to assign a semantic role to each extracted color; schema asks it to
+ * own llm to assign a semantic role to each extracted color. Schema asks it to
  * synthesize the raw page schema into a design-system json. This mirrors
- * polish/llm.ts exactly: build a prompt, delegate to the background broker, parse
- * the reply, and forward the provider's token usage. The broker makes the call
+ * polish/llm.ts exactly. It builds a prompt, delegates to the background broker, parses
+ * the reply, and forwards the provider's token usage. The broker makes the call
  * because content scripts cannot reach provider hosts under the page csp. A missing
- * key is a silent no-op that returns
- * the raw input unchanged; a configured-key failure returns the raw input plus a
- * warning so the panel can say why no roles/synthesis landed. There is no
- * double-ship and no state machine, the same shape polish already proved.
+ * key is a silent no-op that returns the raw input unchanged. A configured-key
+ * failure returns the raw input plus a warning so the panel can say why no roles
+ * or synthesis landed. There is no double-ship and no state machine. It is the
+ * same shape polish already proved.
  */
 import type { Provider, TokenUsage } from '../types';
 import { requestLlm, NO_KEY } from '../llm';
 import type { ColorReport } from './types';
 import { buildColorsPrompt, buildSchemaPrompt } from './prompts';
 
-/** Output-token ceiling for schema synthesis; the broker clamps it per provider. */
+/** Output-token ceiling for schema synthesis. The broker clamps it per provider. */
 const SCHEMA_MAX_TOKENS = 8000;
 
 /** A color inspector result after the optional role-assignment pass. */
@@ -97,7 +97,7 @@ export async function enhanceSchema(schemaJson: string, provider: Provider, mode
 	return withMeta({ json: JSON.stringify(synthesized, null, 2), aiEnhanced: true }, undefined, usage);
 }
 
-/** A configured-key failure is worth a warning; a missing key is an intended silent skip. */
+/** A configured-key failure is worth a warning. A missing key is an intended silent skip. */
 function skipReason(error?: string): string | undefined {
 	if (error && error !== NO_KEY) {
 		console.warn('snipcode: inspect ai skipped', error);

@@ -2,8 +2,8 @@
  * minimize/merge.ts: merge identical rules into selector lists
  *
  * Pipeline position: minimize, after normalize and before relax
- * Reads from Captured: page.viewport via the oracle; warnings on graceful skip
- * Writes to Captured: nothing; transforms the normalized stylesheet string
+ * Reads from Captured: page.viewport via the oracle, plus warnings on graceful skip
+ * Writes to Captured: nothing. It transforms the normalized stylesheet string.
  *
  * Why this exists: the reproduce phase gives every element its own generated class and
  * rule, so a grid of eight cards styled the same emits the same declaration block eight
@@ -13,14 +13,14 @@
  * the comma-joined list, in document order, and drops the duplicates.
  *
  * The merged resting rule takes the position of the last rule in its group, the latest
- * cascade position the block held, and every such merge is verified by the computed-style
- * oracle over exactly the elements the group's selectors match, so a cascade change from
- * moving a block later, past some rule that overrides one of its properties, is caught and
- * that merge is reverted while the others stand.
+ * cascade position the block held. Every such merge is verified by the computed-style oracle
+ * over exactly the elements the group's selectors match. So a cascade change from moving a
+ * block later, past some rule that overrides one of its properties, is caught, and that merge
+ * is reverted while the others stand.
  *
  * The withheld state and pseudo rules are merged too, but the resting oracle is blind to
  * them, so their merge is accepted by construction under syntactic checks rather than by the
- * oracle; see mergeWithheldRules. At rules stay out of scope. The transform is deterministic,
+ * oracle (see mergeWithheldRules). At rules stay out of scope. The transform is deterministic,
  * groups are processed in selector order, and it only ever shrinks the stylesheet.
  */
 import type { Captured } from '../types';
@@ -37,12 +37,12 @@ import { inScopeRule, serializeRules, WITHHELD } from './declarations';
 const DYNAMIC_PSEUDO = /::[\w-]+(?:\([^)]*\))?|:(?:hover|focus-visible|focus-within|focus|active|visited|link|target)(?![-\w])/gi;
 
 /**
- * Merges rules with identical declaration blocks into selector lists. Graceful by
- * contract, returning the input unchanged on any infrastructure failure; each individual
+ * Merges rules with identical declaration blocks into selector lists. It is graceful by
+ * contract, returning the input unchanged on any infrastructure failure. Each individual
  * merge is oracle-verified and reverted if it is not render-neutral.
  *
  * @param css - the normalized stylesheet, after normalize
- * @param captured - source of the viewport size; warnings are appended here on skip
+ * @param captured - source of the viewport size. Warnings are appended here on skip.
  * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
  * @returns the merged stylesheet, or the input unchanged on any failure
  */
@@ -78,7 +78,7 @@ export async function mergeCss(css: string, captured: Captured, markup: string):
 
 /**
  * Merges one group of identical-body rules in place, reverting if the merge is not
- * render-neutral. The last rule keeps the block and takes the comma-joined selector; the
+ * render-neutral. The last rule keeps the block and takes the comma-joined selector, and the
  * earlier rules are emptied so serialize drops them. Verification is scoped to the
  * elements the group's selectors match and their descendants, the only render a position
  * change can affect.
@@ -108,7 +108,7 @@ function matchedElements(oracle: RenderOracle, group: CSSStyleRule[]): Element[]
 		try {
 			for (const el of Array.from(oracle.body.querySelectorAll(rule.selectorText))) seen.add(el);
 		} catch {
-			// An unsupported selector matches nothing here; the subtree check still guards the rest.
+			// An unsupported selector matches nothing here, and the subtree check still guards the rest.
 		}
 	}
 	return [...seen];
@@ -127,11 +127,11 @@ interface StyleRuleRef {
  * Merges the withheld state and pseudo rules with identical declaration blocks into selector
  * lists, keeping the first rule's position and joining the selectors in document order. The
  * resting oracle is blind to these rules, so a merge is accepted only by construction, when
- * three syntactic checks hold: the bodies are byte-identical (the grouping key); each
- * selector keeps its own specificity in a list, so joining changes none; and no rule the merge
- * reorders a group member past could flip a cascade result, see safeToMergeWithheld. Two rules
+ * three syntactic checks hold. The bodies must be byte-identical (the grouping key). Each
+ * selector keeps its own specificity in a list, so joining changes none. And no rule the merge
+ * reorders a group member past may flip a cascade result (see safeToMergeWithheld). Two rules
  * that touch disjoint properties, or that the element resolves by specificity or importance
- * rather than source order, cannot flip, so most groups collapse; a group that could flip is
+ * rather than source order, cannot flip, so most groups collapse. A group that could flip is
  * left as written.
  *
  * @param oracle - the mounted render, used only to resolve which elements a selector targets
@@ -174,7 +174,7 @@ function mergeWithheldRules(oracle: RenderOracle, topRules: CSSRule[]): void {
  * Whether merging a withheld group is render-neutral. The group's selectors collapse onto the
  * first member's position, so every later member's rule moves earlier, past the rules between
  * its old position and the first. The move is safe when none of those intervening rules could
- * flip a cascade result with a moving member; see couldFlip. An intervening rule that only
+ * flip a cascade result with a moving member (see couldFlip). An intervening rule that only
  * shares an element but not a property, or that an element resolves by specificity or
  * importance rather than source order, cannot flip and no longer vetoes.
  *
@@ -186,7 +186,7 @@ function safeToMergeWithheld(group: StyleRuleRef[], styleRules: StyleRuleRef[]):
 	const groupPositions = new Set(group.map((w) => w.pos));
 	for (const other of styleRules) {
 		if (other.pos <= first || groupPositions.has(other.pos)) continue;
-		// `other` sits after the keeper; a group member moves past it only if that member's old
+		// `other` sits after the keeper, and a group member moves past it only if that member's old
 		// position is later than `other`. Block the merge if any such move could flip a result.
 		for (const member of group) {
 			if (member.pos <= other.pos) continue;
@@ -198,10 +198,10 @@ function safeToMergeWithheld(group: StyleRuleRef[], styleRules: StyleRuleRef[]):
 
 /**
  * Whether reordering `member` before `other` could flip which rule wins for some element and
- * property. It can only when all three hold: the two rules target a common element, they
- * declare a common longhand at the same importance but a different value, and their selectors
- * carry equal specificity for that element, since only then does source order, the one thing
- * the reorder changes, decide the winner. If any fails, the winner is fixed by target,
+ * property. It can only flip when all three of these hold. The two rules target a common
+ * element, they declare a common longhand at the same importance but a different value, and
+ * their selectors carry equal specificity for that element. Only then does source order, the
+ * one thing the reorder changes, decide the winner. If any fails, the winner is fixed by target,
  * property, importance, or specificity regardless of order, so the move is safe. An
  * undeterminable target set is treated as overlapping, staying conservative.
  */
@@ -213,8 +213,9 @@ function couldFlip(member: StyleRuleRef, other: StyleRuleRef): boolean {
 }
 
 /**
- * Whether two declaration blocks share a longhand that source order would decide between: both
- * declare it, at the same importance, with different values. A matching value or a differing
+ * Whether two declaration blocks share a longhand that source order would decide between. That
+ * happens when both declare it, at the same importance, with different values. A matching value
+ * or a differing
  * importance settles the property without reference to order, so it cannot flip. The cssom
  * stores each block as expanded longhands with per-longhand priority, so a shorthand and a
  * longhand that overlap, `background` against `background-color`, are compared correctly, and
@@ -244,8 +245,8 @@ function specificitiesCanTie(a: string, b: string): boolean {
  * The [id, class, type] specificity of one selector. The emitted stylesheet uses only simple
  * compound selectors, classes, attributes, and pseudo-classes or pseudo-elements, with no
  * functional pseudo-class like `:is()` whose weight depends on its argument, so a straight
- * token count is exact: an id raises the first rank, a class, attribute, or pseudo-class the
- * second, a type or pseudo-element the third. Combinators contribute nothing.
+ * token count is exact. An id raises the first rank, a class, attribute, or pseudo-class the
+ * second, and a type or pseudo-element the third. Combinators contribute nothing.
  */
 function specificity(selector: string): [number, number, number] {
 	let s = selector.trim();
@@ -281,7 +282,7 @@ function splitSelectorList(list: string): string[] {
 }
 
 /**
- * The elements a rule can style: a resting rule matches its selector directly, a withheld rule
+ * The elements a rule can style. A resting rule matches its selector directly. A withheld rule
  * matches with its dynamic pseudos and pseudo-elements stripped, so the state or pseudo box's
  * host element is found. Null when the remaining selector is empty or will not parse.
  */

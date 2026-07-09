@@ -1,11 +1,11 @@
 /**
  * inspect/schema/optimize.ts: schema size reduction
  *
- * Pipeline position: inspect, page-scoped; post-processes the extracted schema
- * Reads from DOM: nothing; operates on the extracted schema
- * Writes to: nothing; returns an optimized copy
+ * Pipeline position: inspect, page-scoped. It post-processes the extracted schema.
+ * Reads from DOM: nothing. It operates on the extracted schema.
+ * Writes to: nothing. It returns an optimized copy.
  *
- * Principles applied: none; transformation.
+ * Principles applied: none. This is transformation.
  *
  * Why this exists: the raw schema can be large, and the ai pass pays per token, so
  * this trims it before the prompt: dedupe and cap the color palette, sort and bound
@@ -45,7 +45,7 @@ export function optimizeSchema(schema: PageSchema): PageSchema {
 	return optimized;
 }
 
-/** Merge colors that normalize to the same hex, summing counts; keep the top 25. */
+/** Merge colors that normalize to the same hex, summing counts. Keep the top 25. */
 function deduplicateColors(colors: PageSchema['tokens']['colors']): PageSchema['tokens']['colors'] {
 	const merged = new Map<string, { contexts: Set<string>; count: number }>();
 	for (const entry of colors) {
@@ -76,7 +76,7 @@ function optimizeSpacing(spacing: string[]): string[] {
 
 /**
  * When there are many style entries, collapse pairs that differ by one property,
- * dropping the near-duplicate. Only runs above 40 entries; below that the map is
+ * dropping the near-duplicate. Only runs above 40 entries. Below that the map is
  * already small enough to leave intact.
  */
 function mergeNearIdenticalStyles(styles: Record<string, Record<string, string>>): Record<string, Record<string, string>> {

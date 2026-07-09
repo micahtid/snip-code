@@ -11,7 +11,7 @@
  * assistive modes consume. It also promotes lazy-loaded image
  * sources at clone time so images render when the snip is pasted elsewhere,
  * ported from v1 extraction-pipeline cloneElement. Shadow piercing is added
- * later via cdp; this is the cssom/light-dom baseline.
+ * later via cdp. This is the cssom/light-dom baseline.
  */
 import type { Captured } from '../types';
 
@@ -25,7 +25,7 @@ const LAZY_SRC_ATTRS = ['data-src', 'data-lazy-src', 'data-original', 'data-srcs
 /**
  * Deep-clones the picked subtree into a detached node and promotes lazy images.
  *
- * cloneNode(true) already copies every attribute and child; the extra work here
+ * cloneNode(true) already copies every attribute and child. The extra work here
  * is replacing placeholder `src`s, such as 1x1 gifs or data-uri spacers, with the real url
  * stashed in a data-* attribute, so a pasted snip shows the image immediately
  * instead of waiting for the host page's lazy-load script that no longer runs.
@@ -57,10 +57,11 @@ function isPlaceholderSrc(src: string): boolean {
 /**
  * Builds the element metadata block.
  *
- * Both modes need this: snip uses the tag/box, assistive emits the whole block
- * as json. Emits two selectors: `selector`, the shortest unique one, and
- * `robustSelector`, which prefers stable data-attributes or ids over class hashes, so a
- * downstream agent can re-find the element even if class hashes churn.
+ * Both modes need this. The snip mode uses the tag/box, and the assistive mode
+ * emits the whole block as json. It emits two selectors: `selector`, the shortest
+ * unique one, and `robustSelector`, which prefers stable data-attributes or ids
+ * over class hashes, so a downstream agent can re-find the element even if class
+ * hashes churn.
  *
  * @param root - the live picked element
  * @returns the populated metadata block
@@ -125,7 +126,7 @@ function shortestSelector(el: Element): string {
 }
 
 /**
- * A selector that survives class-hash churn: prefers a stable data-* attribute,
+ * A selector that survives class-hash churn. It prefers a stable data-* attribute,
  * then a non-generated-looking id, before falling back to the shortest selector.
  */
 function robustSelector(el: Element): string {
@@ -197,7 +198,7 @@ function isUnique(selector: string, el: Element): boolean {
 
 /** Escape a class/id token for use in a css selector. */
 function cssEscape(value: string): string {
-	// CSS.escape is standard in mv3 browsers; guard anyway for headless contexts.
+	// CSS.escape is standard in mv3 browsers, but guard anyway for headless contexts.
 	return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/([^\w-])/g, '\\$1');
 }
 

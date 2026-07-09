@@ -1,13 +1,13 @@
 /**
- * utils/storage.ts: chrome.storage.local access
+ * utils/storage.ts: chrome.storage.local access.
  *
- * Pipeline position: n/a; cross-cutting utility
+ * This is not part of the pipeline. It is a cross-cutting utility.
  *
- * Why this exists: all persistent state, such as preferences, byok keys, and
- * snippets, lives in chrome.storage.local and NEVER chrome.storage.sync, sync
- * would replicate to google's cloud, violating the local-only guarantee.
- * This is the single typed gateway to that store so the policy is enforced in one
- * place. Byok keys are stored under per-provider keys and are never logged.
+ * Why this exists: all persistent state, such as preferences, byok keys, and snippets, lives
+ * in chrome.storage.local and NEVER chrome.storage.sync. Sync would replicate to google's
+ * cloud, violating the local-only guarantee. This is the single typed gateway to that store,
+ * so the policy is enforced in one place. Byok keys are stored under per-provider keys and
+ * are never logged.
  */
 import type { Provider, SnippetRecord, UserPreferences } from '../content/types';
 
@@ -38,7 +38,7 @@ export async function setPrefs(patch: Partial<UserPreferences>): Promise<void> {
 	await chrome.storage.local.set({ [PREFS_KEY]: { ...current, ...patch } });
 }
 
-/** Read a provider's byok key; empty string if unset. Never logged. */
+/** Read a provider's byok key, or an empty string if unset. Never logged. */
 export async function getKey(provider: Provider): Promise<string> {
 	const stored = await chrome.storage.local.get(byokKey(provider));
 	return (stored[byokKey(provider)] as string | undefined) ?? '';

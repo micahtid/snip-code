@@ -5,40 +5,40 @@
  * Reads from Captured: root, clone, bakedStyles
  * Writes to Captured: bakedStyles + clone, baking non-default font settings
  *
- * Principles applied: extends the "ship what renders" rule to font properties
- * that the authored cascade often omits.
+ * Principles applied: this extends the "ship what renders" rule to the font
+ * properties the authored cascade often omits.
  *
  * CSS/spec reference: https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings
  * also covers font-feature-settings, font-optical-sizing, font-stretch.
  * Detection criterion: an element whose computed value for one of the font-metric
- * properties is non-default. Early-returns per element otherwise.
- * Transform contract: bakes those computed font values onto the matching clone
- * element. Reads getComputedStyle of the live original; mutates bakedStyles +
- * clone inline styles only.
+ * properties is non-default. Otherwise it early-returns per element.
+ * Transform contract: it bakes those computed font values onto the matching clone
+ * element. It reads getComputedStyle of the live original and mutates bakedStyles
+ * and the clone inline styles only.
  *
  * Why this exists: variable-font axis settings and opentype feature settings are
- * frequently applied by a font's own @font-face or a high-level shorthand and do
- * not appear as explicit authored declarations on each element, so the
- * per-element pass never bakes them and they revert to default when the snip is
+ * frequently applied by a font's own @font-face or a high-level shorthand, and they
+ * do not appear as explicit authored declarations on each element. So the
+ * per-element pass never bakes them, and they revert to default when the snip is
  * reparented, giving the wrong weight or width and lost ligatures. Baking the
- * computed value is pixel-safe: it reproduces exactly what already rendered. The
- * matching @font-face descriptors (size-adjust, ascent/descent/line-gap-override,
+ * computed value is pixel-safe, because it reproduces exactly what already rendered.
+ * The matching @font-face descriptors (size-adjust, ascent/descent/line-gap-override,
  * unicode-range, font-display) travel via resolve/fonts.ts.
  *
- * The text micro-features below, text-overflow with ellipsis,
- * text-decoration-skip-ink, word-break, overflow-wrap, hyphens,
- * text-wrap, white-space-collapse, change how text wraps and truncates, which
- * shifts line breaks and visible content; baking the non-default values keeps the
- * captured text layout. Writing-mode lives in features/units with the logical
- * properties it governs.
+ * The text micro-features below (text-overflow with ellipsis,
+ * text-decoration-skip-ink, word-break, overflow-wrap, hyphens, text-wrap, and
+ * white-space-collapse) change how text wraps and truncates, which shifts line
+ * breaks and visible content. Baking the non-default values keeps the captured text
+ * layout. Writing-mode lives in features/units with the logical properties it
+ * governs.
  */
 import type { Captured } from '../../types';
 import { bakeNonDefaultProps } from '../match';
 
 /**
- * The font + text properties this handler preserves, the bounded css-spec
- * surface for variable/opentype fonts and text layout, a feature-handler spec
- * set, not a hardcoded property list.
+ * The font and text properties this handler preserves. This is the bounded css-spec
+ * surface for variable and opentype fonts and text layout, a feature-handler spec
+ * set rather than a hardcoded property list.
  */
 const FONT_AND_TEXT_PROPS = [
 	// Variable + opentype font metrics.
