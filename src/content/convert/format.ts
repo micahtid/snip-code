@@ -248,8 +248,22 @@ function formatCssRule(rule: CSSRule, depth: number): string {
 		const inner = Array.from(rule.cssRules).map((child) => formatCssRule(child, depth + 1)).join('\n\n');
 		return `${pad}${cond} {\n${inner}\n${pad}}`;
 	}
-	// Unknown at-rule (@layer/@property/@import): keep its serialized text, indented.
-	return `${pad}${rule.cssText}`;
+	// Any other at-rule, handled by shape rather than by name so none is left on one line: a
+	// braceless statement (@import, @charset, @layer with a name list) has no body and is
+	// emitted as-is; a grouping at-rule (@container, @layer block, @scope) carries child rules
+	// and is recursed under its own prelude, the text before the block brace, like @media above;
+	// a declaration at-rule (@property, @counter-style, @page) carries a descriptor body, split
+	// one per line with the shared helper. Whitespace between css declarations and rules is
+	// insignificant, so every branch is render-neutral.
+	const brace = rule.cssText.indexOf('{');
+	if (brace === -1) return `${pad}${rule.cssText}`;
+	const prelude = rule.cssText.slice(0, brace).trim();
+	if ('cssRules' in rule) {
+		const inner = Array.from((rule as CSSGroupingRule).cssRules).map((child) => formatCssRule(child, depth + 1)).join('\n\n');
+		return `${pad}${prelude} {\n${inner}\n${pad}}`;
+	}
+	const body = rule.cssText.slice(brace + 1, rule.cssText.lastIndexOf('}'));
+	return `${pad}${prelude} {\n${declarationLines(body, depth + 1)}\n${pad}}`;
 }
 
 /**
