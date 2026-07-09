@@ -1,7 +1,7 @@
 // Readable-slice report: per bundle, the total index.html size (what a user opens), the
 // inlined output.html size, and the font-payload-excluded style-rule slice (the part a user
-// actually reads). The M2 win shows as index.html shrinking toward the font-excluded slice
-// as the embedded @font-face bytes move into referenced files.
+// actually reads). The font-lift win shows as index.html shrinking toward the font-excluded
+// slice as the embedded @font-face bytes move into referenced files.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { findBundles } from './run-pipeline.mjs';

@@ -31,7 +31,7 @@
  * densest.
  */
 import type { Captured } from '../types';
-import { createRenderOracle } from './oracle';
+import { withOracle } from './oracle';
 import { parseSegments, inScopeRule, serializeRules } from './declarations';
 import { LOGICAL_TO_PHYSICAL } from './logical';
 
@@ -79,15 +79,7 @@ function rank(prop: string): number {
  * @returns the normalized stylesheet, or the input unchanged on any failure
  */
 export async function normalizeCss(css: string, captured: Captured, markup: string): Promise<string> {
-	if (!css.trim() || !markup.trim()) return css;
-	let oracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`normalize: skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	return withOracle(css, captured, markup, 'normalize: skipped', (oracle) => {
 		oracle.captureReference();
 		const topRules = Array.from(oracle.sheet.cssRules);
 		for (const rule of topRules) {
@@ -107,12 +99,7 @@ export async function normalizeCss(css: string, captured: Captured, markup: stri
 			if (rule.type === CSSRule.STYLE_RULE) dropCoveredLonghands(rule as CSSStyleRule, scratch);
 		}
 		return serializeRules(topRules);
-	} catch (err) {
-		captured.warnings.push(`normalize: skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /**

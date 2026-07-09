@@ -29,7 +29,7 @@
 import type { Captured } from '../types';
 
 /** The sub-lists css cycles across the property list; padded to its length before folding. */
-const TIMING_LONGHANDS = ['transition-duration', 'transition-timing-function', 'transition-delay', 'transition-behavior'];
+export const TIMING_LONGHANDS = ['transition-duration', 'transition-timing-function', 'transition-delay', 'transition-behavior'] as const;
 
 /**
  * Pads every clone element's transition timing sub-lists to its `transition-property` length by

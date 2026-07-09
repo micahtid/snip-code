@@ -1,4 +1,4 @@
-// M1 verification: the split index.html must be render-faithful to the inlined output.html.
+// Split-asset verification: the split index.html must be render-faithful to the inlined output.html.
 //
 // Both come from the same frozen snip (one capture), so any difference is the asset split's
 // doing, never live drift. Externalizing an inline svg to an <img> or a data-uri image to a

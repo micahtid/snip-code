@@ -166,6 +166,46 @@ async function runCoreTransform(captured: Captured): Promise<void> {
 	mergeIdenticalFaces(captured);
 }
 
+/**
+ * Runs the deterministic, key-free minimize pipeline over an assembled html-shaped artifact:
+ * the stylesheet is reduced against its own shipped markup and the markup is stripped of the
+ * data-* hooks the reduced stylesheet no longer references. Shared by the live pipeline and the
+ * headless grader so the pass order has one authoritative home. Every css step degrades to its
+ * input on failure, so the pipeline always produces a shippable pair.
+ *
+ * @param captured - source of the viewport size; warnings are appended here on any skip
+ * @param html - the assembled markup, mounted in each oracle and stripped at the end
+ * @param css - the assembled stylesheet to reduce
+ * @param stats - optional measurement sink, filled by the first prune pass when provided
+ * @returns the stripped markup and the minimized stylesheet
+ */
+async function minimizeArtifact(
+	captured: Captured,
+	html: string,
+	css: string,
+	stats?: MinimizeStats,
+): Promise<{ html: string; css: string }> {
+	const pruned = await minimizeCss(css, captured, html, stats);
+	const normalized = await normalizeCss(await foldLogical(pruned, captured, html), captured, html);
+	// Drop transition layers with no state changes, then merge sees any rules the fold unified.
+	const folded = foldTransitions(normalized);
+	const merged = await mergeCss(folded, captured, html);
+	const purged = purgeAtRules(merged);
+	const inlined = purgeAtRules(await inlineVars(purged, captured, html));
+	const reset = await injectReset(inlined, captured, html);
+	// Only rerun prune when a reset was actually injected, to drop the restatements it made
+	// redundant; a rejected reset leaves the css untouched and needs no second pass.
+	const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, html);
+	// Colorize first so canvas-canonical colors make any equal-color rules byte-identical, then
+	// regroup once more through the merge entry point to collapse a pair colorize just unified,
+	// and re-finalize since the merge's cssom parse re-serializes the hex.
+	const colored = colorizeCss(formatCss(deduped));
+	const finalCss = colorizeCss(formatCss(await mergeCss(colored, captured, html)));
+	// Markup pass, last in minimize: drop every data-* attribute the shipped stylesheet never
+	// references, the framework scope and instrumentation hooks a human would not keep.
+	return { html: stripUnreferencedDataAttributes(html, finalCss), css: finalCss };
+}
+
 /** Only one picker may be active at a time. */
 let activePicker: ElementPicker | null = null;
 
@@ -295,29 +335,12 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		finalHtml = assembled.html;
 		cleanedCss = assembled.css;
 
-		// Minimize phase, deterministic and key-free, class-based formats only. Prune,
-		// normalize, merge, purge dead at-rules, then colorize; each is oracle-verified or
-		// paint-exact.
+		// Minimize phase, deterministic and key-free, class-based formats only; see
+		// minimizeArtifact for the authoritative pass order.
 		if (classMarkup !== undefined) {
-			const pruned = await minimizeCss(assembled.css, captured, assembled.html);
-			const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
-			// Drop transition layers no state changes, then merge sees any rules the fold unified.
-			const folded = foldTransitions(normalized);
-			const merged = await mergeCss(folded, captured, assembled.html);
-			const purged = purgeAtRules(merged);
-			const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
-			const reset = await injectReset(inlined, captured, assembled.html);
-			// Only rerun prune when a reset was actually injected, to drop the restatements it made
-			// redundant; a rejected reset leaves the css untouched and needs no second pass.
-			const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
-			// Colorize first so canvas-canonical colors make any equal-color rules byte-identical,
-			// then regroup once more through the merge entry point to collapse a pair colorize just
-			// unified, and re-finalize since the merge's cssom parse re-serializes the hex.
-			const colored = colorizeCss(formatCss(deduped));
-			cleanedCss = colorizeCss(formatCss(await mergeCss(colored, captured, assembled.html)));
-			// Markup pass, last in minimize: drop every data-* attribute the shipped stylesheet
-			// never references, the framework scope and instrumentation hooks a human would not keep.
-			finalHtml = stripUnreferencedDataAttributes(finalHtml, cleanedCss);
+			const minimized = await minimizeArtifact(captured, assembled.html, assembled.css);
+			finalHtml = minimized.html;
+			cleanedCss = minimized.css;
 		}
 
 		// Polish phase, byok and optional, class-based formats only. Semantic class renames,
@@ -579,34 +602,13 @@ async function runHeadless(selector: string, mode: 'snip' | 'assistive'): Promis
 		const finalHtml = assembled.html;
 		// Minimize phase, deterministic and key-free. htmlBaseline is the pre-minimize shipped
 		// document from this same capture, so the harness can pixel-compare pre against post
-		// minimization with no live-capture drift between them.
-		//
-		// Prune, normalize, merge, format, colorize: delete render-invisible declarations,
-		// fold longhands to shorthands and order each rule like a human, collapse identical
-		// rules into selector lists, drop dead @property registrations, pretty-print, then
-		// rewrite rgb()/rgba() colors to hex. All but colorize are oracle-verified against the shipped context; colorize runs last,
-		// on the formatted text, and is paint-exact by construction. Each degrades to its input.
+		// minimization with no live-capture drift between them. See minimizeArtifact for the
+		// pass order; the grader threads a stats sink through it to report declaration counts.
 		const htmlBaseline = assembled.document;
 		const minimizeStats: MinimizeStats = { ms: 0, declsBefore: 0, declsAfter: 0, charsBefore: 0, charsAfter: 0 };
-		const pruned = await minimizeCss(assembled.css, captured, assembled.html, minimizeStats);
-		const normalized = await normalizeCss(await foldLogical(pruned, captured, assembled.html), captured, assembled.html);
-		// Drop transition layers no state changes, then merge sees any rules the fold unified.
-		const folded = foldTransitions(normalized);
-		const merged = await mergeCss(folded, captured, assembled.html);
-		const purged = purgeAtRules(merged);
-		const inlined = purgeAtRules(await inlineVars(purged, captured, assembled.html));
-		const reset = await injectReset(inlined, captured, assembled.html);
-		// Only rerun prune when a reset was actually injected, to drop the restatements it made
-		// redundant; a rejected reset leaves the css untouched and needs no second pass.
-		const deduped = reset === inlined ? inlined : await minimizeCss(reset, captured, assembled.html);
-		// Colorize first so canvas-canonical colors make any equal-color rules byte-identical, then
-		// regroup once more through the merge entry point to collapse a pair colorize just unified,
-		// and re-finalize since the merge's cssom parse re-serializes the hex.
-		const colored = colorizeCss(formatCss(deduped));
-		const finalCss = colorizeCss(formatCss(await mergeCss(colored, captured, assembled.html)));
-		// Markup pass, last in minimize: drop every data-* attribute the shipped stylesheet never
-		// references, the framework scope and instrumentation hooks a human would not keep.
-		const strippedHtml = stripUnreferencedDataAttributes(finalHtml, finalCss);
+		const minimized = await minimizeArtifact(captured, assembled.html, assembled.css, minimizeStats);
+		const finalCss = minimized.css;
+		const strippedHtml = minimized.html;
 		const finalDoc = composeDocument(strippedHtml, finalCss);
 
 		// Emitted-artifact probe, read-only: diff the shipped BEM artifact's own

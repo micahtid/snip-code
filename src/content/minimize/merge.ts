@@ -24,7 +24,7 @@
  * groups are processed in selector order, and it only ever shrinks the stylesheet.
  */
 import type { Captured } from '../types';
-import { createRenderOracle, type RenderOracle } from './oracle';
+import { withOracle, type RenderOracle } from './oracle';
 import { inScopeRule, serializeRules, WITHHELD } from './declarations';
 
 /**
@@ -47,15 +47,7 @@ const DYNAMIC_PSEUDO = /::[\w-]+(?:\([^)]*\))?|:(?:hover|focus-visible|focus-wit
  * @returns the merged stylesheet, or the input unchanged on any failure
  */
 export async function mergeCss(css: string, captured: Captured, markup: string): Promise<string> {
-	if (!css.trim() || !markup.trim()) return css;
-	let oracle: RenderOracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`merge: skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	return withOracle(css, captured, markup, 'merge: skipped', (oracle) => {
 		oracle.captureReference();
 		const topRules = Array.from(oracle.sheet.cssRules);
 
@@ -81,12 +73,7 @@ export async function mergeCss(css: string, captured: Captured, markup: string):
 		mergeWithheldRules(oracle, topRules);
 
 		return serializeRules(topRules);
-	} catch (err) {
-		captured.warnings.push(`merge: skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /**

@@ -25,7 +25,7 @@
  * line: one deviant element would veto a whole coarse line and lose the rest with it.
  */
 import type { Captured } from '../types';
-import { createRenderOracle, type RenderOracle } from './oracle';
+import { withOracle, type RenderOracle } from './oracle';
 import { serializeRules } from './declarations';
 
 /**
@@ -60,15 +60,7 @@ const RESET_RULES = [
  * @returns the stylesheet with the accepted reset lines prepended, or the input unchanged
  */
 export async function injectReset(css: string, captured: Captured, markup: string): Promise<string> {
-	if (!css.trim() || !markup.trim()) return css;
-	let oracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`minimize: reset skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	return withOracle(css, captured, markup, 'minimize: reset skipped', (oracle) => {
 		oracle.captureReference();
 		let injected = 0;
 		for (const rule of RESET_RULES) {
@@ -82,12 +74,7 @@ export async function injectReset(css: string, captured: Captured, markup: strin
 		}
 		if (injected === 0) return css;
 		return serializeRules(Array.from(oracle.sheet.cssRules));
-	} catch (err) {
-		captured.warnings.push(`minimize: reset skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /**

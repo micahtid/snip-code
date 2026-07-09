@@ -28,7 +28,7 @@
  * to its resting sample would freeze the color and strip the state change.
  */
 import type { Captured } from '../types';
-import { createRenderOracle, type RenderOracle } from './oracle';
+import { withOracle, type RenderOracle } from './oracle';
 import { inScopeRule, parseSegments, serializeRules, WITHHELD } from './declarations';
 
 /**
@@ -44,15 +44,8 @@ import { inScopeRule, parseSegments, serializeRules, WITHHELD } from './declarat
  * @returns the stylesheet with var() inlined and dead custom properties removed
  */
 export async function inlineVars(css: string, captured: Captured, markup: string): Promise<string> {
-	if (!css.trim() || !markup.trim() || !css.includes('var(')) return css;
-	let oracle: RenderOracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`minimize: var inline skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	if (!css.includes('var(')) return css;
+	return withOracle(css, captured, markup, 'minimize: var inline skipped', (oracle) => {
 		oracle.captureReference();
 		const held = motionHeldNames(css);
 		addStateRedefinedNames(oracle.sheet, held);
@@ -71,12 +64,7 @@ export async function inlineVars(css: string, captured: Captured, markup: string
 		// which enumerates custom-property computed values, would read the change as one.
 		dropDeadCustomProps(oracle.sheet, inScope, held);
 		return serializeRules(Array.from(oracle.sheet.cssRules));
-	} catch (err) {
-		captured.warnings.push(`minimize: var inline skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /**

@@ -107,7 +107,9 @@ export function applyComments(css: string, comments: Record<string, string>): st
 		const clean = String(text).replace(/\*\//g, '').replace(/[\r\n]+/g, ' ').trim();
 		if (!clean || !selector.trim()) continue;
 		const re = new RegExp(`(^|\\n)(${escapeRegExp(selector.trim())}\\s*\\{)`, '');
-		out = out.replace(re, `$1/* ${clean} */\n$2`);
+		// Insert via a replacer so a `$` sequence in the model's comment is written literally
+		// rather than interpreted as a capture-group backreference.
+		out = out.replace(re, (_m, before, rule) => `${before}/* ${clean} */\n${rule}`);
 	}
 	return out;
 }

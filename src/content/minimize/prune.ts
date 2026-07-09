@@ -29,7 +29,7 @@
  * neither for deletion nor rewriting and pass through untouched. See WITHHELD.
  */
 import type { Captured } from '../types';
-import { createRenderOracle, type RenderOracle } from './oracle';
+import { withOracle, type RenderOracle } from './oracle';
 import { parseSegments, inScopeRule, serializeRules, type Segment } from './declarations';
 
 /**
@@ -115,27 +115,14 @@ export interface MinimizeStats {
  */
 export async function minimizeCss(css: string, captured: Captured, markup: string, stats?: MinimizeStats): Promise<string> {
 	if (stats) fillNoOpStats(stats, css);
-	if (!css.trim() || !markup.trim()) return css;
-	let oracle: RenderOracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`minimize: skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	// A mid-run failure discards the frame's partial edits and ships the original css,
+	// never a half-minimized stylesheet; withOracle owns that fallback.
+	return withOracle(css, captured, markup, 'minimize: skipped', (oracle) => {
 		const t0 = now();
 		const result = run(oracle, stats);
 		if (stats) stats.ms = now() - t0;
 		return result;
-	} catch (err) {
-		// A mid-run failure discards the frame's partial edits and ships the original css,
-		// never a half-minimized stylesheet.
-		captured.warnings.push(`minimize: skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /** Initializes a stats sink to a no-op run, so a skip still reports coherent numbers. */

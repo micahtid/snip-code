@@ -28,10 +28,7 @@
  * The corpus pixel backstop and the forced-state checks verify the batch at the gate.
  */
 import { serializeRules, WITHHELD } from './declarations';
-import { splitTopLevelCommas } from '../resolve/transition';
-
-/** The transition timing sub-lists css cycles across the property list, in shorthand order. */
-const TIMING_LONGHANDS = ['transition-duration', 'transition-timing-function', 'transition-delay', 'transition-behavior'] as const;
+import { splitTopLevelCommas, TIMING_LONGHANDS } from '../resolve/transition';
 
 /** The default each timing sub-list takes for a layer past its length, its css initial value. */
 const TIMING_DEFAULTS = ['0s', 'ease', '0s', 'normal'] as const;

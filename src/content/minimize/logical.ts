@@ -21,9 +21,8 @@
  * backstop and reverted if anything moved.
  */
 import type { Captured } from '../types';
-import { createRenderOracle, type RenderOracle } from './oracle';
-import { inScopeRule, parseSegments } from './declarations';
-import { serializeRules } from './declarations';
+import { withOracle } from './oracle';
+import { inScopeRule, parseSegments, serializeRules } from './declarations';
 
 /**
  * Logical longhands and one-value directionals mapped to their horizontal-tb ltr physical name.
@@ -74,15 +73,8 @@ const HAS_LOGICAL = /(?:^|[;{\s])(?:border-(?:start|end)-(?:start|end)-radius|(?
  * @returns the stylesheet with logical properties folded to physical where safe
  */
 export async function foldLogical(css: string, captured: Captured, markup: string): Promise<string> {
-	if (!css.trim() || !markup.trim() || !HAS_LOGICAL.test(css)) return css;
-	let oracle: RenderOracle;
-	try {
-		oracle = await createRenderOracle(captured, css, markup);
-	} catch (err) {
-		captured.warnings.push(`minimize: logical fold skipped (${(err as Error).message})`);
-		return css;
-	}
-	try {
+	if (!HAS_LOGICAL.test(css)) return css;
+	return withOracle(css, captured, markup, 'minimize: logical fold skipped', (oracle) => {
 		oracle.captureReference();
 		for (const rule of Array.from(oracle.sheet.cssRules)) {
 			const styleRule = inScopeRule(rule);
@@ -104,12 +96,7 @@ export async function foldLogical(css: string, captured: Captured, markup: strin
 			if (!oracle.matchesSubset(oracle.subtreeTargets(elements))) styleRule.style.cssText = saved;
 		}
 		return serializeRules(Array.from(oracle.sheet.cssRules));
-	} catch (err) {
-		captured.warnings.push(`minimize: logical fold skipped (${(err as Error).message})`);
-		return css;
-	} finally {
-		oracle.dispose();
-	}
+	});
 }
 
 /** Whether an element lays out horizontally, left to right, so logical equals physical. */

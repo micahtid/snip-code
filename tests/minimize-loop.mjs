@@ -146,7 +146,7 @@ export async function runMinimizeLoop(opts = {}) {
 	return rows;
 }
 
-/** Print the corpus aggregate and the M1 gate verdict, and append a history line. */
+/** Print the corpus aggregate and the declaration-removal gate verdict, and append a history line. */
 async function report(rows) {
 	const scored = rows.filter((r) => !r.error);
 	const meanRemoval = scored.reduce((s, r) => s + r.declRemovalPct, 0) / (scored.length || 1);

@@ -80,7 +80,9 @@ export async function polish(
 
 	const edits = parseReply(text);
 	const renamed = applyRenames(html, css, edits.renameMap);
-	const out = finalize(applyTags(renamed.html, edits.tagMap), applyComments(renamed.css, edits.comments));
+	const taggedHtml = applyTags(renamed.html, edits.tagMap);
+	const commentedCss = applyComments(renamed.css, edits.comments);
+	const out = finalize(taggedHtml, commentedCss);
 
 	// Verify the polished artifact renders identically; a model can rename inconsistently or
 	// swap a tag whose ua styles differ, so a non-neutral edit falls back to the safe output.

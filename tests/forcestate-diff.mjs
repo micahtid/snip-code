@@ -1,6 +1,6 @@
 // Forced-state neutrality check: force a pseudo-state on a marker in two output.html files,
 // the pre- and post-change renders from the same capture, and pixel-diff the result. Used to
-// verify a transform the resting oracle cannot see, such as the withheld-rule merge (M4),
+// verify a transform the resting oracle cannot see, such as the withheld-rule merge,
 // leaves the interactive-state render unchanged. Zero diff is the pass.
 //
 // Usage: node tests/forcestate-diff.mjs <pre.html> <post.html> <markerSelector> <w> <h> <state>

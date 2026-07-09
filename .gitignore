@@ -20,5 +20,9 @@ Thumbs.db
 tests/fixtures/.out/
 tests/fixtures/tile.png
 
-# planning docs: working notes, never committed
-FIDELITY-PLAN*.md
+# generated benchmark log: appended one row per minimize-loop run, never read back
+tests/minimize-scores.jsonl
+
+# planning docs and task notes: working notes, never committed
+*-PLAN*.md
+Tasks/

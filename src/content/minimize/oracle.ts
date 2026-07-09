@@ -262,6 +262,46 @@ export async function createRenderOracle(captured: Captured, css: string, markup
 }
 
 /**
+ * Mounts a render oracle over a stylesheet and markup, runs a minimize phase's transform
+ * against it, and guarantees the frame is torn down. Every phase shares this scaffold: skip
+ * empty input, mount the oracle, run the transform, and on any infrastructure failure at
+ * either step append `<skipLabel> (<cause>)` and ship the input css unchanged, so a snip
+ * never fails on a minimize step. A phase with an additional cheap precondition checks it
+ * before calling this, to avoid mounting a frame it does not need.
+ *
+ * @param css - the stylesheet this phase transforms
+ * @param captured - source of the viewport size; the skip warning is appended here
+ * @param markup - the emitted root markup the stylesheet targets, mounted in the oracle
+ * @param skipLabel - the warning prefix for this phase, e.g. `merge: skipped`
+ * @param transform - runs against the mounted oracle and returns the phase's result css
+ * @returns the transform's result, or the input css unchanged on any failure
+ */
+export async function withOracle(
+	css: string,
+	captured: Captured,
+	markup: string,
+	skipLabel: string,
+	transform: (oracle: RenderOracle) => string,
+): Promise<string> {
+	if (!css.trim() || !markup.trim()) return css;
+	let oracle: RenderOracle;
+	try {
+		oracle = await createRenderOracle(captured, css, markup);
+	} catch (err) {
+		captured.warnings.push(`${skipLabel} (${(err as Error).message})`);
+		return css;
+	}
+	try {
+		return transform(oracle);
+	} catch (err) {
+		captured.warnings.push(`${skipLabel} (${(err as Error).message})`);
+		return css;
+	} finally {
+		oracle.dispose();
+	}
+}
+
+/**
  * The prop indices whose value paints nothing in the reference render, so a removal that
  * only changes them is render-neutral even though the computed value differs. This is the
  * paint-relevance relaxation that closes the gap between the strict computed-style
