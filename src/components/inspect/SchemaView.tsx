@@ -41,7 +41,6 @@ export function SchemaView({ json }: { json: string }) {
 	return (
 		<div style={container}>
 			<div style={header}>
-				<span style={eyebrow}>Schema</span>
 				<div style={actions}>
 					<button className="sc-icon-btn" title={copied ? 'Copied' : 'Copy schema'} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
@@ -63,10 +62,9 @@ const container: React.CSSProperties = {
 	display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: SURFACE.shadow, flex: 1, minHeight: 0,
 };
 const header: React.CSSProperties = {
-	display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px',
+	display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '9px 12px',
 	background: SURFACE.headerGradient, borderBottom: `1px solid ${SURFACE.border}`,
 };
-const eyebrow: React.CSSProperties = { fontSize: '10px', fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: COLORS.slate500 };
 const actions: React.CSSProperties = { display: 'flex', gap: '2px', alignItems: 'center' };
 const display: React.CSSProperties = {
 	margin: 0, padding: '14px 16px', flex: 1, minHeight: 0, overflow: 'auto', background: COLORS.white,

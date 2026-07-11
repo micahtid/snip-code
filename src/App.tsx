@@ -99,6 +99,7 @@ function App() {
 	const [view, setView] = useState<View>('capture');
 	const [mode, setMode] = useState<Mode>('snip');
 	const [picking, setPicking] = useState(false);
+	const [scanning, setScanning] = useState(false);
 	const [result, setResult] = useState<SnipResult | null>(null);
 	const [inspect, setInspect] = useState<InspectResult | null>(null);
 	// Running token total for this panel session; resets when the side panel reloads.
@@ -129,6 +130,7 @@ function App() {
 				setResult(null);
 				addUsage(payload?.usage);
 				setView('capture');
+				setScanning(false); // The scan is formed, so drop the loading state.
 			}
 			return undefined; // No async response; do not hold the channel open.
 		};
@@ -161,6 +163,19 @@ function App() {
 		}
 	};
 
+	/**
+	 * enter/leave the in-flight scan state; mirrors onPickingChange so a page scan shows the
+	 * same loading effect as a pick. A new scan clears whichever result is showing, so the
+	 * code block only reappears once the scan is formed, and INSPECT_RESULT ends the state.
+	 */
+	const onScanningChange = (next: boolean): void => {
+		setScanning(next);
+		if (next) {
+			setResult(null);
+			setInspect(null);
+		}
+	};
+
 	return (
 		<>
 			<CloudBackdrop />
@@ -185,7 +200,14 @@ function App() {
 							fill
 							footer={
 								<>
-									<Picker mode={mode} onModeChange={setMode} picking={picking} onPickingChange={onPickingChange} />
+									<Picker
+										mode={mode}
+										onModeChange={setMode}
+										picking={picking}
+										onPickingChange={onPickingChange}
+										scanning={scanning}
+										onScanningChange={onScanningChange}
+									/>
 									<div style={styles.tokens as React.CSSProperties}>Tokens Used: {sessionTokens.toLocaleString()}</div>
 								</>
 							}

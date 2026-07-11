@@ -13,11 +13,12 @@
  * of modes share the menu: the element picks, snip / assistive, which inject the
  * page overlay so the user selects an element, and the page scans, colors / fonts /
  * assets / schema, which read the whole page at once. The main button's label
- * is the active-mode indicator. Element picks lift a "picking" state up via
- * onPickingChange so App can wire the panel-side esc-to-cancel. Page scans need no
- * overlay, so they show a transient "Scanning..." instead. The heavy lifting lives
- * in the content script, meaning overlay plus screenshot for picks and extraction
- * for scans. This component owns only the mode state and the start signal.
+ * is the active-mode indicator. Both groups lift their in-flight state up to App,
+ * "picking" for element picks and "scanning" for page scans, so App clears each when
+ * its result arrives and the button stays in its loading state until then. Element
+ * picks additionally wire the panel-side esc-to-cancel; page scans need no overlay.
+ * The heavy lifting lives in the content script, meaning overlay plus screenshot for
+ * picks and extraction for scans. This component owns only the mode and menu state.
  */
 import { Fragment, useState } from 'react';
 import { Check, ChevronUp } from 'lucide-react';
@@ -35,6 +36,10 @@ interface PickerProps {
 	picking: boolean;
 	/** Report whether a pick is now in flight: true on start, false if start failed. */
 	onPickingChange: (picking: boolean) => void;
+	/** True while a page scan is in progress; owned by App, cleared when its result arrives. */
+	scanning: boolean;
+	/** Report whether a scan is now in flight: true on start, false if start failed. */
+	onScanningChange: (scanning: boolean) => void;
 }
 
 /**
@@ -89,10 +94,8 @@ async function sendToActiveTab(message: Record<string, unknown>): Promise<boolea
 	}
 }
 
-export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerProps) {
+export function Picker({ mode, onModeChange, picking, onPickingChange, scanning, onScanningChange }: PickerProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
-	// A page scan shows a transient label on the main button. It owns no overlay state.
-	const [scanning, setScanning] = useState(false);
 
 	const active = MODES.find((m) => m.id === mode) ?? MODES[0]!;
 
@@ -103,11 +106,11 @@ export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerP
 			if (!started) onPickingChange(false); // Could not reach the page, so leave select mode.
 			return;
 		}
-		// Page scan: flash "Scanning..." until the content script ships its result and App
-		// swaps in the InspectPanel. Either way, clear the flash shortly after.
-		setScanning(true);
-		await sendToActiveTab({ type: START_SCAN, scan: mode as ScanKind });
-		setTimeout(() => setScanning(false), 1200);
+		// Page scan: hold the "Scanning..." loading state until the content script ships its
+		// result and App swaps in the InspectPanel, exactly as a pick holds until its snip.
+		onScanningChange(true);
+		const started = await sendToActiveTab({ type: START_SCAN, scan: mode as ScanKind });
+		if (!started) onScanningChange(false); // Could not reach the page, so leave the loading state.
 	};
 
 	const busy = picking || scanning;
