@@ -14,9 +14,19 @@
  */
 import { useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
-import type { AssetReport } from '../../content/inspect/types';
+import type { AssetReport, AssetType } from '../../content/inspect/types';
 import { COLORS } from '../../theme';
 import { InspectCard } from './InspectCard';
+
+/** Human-readable label per asset type for the meta line. */
+const TYPE_LABELS: Record<AssetType, string> = {
+	image: 'Image',
+	'css-bg': 'Background',
+	'inline-svg': 'Inline SVG',
+	favicon: 'Favicon',
+	video: 'Video',
+	audio: 'Audio',
+};
 
 export function AssetGrid({ assets }: { assets: AssetReport[] }) {
 	return (
@@ -29,6 +39,7 @@ export function AssetGrid({ assets }: { assets: AssetReport[] }) {
 					meta={metaOf(asset)}
 					onActivate={() => downloadAsset(asset)}
 					feedback="Downloaded"
+					subtleFeedback
 					title={`Download ${asset.filename}`}
 				/>
 			))}
@@ -51,7 +62,7 @@ function AssetThumb({ asset }: { asset: AssetReport }) {
 /** The meta line: the asset type plus its pixel dimensions when known. */
 function metaOf(asset: AssetReport): string {
 	const dims = asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : '';
-	return `${asset.type}${dims}`;
+	return `${TYPE_LABELS[asset.type]}${dims}`;
 }
 
 /** Downloads one asset via a transient anchor. Inline svgs become a blob .svg. */

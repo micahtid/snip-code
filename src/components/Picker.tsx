@@ -111,7 +111,7 @@ export function Picker({ mode, onModeChange, picking, onPickingChange }: PickerP
 	};
 
 	const busy = picking || scanning;
-	const mainLabel = picking ? 'Selecting… (Esc to cancel)' : scanning ? 'Scanning…' : active.action;
+	const mainLabel = picking ? 'Selecting… (Esc to Cancel)' : scanning ? 'Scanning…' : active.action;
 
 	return (
 		<div style={styles.splitWrap as React.CSSProperties}>

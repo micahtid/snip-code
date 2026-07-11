@@ -27,10 +27,12 @@ interface InspectCardProps {
 	onActivate: () => void | Promise<void>;
 	/** The confirmation shown briefly after a successful action ("Copied" / "Downloaded"). */
 	feedback: string;
+	/** When true, the confirmation reads in the plain meta style, with no check icon or accent colour. */
+	subtleFeedback?: boolean;
 	title: string;
 }
 
-export function InspectCard({ preview, name, meta, onActivate, feedback, title }: InspectCardProps) {
+export function InspectCard({ preview, name, meta, onActivate, feedback, subtleFeedback, title }: InspectCardProps) {
 	const [flashed, setFlashed] = useState(false);
 
 	const activate = async (): Promise<void> => {
@@ -50,9 +52,13 @@ export function InspectCard({ preview, name, meta, onActivate, feedback, title }
 			<span className="sc-inspect-text">
 				<span className="sc-inspect-name">{name}</span>
 				{flashed ? (
-					<span className="sc-inspect-meta" style={flashStyle}>
-						<Check size={12} /> {feedback}
-					</span>
+					subtleFeedback ? (
+						<span className="sc-inspect-meta">{feedback}</span>
+					) : (
+						<span className="sc-inspect-meta" style={flashStyle}>
+							<Check size={12} /> {feedback}
+						</span>
+					)
 				) : (
 					meta && <span className="sc-inspect-meta">{meta}</span>
 				)}

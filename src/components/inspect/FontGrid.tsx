@@ -29,6 +29,7 @@ export function FontGrid({ fonts }: { fonts: FontReport[] }) {
 					meta={`${font.origin === 'web' ? 'Web' : 'System'} · ${font.variants.length} variant${font.variants.length === 1 ? '' : 's'}`}
 					onActivate={() => navigator.clipboard.writeText(font.family)}
 					feedback="Copied"
+					subtleFeedback
 					title={`Copy "${font.family}"`}
 				/>
 			))}
