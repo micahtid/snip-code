@@ -27,8 +27,9 @@
  */
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { History, Scissors, Settings, type LucideIcon } from 'lucide-react';
+import { History, Settings } from 'lucide-react';
 import { Picker, type Mode } from './components/Picker';
+import { ScissorsMark } from './components/ScissorsMark';
 import { ResultPanel, type SnipResult } from './components/ResultPanel';
 import { InspectPanel } from './components/inspect/InspectPanel';
 import { SnippetList } from './components/SnippetList';
@@ -68,8 +69,8 @@ const styles = {
 } satisfies Record<string, unknown>;
 
 /** The three sidebar views, each with the icon and hover-tooltip label its nav button shows. */
-const NAV: ReadonlyArray<{ id: View; label: string; Icon: LucideIcon }> = [
-	{ id: 'capture', label: 'Capture', Icon: Scissors },
+const NAV: ReadonlyArray<{ id: View; label: string; Icon: React.ComponentType<{ size?: number | string }> }> = [
+	{ id: 'capture', label: 'Capture', Icon: ScissorsMark },
 	{ id: 'history', label: 'History', Icon: History },
 	{ id: 'settings', label: 'Settings', Icon: Settings },
 ];
