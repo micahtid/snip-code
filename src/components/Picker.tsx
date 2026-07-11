@@ -50,7 +50,7 @@ interface PickerProps {
  */
 const MODES: ReadonlyArray<{ id: Mode; label: string; action: string; kind: 'element' | 'page' }> = [
 	{ id: 'snip', label: 'Snip', action: 'Snip Element', kind: 'element' },
-	{ id: 'assistive', label: 'Assistive', action: 'Assistive Element', kind: 'element' },
+	// { id: 'assistive', label: 'Assistive', action: 'Assistive Element', kind: 'element' }, // Hidden for now.
 	{ id: 'colors', label: 'Colors', action: 'Scan Colors', kind: 'page' },
 	{ id: 'fonts', label: 'Fonts', action: 'Scan Fonts', kind: 'page' },
 	{ id: 'assets', label: 'Assets', action: 'Scan Assets', kind: 'page' },
