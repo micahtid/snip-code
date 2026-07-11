@@ -54,7 +54,7 @@ function isTransparentColor(value: string): boolean {
 
 /** The four-side padding shorthand read off a computed style. */
 function paddingShorthand(computed: CSSStyleDeclaration): string {
-	return paddingShorthand(computed);
+	return `${computed.paddingTop} ${computed.paddingRight} ${computed.paddingBottom} ${computed.paddingLeft}`;
 }
 
 /** Groups items by a string key, preserving insertion order within each group. */
