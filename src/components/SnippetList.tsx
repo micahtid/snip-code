@@ -8,9 +8,10 @@
  * Principles applied: none. Ui only.
  *
  * Why this exists: snipcode keeps the last 50 snippets in chrome.storage.local
- * in fifo order and offers one-click "export all" to a zip with one folder
- * per snippet. This view lists them by thumbnail, page, and format, and builds the zip
- * in the sidebar with jszip, downloading it via an object-url anchor.
+ * in fifo order. This view lists them by thumbnail, page, and format. Clicking a
+ * card downloads that one snippet's component, its code file plus a stylesheet when
+ * the format keeps css apart. "Export all" zips every snippet into a folder each,
+ * built in the sidebar with jszip and saved via an object-url anchor.
  */
 import { useEffect, useState } from 'react';
 import { LibraryBig } from 'lucide-react';
@@ -68,7 +69,12 @@ export function SnippetList() {
 	return (
 		<ViewLayout footer={footer}>
 			{snippets.map((snip) => (
-				<div key={snip.id} style={row}>
+				<button
+					key={snip.id}
+					className="sc-history-card"
+					title={`Download ${snip.page.title || 'snippet'}`}
+					onClick={() => downloadSnippet(snip)}
+				>
 					{snip.screenshot ? (
 						<img src={snip.screenshot} alt="" style={thumb} />
 					) : (
@@ -82,10 +88,32 @@ export function SnippetList() {
 							{snip.output.format.toUpperCase()} · {new Date(snip.capturedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
 						</div>
 					</div>
-				</div>
+				</button>
 			))}
 		</ViewLayout>
 	);
+}
+
+/**
+ * Download one snippet's component: its code file, plus a separate stylesheet when the
+ * format keeps css apart. Mirrors the per-snippet files exportZip writes into each folder.
+ */
+function downloadSnippet(snip: SnippetRecord): void {
+	const base = slug(snip.page.title || 'snippet');
+	downloadText(`${base}.${EXT[snip.output.format]}`, snip.output.html);
+	if (snip.output.css) downloadText(`${base}.css`, snip.output.css);
+}
+
+/** Save a text file to disk as a utf-8 blob. */
+function downloadText(name: string, text: string): void {
+	downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), name);
+}
+
+/** Save a blob to disk via a transient object url, revoked once the browser has read it. */
+function downloadBlob(blob: Blob, name: string): void {
+	const url = URL.createObjectURL(blob);
+	triggerDownload(url, name);
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Build a zip with one folder per snippet, holding code, screenshot, and meta, and download it. */
@@ -101,9 +129,7 @@ async function exportZip(snippets: SnippetRecord[]): Promise<void> {
 		if (png) folder.file('screenshot.png', png, { base64: true });
 	});
 	const blob = await zip.generateAsync({ type: 'blob' });
-	const url = URL.createObjectURL(blob);
-	triggerDownload(url, 'snipcode-snippets.zip');
-	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	downloadBlob(blob, 'snipcode-snippets.zip');
 }
 
 /** Extract the base64 payload from a data url, or '' if not a data url. */
@@ -112,14 +138,10 @@ function dataUrlToBase64(dataUrl: string): string {
 	return dataUrl.startsWith('data:') && comma >= 0 ? dataUrl.slice(comma + 1) : '';
 }
 
-/** Filesystem-safe slug for a folder name. */
+/** Filesystem-safe slug for a folder or file name. */
 function slug(text: string): string {
 	return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'snippet';
 }
 
 const muted: React.CSSProperties = { color: COLORS.slate500, fontSize: '12px' };
-const row: React.CSSProperties = {
-	display: 'flex', gap: '10px', alignItems: 'center', padding: '8px', marginBottom: '8px',
-	background: SURFACE.control, border: `1px solid ${SURFACE.border}`, borderRadius: `${RADIUS.lg}px`, fontSize: '12px',
-};
 const thumb: React.CSSProperties = { width: '40px', height: '40px', objectFit: 'cover', borderRadius: `${RADIUS.md}px`, flexShrink: 0, border: `1px solid ${SURFACE.border}` };

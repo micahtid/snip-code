@@ -214,6 +214,25 @@ body {
 }
 .sc-inspect-card:hover { border-color: ${SURFACE.borderStrong}; background: ${COLORS.white}; box-shadow: ${SURFACE.shadow}; }
 .sc-inspect-card:active { transform: scale(0.98); }
+/* History list: a saved-snippet card that downloads its component when clicked. */
+.sc-history-card {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	margin-bottom: 8px;
+	padding: 8px;
+	border: 1px solid ${SURFACE.border};
+	border-radius: ${RADIUS.lg}px;
+	background: ${SURFACE.control};
+	font-family: ${FONT_UI};
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI}, box-shadow 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
+}
+.sc-history-card:hover { border-color: ${SURFACE.borderStrong}; background: ${COLORS.white}; box-shadow: ${SURFACE.shadow}; }
+.sc-history-card:active { transform: scale(0.98); }
 /* Fixed-size preview box on the card's left: font sample, color swatch, or thumbnail. */
 .sc-inspect-preview {
 	display: inline-flex;
