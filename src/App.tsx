@@ -36,7 +36,7 @@ import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
 import { CloudBackdrop } from './components/CloudBackdrop';
 import { ViewLayout } from './components/ViewLayout';
-import { INSPECT_RESULT, CANCEL_PICKER, SNIP_RESULT } from './content/types';
+import { INSPECT_RESULT, CANCEL_PICKER, PICKER_SELECTED, SNIP_RESULT } from './content/types';
 import type { TokenUsage } from './content/types';
 import type { InspectResult } from './content/inspect/types';
 import { injectGlobalCss } from './global-css';
@@ -92,13 +92,16 @@ async function cancelPicker(): Promise<void> {
  * panel supplies the only title bar, so there is no app header of our own.
  *
  * Holds the cross-view ui state: current view, capture mode, in-flight pick, and
- * the latest snip result. Also wires the two content-script signals described in
+ * the latest snip result. Also wires the content-script signals described in
  * the file header.
  */
 function App() {
 	const [view, setView] = useState<View>('capture');
 	const [mode, setMode] = useState<Mode>('snip');
 	const [picking, setPicking] = useState(false);
+	// True once an element is picked and the pipeline is running, the phase of a pick where
+	// cancelling no longer applies, so the picker label drops its "Esc to Cancel" hint.
+	const [processing, setProcessing] = useState(false);
 	const [scanning, setScanning] = useState(false);
 	const [result, setResult] = useState<SnipResult | null>(null);
 	const [inspect, setInspect] = useState<InspectResult | null>(null);
@@ -117,13 +120,16 @@ function App() {
 				typeof message === 'object' && message !== null && 'type' in message
 					? (message as { type: unknown }).type
 					: null;
-			if (type === SNIP_RESULT) {
+			if (type === PICKER_SELECTED) {
+				setProcessing(true); // Element picked, pipeline running: past the point of cancelling.
+			} else if (type === SNIP_RESULT) {
 				const payload = (message as { payload?: SnipResult }).payload ?? null;
 				setResult(payload);
 				setInspect(null);
 				addUsage(payload?.usage);
 				setView('capture');
 				setPicking(false);
+				setProcessing(false);
 			} else if (type === INSPECT_RESULT) {
 				const payload = (message as { payload?: InspectPayload }).payload ?? null;
 				setInspect(payload);
@@ -141,9 +147,10 @@ function App() {
 		return () => chrome.runtime.onMessage.removeListener(onMessage);
 	}, []);
 
-	// While picking, esc in the panel cancels the overlay through a focus-independent path.
+	// While selecting, before an element is picked, esc in the panel cancels the overlay through a
+	// focus-independent path. Once the pipeline is running there is nothing to cancel, so it unbinds.
 	useEffect(() => {
-		if (!picking) return;
+		if (!picking || processing) return;
 		const onKey = (e: KeyboardEvent): void => {
 			if (e.key === 'Escape') {
 				void cancelPicker();
@@ -152,12 +159,13 @@ function App() {
 		};
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
-	}, [picking]);
+	}, [picking, processing]);
 
 	/** enter/leave the in-flight pick state; a new pick clears whichever result is showing. */
 	const onPickingChange = (next: boolean): void => {
 		setPicking(next);
 		if (next) {
+			setProcessing(false);
 			setResult(null);
 			setInspect(null);
 		}
@@ -204,6 +212,7 @@ function App() {
 										mode={mode}
 										onModeChange={setMode}
 										picking={picking}
+										processing={processing}
 										onPickingChange={onPickingChange}
 										scanning={scanning}
 										onScanningChange={onScanningChange}

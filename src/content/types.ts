@@ -186,6 +186,8 @@ export const INSPECT_RESULT = 'INSPECT_RESULT';
 export const START_PICKER = 'SNIPCODE_START_PICKER';
 /** The panel asks the content script to tear the picker overlay down on panel-side esc. */
 export const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
+/** The content script tells the panel an element was picked, so the pipeline is now running. */
+export const PICKER_SELECTED = 'SNIPCODE_PICKER_SELECTED';
 /** Carries a finished snip result from the content script back to the panel. */
 export const SNIP_RESULT = 'SNIP_RESULT';
 

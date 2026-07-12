@@ -72,7 +72,7 @@ import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 import type { Provider } from './types';
-import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, SNIP_RESULT } from './types';
+import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, PICKER_SELECTED, SNIP_RESULT } from './types';
 import type { InspectResult, ScanKind } from './inspect/types';
 import { extractPageFonts } from './inspect/fonts';
 import { extractPageAssets } from './inspect/assets';
@@ -510,6 +510,9 @@ function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker = new ElementPicker({
 		onSelect: (element, screenshot) => {
 			activePicker = null;
+			// Selection is done and the pipeline is starting, so tell the panel to drop the
+			// cancellable "Selecting" label. A closed panel is fine, hence the swallowed catch.
+			chrome.runtime.sendMessage({ type: PICKER_SELECTED }).catch(() => {});
 			void runPipeline(element, screenshot, mode);
 		},
 		onCancel: () => {

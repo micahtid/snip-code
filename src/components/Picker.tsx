@@ -34,6 +34,8 @@ interface PickerProps {
 	onModeChange: (mode: Mode) => void;
 	/** True while an element selection is in progress; owned by App. */
 	picking: boolean;
+	/** True once an element is picked and the pipeline is running; owned by App. */
+	processing: boolean;
 	/** Report whether a pick is now in flight: true on start, false if start failed. */
 	onPickingChange: (picking: boolean) => void;
 	/** True while a page scan is in progress; owned by App, cleared when its result arrives. */
@@ -94,7 +96,7 @@ async function sendToActiveTab(message: Record<string, unknown>): Promise<boolea
 	}
 }
 
-export function Picker({ mode, onModeChange, picking, onPickingChange, scanning, onScanningChange }: PickerProps) {
+export function Picker({ mode, onModeChange, picking, processing, onPickingChange, scanning, onScanningChange }: PickerProps) {
 	const [menuOpen, setMenuOpen] = useState(false);
 
 	const active = MODES.find((m) => m.id === mode) ?? MODES[0]!;
@@ -114,7 +116,15 @@ export function Picker({ mode, onModeChange, picking, onPickingChange, scanning,
 	};
 
 	const busy = picking || scanning;
-	const mainLabel = picking ? 'Selecting… (Esc to Cancel)' : scanning ? 'Scanning…' : active.action;
+	// While a pick is in flight the label shows its phase: the cancellable "Selecting" hint until
+	// an element is picked, then "Snipping" once the pipeline is running and cancelling no longer applies.
+	const mainLabel = picking
+		? processing
+			? 'Snipping…'
+			: 'Selecting… (Esc to Cancel)'
+		: scanning
+			? 'Scanning…'
+			: active.action;
 
 	return (
 		<div style={styles.splitWrap as React.CSSProperties}>
