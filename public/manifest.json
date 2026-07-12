@@ -3,6 +3,8 @@
 	"name": "SnipCode",
 	"version": "2.0.0",
 	"description": "Snip any element into clean framework code or a structured JSON document. Local-only, bring your own LLM key.",
+	"author": "micahtid",
+	"homepage_url": "https://snipcode.micahtid.com",
 	"minimum_chrome_version": "122",
 	"icons": {
 		"16": "logo16.png",
