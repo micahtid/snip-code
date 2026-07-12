@@ -87,10 +87,8 @@ export function detectBuilder(root: Element): GateResult {
 function unsupportedMessage(builder: BuilderName): string {
 	const label = builder.charAt(0).toUpperCase() + builder.slice(1);
 	return (
-		`this page is built with ${label}, which snipcode does not support. ` +
-		`${label} renders runtime-dependent markup (scale-to-fit transforms, generated class hashes, ` +
-		`out-of-subtree sprite references) that cannot be snipped into clean, portable code. ` +
-		`try snipping a hand-coded page instead.`
+		`This page was built with ${label}. Its styling only works on the original site, ` +
+		`so it cannot be snipped into clean code.`
 	);
 }
 

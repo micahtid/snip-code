@@ -67,8 +67,8 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	if (result.unsupported) {
 		return (
 			<div style={unsupported}>
-				<div style={{ fontWeight: 600, marginBottom: '4px', color: COLORS.slate700 }}>Unsupported page</div>
-				{result.message ?? `This page is built with ${result.builder ?? 'a site builder'} and cannot be snipped.`}
+				<div style={unsupportedTitle}>Unsupported Page</div>
+				{result.message ?? `This page was built with ${result.builder ?? 'a site builder'}, so it cannot be snipped.`}
 			</div>
 		);
 	}
@@ -233,6 +233,8 @@ const display: React.CSSProperties = {
 };
 const warn: React.CSSProperties = { padding: '8px 12px', fontSize: '11px', color: COLORS.slate500, borderTop: `1px solid ${SURFACE.border}` };
 const unsupported: React.CSSProperties = {
-	padding: '14px 16px', fontSize: '12px', lineHeight: 1.5, color: COLORS.slate600,
-	border: `1px solid ${SURFACE.border}`, borderRadius: `${RADIUS.xl}px`, background: SURFACE.card,
+	fontSize: '13px', lineHeight: 1.6, color: COLORS.slate600,
+};
+const unsupportedTitle: React.CSSProperties = {
+	fontWeight: 600, fontSize: '14px', marginBottom: '6px', color: COLORS.slate800,
 };
