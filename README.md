@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4.svg)](./public/manifest.json)
-![Chrome Web Store: coming soon](https://img.shields.io/badge/Chrome%20Web%20Store-Coming%20Soon-lightgrey.svg)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-4285F4.svg)](https://chromewebstore.google.com/detail/snipcode/njpicmnoclpenaomomflkmenlfpefcam)
 
 [Website](https://snipcode.micahtid.com) &nbsp;·&nbsp; [Report a Bug](https://github.com/micahtid/snip-code/issues)
 
@@ -49,7 +49,7 @@ Pick your default in Settings. All seven come from one capture.
 
 ## Installation
 
-> Coming soon to the Chrome Web Store. For now, load the extension unpacked.
+> **[Install from the Chrome Web Store](https://chromewebstore.google.com/detail/snipcode/njpicmnoclpenaomomflkmenlfpefcam)** — or load the extension unpacked (below).
 
 ### Load unpacked
 
