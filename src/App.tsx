@@ -13,6 +13,8 @@
  * is the panel-side terminus of the content-script signals:
  * - It listens for SNIP_RESULT, renders the emitted code in ResultPanel, and adds
  *   that snip's polish token usage to a running per-session total.
+ * - It listens for SNIP_PROGRESS, which only a multi-select batch sends, and holds the
+ *   count so the picker label reads "Snipping 2 of 3" instead of sitting on "Snipping".
  * - It listens for INSPECT_RESULT, a page scan, and renders it in InspectPanel; a
  *   snip and a scan are mutually exclusive, so each clears the other, and both add
  *   any byok token usage to the same per-session total.

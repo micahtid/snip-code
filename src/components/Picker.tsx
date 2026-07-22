@@ -19,6 +19,10 @@
  * picks additionally wire the panel-side esc-to-cancel; page scans need no overlay.
  * The heavy lifting lives in the content script, meaning overlay plus screenshot for
  * picks and extraction for scans. This component owns only the mode and menu state.
+ *
+ * The main button's label doubles as the pick's status line: it names the active mode when
+ * idle, hints at shift-click multi-select and esc while an element is being chosen, and
+ * counts a multi-select batch element by element from the progress App passes down.
  */
 import { Fragment, useState } from 'react';
 import { Check, ChevronUp } from 'lucide-react';

@@ -28,6 +28,8 @@ sync. Everything runs in your browser.
 ## Features
 
 - **Snip.** Turn any element into clean, ready-to-use code.
+- **Multi-snip.** Hold Shift to pin several elements, then release to snip them all at once.
+- **Save.** Bookmark the snippets you want to keep. Saved ones never age out of history.
 - **Fonts.** See every font family the page uses, with its variants.
 - **Assets.** Grab every image, icon, background, and SVG in one click.
 - **Colors.** Pull the page's real palette, ranked by how often each color appears.
@@ -71,8 +73,12 @@ The toolbar icon opens the side panel. Requires Chrome 122 or later.
 1. Click the SnipCode toolbar icon to open the side panel.
 2. Click **Capture**. The page dims and a highlight follows your cursor.
 3. Hover the element you want. Press the **up arrow** to select its parent, or **Esc** to cancel.
-4. Click to snip. The code appears in the panel and is saved to your history.
-5. Switch formats, or copy and download in a click.
+4. Click to snip. The code appears in the panel and is added to your history.
+5. Or hold **Shift** and click several elements to pin them, then let go of Shift to snip
+   every one. The panel shows them as `component-1`, `component-2`, and so on, and
+   **Download** saves them as a single zip with a folder each.
+6. Switch formats, or copy and download in a click. The bookmark saves a snippet for good:
+   history keeps the last 50 snips, and saved ones are never dropped.
 
 To scan the whole page instead of one element, open the mode menu and pull its
 **fonts**, **assets**, **colors**, or full **schema**.
