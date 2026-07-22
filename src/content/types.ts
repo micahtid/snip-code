@@ -251,7 +251,10 @@ export interface TokenUsage {
 	output: number;
 }
 
-/** One stored snippet. Only the last 50 are kept, fifo. */
+/**
+ * One stored snippet. Only the last 50 unsaved ones are kept, fifo. A record the
+ * user saved is exempt from that cap and survives Clear History.
+ */
 export interface SnippetRecord {
 	id: string; // Uuid v4
 	capturedAt: string;
@@ -259,6 +262,8 @@ export interface SnippetRecord {
 	element: Captured['element'];
 	output: { format: OutputFormat; html: string; css?: string; jsx?: string };
 	screenshot: string; // Data url thumbnail (<=200x200)
+	/** True once the user saved it. Absent means unsaved, so older records need no migration. */
+	saved?: boolean;
 }
 
 /** User preferences. Byok keys live separately under `byok.<provider>`, never here. */

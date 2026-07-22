@@ -363,18 +363,20 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// and data-uri images into their own referenced files so the panel can show them as
 	// switchable tabs. `output`, the inlined document, is kept for preview and storage.
 	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
-	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage });
 
-	// Persist the snippet, fifo and capped at 50. Best-effort, so a storage failure
-	// never fails the snip.
+	// Persist the snippet, fifo and capped at 50 unsaved. The id is minted here, before the
+	// result ships, so the panel's save toggle knows which record to flag. The write itself
+	// stays best-effort, so a storage failure never fails the snip.
+	const snippetId = crypto.randomUUID();
 	void storeSnippet({
-		id: crypto.randomUUID(),
+		id: snippetId,
 		capturedAt: captured.capturedAt,
 		page: captured.page,
 		element: captured.element,
 		output: { format, html: finalHtml, css: cleanedCss },
 		screenshot: captured.screenshot,
 	}).catch(() => {});
+	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage, snippetId });
 	console.info('snipcode: snip complete');
 }
 

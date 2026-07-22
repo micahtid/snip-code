@@ -13,7 +13,7 @@ import type { Provider, SnippetRecord, UserPreferences } from '../content/types'
 
 const PREFS_KEY = 'preferences';
 const SNIPPETS_KEY = 'snippets';
-const SNIPPET_CAP = 50; // Last 50, fifo.
+const SNIPPET_CAP = 50; // Last 50 unsaved, fifo. Saved records are exempt.
 const byokKey = (provider: Provider): string => `byok.${provider}`;
 
 /** The default preferences, applied when nothing is stored yet. */
@@ -56,17 +56,48 @@ export async function listSnippets(): Promise<SnippetRecord[]> {
 }
 
 /**
- * Append a snippet, evicting the oldest beyond the 50-cap in fifo order.
+ * Append a snippet, evicting the oldest unsaved records beyond the 50-cap in fifo order.
  *
  * @param record - the snippet to store
  */
 export async function storeSnippet(record: SnippetRecord): Promise<void> {
 	const current = await listSnippets();
-	const next = [...current, record].slice(-SNIPPET_CAP); // Keep the newest 50
-	await chrome.storage.local.set({ [SNIPPETS_KEY]: next });
+	await chrome.storage.local.set({ [SNIPPETS_KEY]: evict([...current, record]) });
 }
 
-/** Clear all saved snippets. */
+/**
+ * Drop the oldest unsaved records once the unsaved count passes the cap. Saved records
+ * never evict, so the cap counts history only, and the surviving records keep their
+ * original chronological order so the single stored list stays the one source both
+ * panel sections render from.
+ *
+ * @param records - the full stored list, oldest first
+ * @returns the list with the overflowing unsaved records removed
+ */
+function evict(records: SnippetRecord[]): SnippetRecord[] {
+	const unsaved = records.filter((r) => !r.saved);
+	const excess = unsaved.length - SNIPPET_CAP;
+	if (excess <= 0) return records;
+	const dropped = new Set(unsaved.slice(0, excess).map((r) => r.id));
+	return records.filter((r) => !dropped.has(r.id));
+}
+
+/** Clear the history, keeping every saved snippet. Clear is scoped to history only. */
 export async function clearSnippets(): Promise<void> {
-	await chrome.storage.local.set({ [SNIPPETS_KEY]: [] });
+	const current = await listSnippets();
+	await chrome.storage.local.set({ [SNIPPETS_KEY]: current.filter((r) => r.saved) });
+}
+
+/**
+ * Flag or unflag one stored snippet as saved. Unknown ids are a no-op, since the record
+ * may have already been evicted. Unsaving makes the record evictable again, so the cap is
+ * re-applied on the way out.
+ *
+ * @param id - the stored snippet id
+ * @param saved - true to save it, false to return it to history
+ */
+export async function setSnippetSaved(id: string, saved: boolean): Promise<void> {
+	const current = await listSnippets();
+	const next = current.map((r) => (r.id === id ? { ...r, saved } : r));
+	await chrome.storage.local.set({ [SNIPPETS_KEY]: evict(next) });
 }
