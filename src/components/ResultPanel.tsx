@@ -19,6 +19,12 @@
  * mode shows the emitted json, and a builder-gated page shows the static unsupported
  * message.
  *
+ * A multi-select snip arrives as one result carrying a `components` array. It renders in
+ * the same file-tab bar, one flat row of folder-style labels such as `component-2/index.html`,
+ * so copy, preview, and the save bookmark all act on whichever component the active tab
+ * belongs to. Download-all becomes a single zip with a folder per component, since firing one
+ * prompt per file across n components is unusable.
+ *
  * Note: live format switching, re-emitting all 7 formats without a re-snip, is a
  * deliberate follow-up that is not wired here. `Captured` holds live dom and cannot be
  * shipped back to re-emit, and polish only applies to html/bem. The panel
@@ -28,7 +34,7 @@ import { useEffect, useState } from 'react';
 import { Bookmark, Check, Copy, Download, Eye, MousePointer2 } from 'lucide-react';
 import type { AssetFile, SnipPayload } from '../content/types';
 import { EmptyState } from './EmptyState';
-import { triggerDownload } from '../utils/download';
+import { dataUrlToBase64, downloadZip, triggerDownload, type ZipEntry } from '../utils/download';
 import { setSnippetSaved } from '../utils/storage';
 import { COLORS, FLASH_MS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
@@ -69,15 +75,27 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		);
 	}
 
-	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
+	// Every file of the result as one flat list of tabs. A single snip contributes its own
+	// files; a batch contributes each component's files under a folder-style label.
+	const views = buildViews(result);
+	const warnings = collectWarnings(result, views[Math.min(active, views.length - 1)]);
 
-	// The output as switchable files. For html-shaped snips this is the pipeline's split,
-	// index.html plus the lifted svg/image files. Otherwise it is one synthetic file for
-	// json and other formats.
-	const files: AssetFile[] = result.files?.length
-		? result.files
-		: [{ name: result.mode === 'assistive' ? 'output.json' : 'output.html', language: result.mode === 'assistive' ? 'json' : 'html', text: code }];
-	const activeFile = files[Math.min(active, files.length - 1)]!; // files is never empty, per the fallback above
+	// A batch whose every element failed has nothing to render. Show the same quiet empty
+	// state a pre-snip panel shows, with the per-element reasons beneath it.
+	if (views.length === 0) {
+		return (
+			<>
+				<EmptyState Icon={MousePointer2} />
+				{warnings.length > 0 && <div style={warn}>{warningLabel(warnings.length)}</div>}
+			</>
+		);
+	}
+
+	const activeView = views[Math.min(active, views.length - 1)]!; // views is never empty here
+	const activeFile = activeView.file;
+	// The result the active tab belongs to: the whole result for a single snip, or the one
+	// component for a batch. Preview and save both act on this, not on the batch envelope.
+	const source = activeView.source;
 	const copyText = activeFile.text ?? activeFile.dataUrl ?? '';
 
 	// Preview makes sense for the html-shaped formats, whose output is a self-contained
@@ -87,11 +105,12 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	const PREVIEWABLE: ReadonlySet<string> = new Set(['html', 'bem-css', 'bem-scss']);
 	// Preview renders the inlined self-contained document, so it works even though the
 	// displayed index.html references the lifted files by name.
-	const previewSource = result.output ?? result.html ?? '';
-	const canPreview = result.mode === 'snip' && PREVIEWABLE.has(result.format ?? '') && previewSource.length > 0;
+	const previewSource = source.output ?? source.html ?? '';
+	const canPreview = source.mode === 'snip' && PREVIEWABLE.has(source.format ?? '') && previewSource.length > 0;
 
-	// The stored record the bookmark toggles. Absent when the snip could not be persisted.
-	const snippetId = result.snippetId;
+	// The stored record the bookmark toggles: the active component's for a batch, since each
+	// component was persisted as its own snippet. Absent when the snip could not be persisted.
+	const snippetId = source.snippetId;
 	const isSaved = snippetId !== undefined && savedIds.has(snippetId);
 
 	const onCopy = async (): Promise<void> => {
@@ -144,10 +163,19 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
 	};
 
-	// Download every file of a split snip, so index.html lands next to the svg/image
-	// files it references and renders standalone, or the single file otherwise.
+	// Download every file of a split snip, so index.html lands next to the svg/image files it
+	// references and renders standalone, or the single file otherwise. A batch instead saves
+	// one zip with a folder per component, since n components times m files would otherwise
+	// fire a download prompt each. File names inside a folder are the original ones, so each
+	// component's index.html still finds the assets it references.
 	const onDownload = (): void => {
-		if (files.length > 1) files.forEach(downloadFile);
+		if (result.components) {
+			void downloadZip('snipcode-components.zip', views.map((view) => zipEntry(view))).catch((err) => {
+				console.warn('snipcode: could not build the component zip', err);
+			});
+			return;
+		}
+		if (views.length > 1) views.forEach((view) => downloadFile(view.file));
 		else downloadFile(activeFile);
 	};
 
@@ -155,12 +183,12 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		<div style={container}>
 			<div style={header}>
 				<div style={actions}>
-					<button className="sc-icon-btn" title={copied ? 'Copied' : `Copy ${activeFile.name}`} onClick={() => void onCopy()}>
+					<button className="sc-icon-btn" title={copied ? 'Copied' : `Copy ${activeView.label}`} onClick={() => void onCopy()}>
 						{copied ? <Check size={16} /> : <Copy size={16} />}
 					</button>
 					<button
 						className="sc-icon-btn"
-						title={files.length > 1 ? 'Download all files' : `Download ${activeFile.name}`}
+						title={result.components ? 'Download all components as a zip' : views.length > 1 ? 'Download all files' : `Download ${activeFile.name}`}
 						onClick={onDownload}
 					>
 						<Download size={16} />
@@ -170,7 +198,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
 							<Eye size={16} />
 						</button>
 					)}
-					{result.mode === 'snip' && snippetId !== undefined && (
+					{source.mode === 'snip' && snippetId !== undefined && (
 						<button
 							className={`sc-icon-btn${isSaved ? ' sc-icon-btn-saved' : ''}`}
 							title={isSaved ? 'Saved. Click to Unsave' : 'Save snippet'}
@@ -183,17 +211,17 @@ export function ResultPanel({ result }: ResultPanelProps) {
 					)}
 				</div>
 			</div>
-			{files.length > 1 && (
+			{views.length > 1 && (
 				<div className="sc-scroll" style={tabBar} role="tablist">
-					{files.map((file, i) => (
+					{views.map((view, i) => (
 						<button
-							key={file.name}
+							key={view.key}
 							role="tab"
-							aria-selected={file === activeFile}
-							className={`sc-tab${file === activeFile ? ' sc-tab-active' : ''}`}
+							aria-selected={view === activeView}
+							className={`sc-tab${view === activeView ? ' sc-tab-active' : ''}`}
 							onClick={() => setActive(i)}
 						>
-							{file.name}
+							{view.label}
 						</button>
 					))}
 				</div>
@@ -209,11 +237,77 @@ export function ResultPanel({ result }: ResultPanelProps) {
 					<code>{activeFile.text}</code>
 				</pre>
 			)}
-			{result.warnings && result.warnings.length > 0 && (
-				<div style={warn}>{result.warnings.length} Warning{result.warnings.length > 1 ? 's' : ''}</div>
-			)}
+			{warnings.length > 0 && <div style={warn}>{warningLabel(warnings.length)}</div>}
 		</div>
 	);
+}
+
+/** One tab in the file bar: which file it shows and which result that file came from. */
+interface FileView {
+	/** Unique tab key. A batch's per-component labels are unique by construction. */
+	key: string;
+	/** What the tab reads: a bare file name, or `component-2/index.html` in a batch. */
+	label: string;
+	file: AssetFile;
+	/** The result this file belongs to: the whole result, or one component of a batch. */
+	source: SnipResult;
+}
+
+/**
+ * Flatten a result into its tabs. A batch becomes one flat bar over every component's files,
+ * namespaced folder-style, rather than a second tier of component tabs. The underlying file
+ * names are never rewritten, because each component's index.html references its lifted assets
+ * by name: the folder prefix lives in the label and in the zip layout, both of which keep
+ * those references intact.
+ *
+ * @param result - the shipped snip result
+ * @returns one view per file, in component then file order
+ */
+function buildViews(result: SnipResult): FileView[] {
+	if (result.components) {
+		return result.components.flatMap((component, i) =>
+			filesOf(component).map((file) => ({
+				key: `component-${i + 1}/${file.name}`,
+				label: `component-${i + 1}/${file.name}`,
+				file,
+				source: component,
+			})),
+		);
+	}
+	return filesOf(result).map((file) => ({ key: file.name, label: file.name, file, source: result }));
+}
+
+/**
+ * One result's files. For html-shaped snips this is the pipeline's split, index.html plus the
+ * lifted svg/image files. Otherwise it is one synthetic file holding the emitted code or json.
+ */
+function filesOf(result: SnipResult): AssetFile[] {
+	if (result.files?.length) return result.files;
+	const code = result.mode === 'assistive' ? (result.json ?? '') : (result.output ?? result.html ?? '');
+	if (!code) return [];
+	return [{ name: result.mode === 'assistive' ? 'output.json' : 'output.html', language: result.mode === 'assistive' ? 'json' : 'html', text: code }];
+}
+
+/**
+ * The warnings the panel counts: a single snip's own, or, for a batch, the batch-level ones
+ * such as a skipped element plus those of the component being viewed.
+ */
+function collectWarnings(result: SnipResult, view: FileView | undefined): string[] {
+	const own = result.warnings ?? [];
+	if (!result.components || !view) return own;
+	return [...own, ...(view.source.warnings ?? [])];
+}
+
+/** "3 Warnings", singular at one. */
+function warningLabel(count: number): string {
+	return `${count} Warning${count > 1 ? 's' : ''}`;
+}
+
+/** One zip entry for a tab, filed under its component folder with its original file name. */
+function zipEntry(view: FileView): ZipEntry {
+	return view.file.dataUrl
+		? { path: view.label, base64: dataUrlToBase64(view.file.dataUrl) }
+		: { path: view.label, text: view.file.text ?? '' };
 }
 
 /** The download mime type for a text file's language. Image files use their data: url instead. */
