@@ -13,9 +13,11 @@
  * the files to disk, and, for the self-contained html-shaped formats, a preview
  * action that opens the rendered output in a new tab. Below the header sits a
  * monospace, scrollable code surface. Snip mode auto-persists the snippet in the
- * content script via storeSnippet, so the bookmark here is a "saved"
- * indicator, not a second write. Assistive mode shows the emitted json, and a
- * builder-gated page shows the static unsupported message.
+ * content script via storeSnippet, so the bookmark here is not a second write: it
+ * toggles the `saved` flag on that stored record, which lifts the snippet into the
+ * history view's Saved section and exempts it from the 50-cap eviction. Assistive
+ * mode shows the emitted json, and a builder-gated page shows the static unsupported
+ * message.
  *
  * Note: live format switching, re-emitting all 7 formats without a re-snip, is a
  * deliberate follow-up that is not wired here. `Captured` holds live dom and cannot be
@@ -27,6 +29,7 @@ import { Bookmark, Check, Copy, Download, Eye, MousePointer2 } from 'lucide-reac
 import type { AssetFile, OutputFormat, TokenUsage } from '../content/types';
 import { EmptyState } from './EmptyState';
 import { triggerDownload } from '../utils/download';
+import { setSnippetSaved } from '../utils/storage';
 import { COLORS, FLASH_MS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
 /** The snip output the content script ships to the panel as the shipResult payload. */
@@ -43,6 +46,8 @@ export interface SnipResult {
 	json?: string;
 	/** Provider-reported token usage for the polish call, when one ran. */
 	usage?: TokenUsage;
+	/** Id of the record this snip was persisted under, so the bookmark can toggle its saved flag. */
+	snippetId?: string;
 	warnings?: string[];
 	/** Set when the page is a blocked site builder such as framer or wix. */
 	unsupported?: boolean;
@@ -57,8 +62,15 @@ interface ResultPanelProps {
 export function ResultPanel({ result }: ResultPanelProps) {
 	const [copied, setCopied] = useState(false);
 	const [active, setActive] = useState(0);
-	// A new snip resets the viewer to its first file, the index document.
-	useEffect(() => setActive(0), [result]);
+	// Which snippet ids the user saved from this panel. A fresh snip lands unsaved, so the
+	// bookmark starts as an outline and this set stays empty until the user clicks it.
+	const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(new Set());
+	// A new snip resets the viewer to its first file, the index document, and clears the
+	// save state so the bookmark reflects the new record rather than the previous one.
+	useEffect(() => {
+		setActive(0);
+		setSavedIds(new Set());
+	}, [result]);
 
 	// Before the first snip the capture view shows a quiet pointer placeholder above
 	// its pinned Pick Element action.
@@ -94,6 +106,10 @@ export function ResultPanel({ result }: ResultPanelProps) {
 	const previewSource = result.output ?? result.html ?? '';
 	const canPreview = result.mode === 'snip' && PREVIEWABLE.has(result.format ?? '') && previewSource.length > 0;
 
+	// The stored record the bookmark toggles. Absent when the snip could not be persisted.
+	const snippetId = result.snippetId;
+	const isSaved = snippetId !== undefined && savedIds.has(snippetId);
+
 	const onCopy = async (): Promise<void> => {
 		try {
 			await navigator.clipboard.writeText(copyText);
@@ -111,6 +127,24 @@ export function ResultPanel({ result }: ResultPanelProps) {
 		const url = URL.createObjectURL(new Blob([previewSource], { type: 'text/html' }));
 		window.open(url, '_blank', 'noopener');
 		setTimeout(() => URL.revokeObjectURL(url), 30000);
+	};
+
+	// Flip the saved flag on the stored record this snip was persisted under. The write is
+	// best-effort, matching how the snip itself was persisted, so a storage failure only
+	// warns and leaves the bookmark showing its real, unchanged state.
+	const onToggleSaved = async (id: string): Promise<void> => {
+		const next = !savedIds.has(id);
+		try {
+			await setSnippetSaved(id, next);
+			setSavedIds((ids) => {
+				const updated = new Set(ids);
+				if (next) updated.add(id);
+				else updated.delete(id);
+				return updated;
+			});
+		} catch (err) {
+			console.warn('snipcode: could not update saved state', err);
+		}
 	};
 
 	// Save a single file to disk. Binary files (images, fonts) carry a data: url that
@@ -152,10 +186,16 @@ export function ResultPanel({ result }: ResultPanelProps) {
 							<Eye size={16} />
 						</button>
 					)}
-					{result.mode === 'snip' && (
-						<span className="sc-icon-btn sc-icon-btn-saved" title="Saved to your snippets" aria-label="Saved">
-							<Bookmark size={15} fill="currentColor" />
-						</span>
+					{result.mode === 'snip' && snippetId !== undefined && (
+						<button
+							className={`sc-icon-btn${isSaved ? ' sc-icon-btn-saved' : ''}`}
+							title={isSaved ? 'Saved. Click to Unsave' : 'Save snippet'}
+							aria-pressed={isSaved}
+							aria-label={isSaved ? 'Unsave snippet' : 'Save snippet'}
+							onClick={() => void onToggleSaved(snippetId)}
+						>
+							<Bookmark size={15} fill={isSaved ? 'currentColor' : 'none'} />
+						</button>
 					)}
 				</div>
 			</div>

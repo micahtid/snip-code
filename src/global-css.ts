@@ -214,7 +214,7 @@ body {
 }
 .sc-inspect-card:hover { border-color: ${SURFACE.borderStrong}; background: ${COLORS.white}; box-shadow: ${SURFACE.shadow}; }
 .sc-inspect-card:active { transform: scale(0.98); }
-/* History list: a saved-snippet card that downloads its component when clicked. */
+/* History list: a stored-snippet card, a clickable body plus its save toggle. */
 .sc-history-card {
 	display: flex;
 	align-items: center;
@@ -232,7 +232,34 @@ body {
 	transition: border-color 0.15s ${EASE_UI}, background 0.15s ${EASE_UI}, box-shadow 0.15s ${EASE_UI}, transform 0.15s ${EASE_UI};
 }
 .sc-history-card:hover { border-color: ${SURFACE.borderStrong}; background: ${COLORS.white}; box-shadow: ${SURFACE.shadow}; }
-.sc-history-card:active { transform: scale(0.98); }
+/* The card's clickable body, everything left of the save toggle. Downloads the snippet. */
+.sc-history-hit {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 1;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	font-family: ${FONT_UI};
+	font-size: 12px;
+	text-align: left;
+	color: inherit;
+	cursor: pointer;
+	transition: transform 0.15s ${EASE_UI};
+}
+.sc-history-hit:active { transform: scale(0.98); }
+/* The section heading above each history group, with its live count. */
+.sc-section-title {
+	margin: 4px 0 6px;
+	font-family: ${FONT_UI};
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: ${COLORS.slate500};
+}
 /* Fixed-size preview box on the card's left: font sample, color swatch, or thumbnail. */
 .sc-inspect-preview {
 	display: inline-flex;
@@ -307,8 +334,9 @@ body {
 }
 .sc-icon-btn:hover { color: ${COLORS.slate600}; background: ${STATE.iconBtnHover}; }
 .sc-icon-btn:active { color: ${COLORS.slate800}; transform: scale(0.92); }
-.sc-icon-btn-saved { color: ${COLORS.accent}; cursor: default; }
-.sc-icon-btn-saved:hover { color: ${COLORS.accent}; background: transparent; }
+/* The saved half of the bookmark toggle, in the result panel and on a history card. */
+.sc-icon-btn-saved { color: ${COLORS.accent}; }
+.sc-icon-btn-saved:hover { color: ${COLORS.accent}; background: ${STATE.iconBtnHover}; }
 
 /* ---- Inputs + selects. ---- */
 .sc-input {
