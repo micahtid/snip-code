@@ -36,8 +36,8 @@ import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
 import { CloudBackdrop } from './components/CloudBackdrop';
 import { ViewLayout } from './components/ViewLayout';
-import { INSPECT_RESULT, CANCEL_PICKER, PICKER_SELECTED, SNIP_RESULT } from './content/types';
-import type { TokenUsage } from './content/types';
+import { INSPECT_RESULT, CANCEL_PICKER, PICKER_SELECTED, SNIP_PROGRESS, SNIP_RESULT } from './content/types';
+import type { BatchProgress, TokenUsage } from './content/types';
 import type { InspectResult } from './content/inspect/types';
 import { injectGlobalCss } from './global-css';
 import { COLORS, FONT_UI, SURFACE } from './theme';
@@ -103,6 +103,8 @@ function App() {
 	// cancelling no longer applies, so the picker label drops its "Esc to Cancel" hint.
 	const [processing, setProcessing] = useState(false);
 	const [scanning, setScanning] = useState(false);
+	// How far a multi-select batch has got, or null for a single snip, which has no count.
+	const [progress, setProgress] = useState<BatchProgress | null>(null);
 	const [result, setResult] = useState<SnipResult | null>(null);
 	const [inspect, setInspect] = useState<InspectResult | null>(null);
 	// Running token total for this panel session; resets when the side panel reloads.
@@ -122,6 +124,9 @@ function App() {
 					: null;
 			if (type === PICKER_SELECTED) {
 				setProcessing(true); // Element picked, pipeline running: past the point of cancelling.
+			} else if (type === SNIP_PROGRESS) {
+				// A multi-select batch reports after each element, so the label can count.
+				setProgress((message as { payload?: BatchProgress }).payload ?? null);
 			} else if (type === SNIP_RESULT) {
 				const payload = (message as { payload?: SnipResult }).payload ?? null;
 				setResult(payload);
@@ -130,6 +135,7 @@ function App() {
 				setView('capture');
 				setPicking(false);
 				setProcessing(false);
+				setProgress(null);
 			} else if (type === INSPECT_RESULT) {
 				const payload = (message as { payload?: InspectPayload }).payload ?? null;
 				setInspect(payload);
@@ -166,6 +172,7 @@ function App() {
 		setPicking(next);
 		if (next) {
 			setProcessing(false);
+			setProgress(null);
 			setResult(null);
 			setInspect(null);
 		}
@@ -213,6 +220,7 @@ function App() {
 										onModeChange={setMode}
 										picking={picking}
 										processing={processing}
+										progress={progress}
 										onPickingChange={onPickingChange}
 										scanning={scanning}
 										onScanningChange={onScanningChange}

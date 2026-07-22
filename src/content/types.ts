@@ -190,6 +190,14 @@ export const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
 export const PICKER_SELECTED = 'SNIPCODE_PICKER_SELECTED';
 /** Carries a finished snip result from the content script back to the panel. */
 export const SNIP_RESULT = 'SNIP_RESULT';
+/** Reports batch progress during a multi-select snip, so the panel label can count elements. */
+export const SNIP_PROGRESS = 'SNIPCODE_SNIP_PROGRESS';
+
+/** The SNIP_PROGRESS payload: how many elements of a multi-select batch are already finished. */
+export interface BatchProgress {
+	done: number;
+	total: number;
+}
 
 /** The request envelope shared by all messages. requestId correlates responses. */
 export interface Envelope<TPayload, TResult = unknown> {
@@ -239,6 +247,37 @@ export interface AssetFile {
 	language: 'html' | 'svg' | 'image' | 'json' | 'font';
 	text?: string; // Source for text files
 	dataUrl?: string; // Original data: url for binary files (images, fonts)
+}
+
+/**
+ * The SNIP_RESULT payload the content script ships to the panel, where ResultPanel renders
+ * it. One shape covers all four cases: a code snip, an assistive json emit, a builder-gated
+ * refusal, and a multi-select batch. A batch fills `components` and leaves the single-snip
+ * fields empty; every other case fills the single-snip fields and leaves `components` absent,
+ * so a component entry is always a plain result and never nests components itself.
+ */
+export interface SnipPayload {
+	mode: 'snip' | 'assistive';
+	format?: OutputFormat;
+	html?: string;
+	css?: string;
+	/** Self-contained html document for snip mode, kept for preview and storage. */
+	output?: string;
+	/** Output split into referenced files: index.html plus svgs and images. Html-shaped snips only. */
+	files?: AssetFile[];
+	/** Emitted assistive json for assistive mode. */
+	json?: string;
+	/** Provider-reported token usage for the polish call, when one ran. */
+	usage?: TokenUsage;
+	warnings?: string[];
+	/** Set when the page is a blocked site builder such as framer or wix. */
+	unsupported?: boolean;
+	builder?: string;
+	message?: string;
+	/** Id of the record this snip was persisted under, so the panel can toggle its saved flag. */
+	snippetId?: string;
+	/** Present for a multi-select snip: one entry per pinned element, in pin order. */
+	components?: SnipPayload[];
 }
 
 /**

@@ -26,34 +26,18 @@
  */
 import { useEffect, useState } from 'react';
 import { Bookmark, Check, Copy, Download, Eye, MousePointer2 } from 'lucide-react';
-import type { AssetFile, OutputFormat, TokenUsage } from '../content/types';
+import type { AssetFile, SnipPayload } from '../content/types';
 import { EmptyState } from './EmptyState';
 import { triggerDownload } from '../utils/download';
 import { setSnippetSaved } from '../utils/storage';
 import { COLORS, FLASH_MS, FONT_CODE, RADIUS, SURFACE } from '../theme';
 
-/** The snip output the content script ships to the panel as the shipResult payload. */
-export interface SnipResult {
-	mode: 'snip' | 'assistive';
-	format?: OutputFormat;
-	html?: string;
-	css?: string;
-	/** Self-contained html document for snip mode, kept for preview and storage. */
-	output?: string;
-	/** Output split into referenced files: index.html plus svgs and images. Html-shaped snips only. */
-	files?: AssetFile[];
-	/** Emitted assistive json for assistive mode. */
-	json?: string;
-	/** Provider-reported token usage for the polish call, when one ran. */
-	usage?: TokenUsage;
-	/** Id of the record this snip was persisted under, so the bookmark can toggle its saved flag. */
-	snippetId?: string;
-	warnings?: string[];
-	/** Set when the page is a blocked site builder such as framer or wix. */
-	unsupported?: boolean;
-	builder?: string;
-	message?: string;
-}
+/**
+ * The snip output the content script ships to the panel as the shipResult payload. The
+ * shape is declared once, next to the message constants that carry it, so sender and
+ * renderer cannot drift; this alias is the name the panel side reads it under.
+ */
+export type SnipResult = SnipPayload;
 
 interface ResultPanelProps {
 	result: SnipResult | null;

@@ -19,10 +19,28 @@
  * which was the regression that made wrapping containers unreachable. Moving the
  * pointer out of the selection re-baselines to the fresh leaf under the cursor.
  *
+ * Multi-select (snip mode only, opt-in via the `multi` option): holding shift turns a
+ * click into a pin rather than a snip. A pinned element keeps a persistent outline with
+ * a numbered badge while the live highlight goes on tracking the cursor, so several
+ * elements can be collected in one pass, and shift-clicking a pinned element unpins it.
+ * Releasing shift with at least one pin finishes the selection and hands every pin to
+ * onSelectMany in pin order. "Released" is read from the shiftKey modifier bit that every
+ * tracked event already carries, never from our own key-state tracking, which would go
+ * stale forever if a keyup landed while focus sat elsewhere. Each pin's screenshot is
+ * captured when it is pinned, not at the end, since the user may scroll earlier pins out
+ * of the viewport while collecting later ones.
+ *
  * Deliberately no Set<string> of "blocked" container tags, which v1 had to avoid
  * snapping to body/main. Hardcoded tag-name Sets are disallowed, and the sticky
  * climb makes the heuristic unnecessary, since the user climbs on purpose.
  */
+
+/** One chosen element and the screenshot taken of it, the unit both callbacks deal in. */
+export interface Pick {
+	element: Element;
+	/** Cropped png data url, or '' when the capture failed. Never blocks a snip. */
+	screenshot: string;
+}
 
 /** Options the orchestrator passes to drive selection. */
 export interface PickerOptions {
@@ -30,6 +48,16 @@ export interface PickerOptions {
 	onSelect: (element: Element, screenshot: string) => void;
 	/** Called when the user presses esc. */
 	onCancel: () => void;
+	/** Enable shift-to-pin multi-select. Snip mode only; assistive stays single-pick. */
+	multi?: boolean;
+	/** Called with every pinned element, in pin order, once shift is released. */
+	onSelectMany?: (picks: Pick[]) => void;
+}
+
+/** One pinned element and the chrome drawn over it while the selection is being collected. */
+interface Pinned extends Pick {
+	box: HTMLDivElement;
+	badge: HTMLDivElement;
 }
 
 const OVERLAY_ID = 'snipcode-overlay';
@@ -61,6 +89,19 @@ export class ElementPicker {
 	private tooltip: HTMLDivElement | null = null;
 	private guides: HTMLDivElement[] = [];
 
+	/** The pinned elements, in pin order. Empty unless the user is shift-selecting. */
+	private pins: Pinned[] = [];
+	/**
+	 * Serializes the per-pin screenshots. Each capture hides every piece of picker chrome,
+	 * waits a frame, and restores it, so two overlapping captures would restore each other's
+	 * hidden state and leak the outline into the image. Chaining keeps them one at a time.
+	 */
+	private captures: Promise<void> = Promise.resolve();
+	/** True once a finish is under way, so a second event cannot ship the batch twice. */
+	private finishing = false;
+	/** True while a screenshot is being taken, so a mousemove cannot repaint the hidden chrome into it. */
+	private capturing = false;
+
 	constructor(options: PickerOptions) {
 		this.options = options;
 	}
@@ -73,6 +114,9 @@ export class ElementPicker {
 		document.addEventListener('mousemove', this.onMove, true);
 		document.addEventListener('click', this.onClick, true);
 		document.addEventListener('keydown', this.onKey, true);
+		// Keyup is listened to only so releasing shift with the cursor at rest finishes a
+		// multi-select immediately, rather than waiting for the next mousemove.
+		document.addEventListener('keyup', this.onKeyUp, true);
 		window.addEventListener('scroll', this.onScrollOrResize, true);
 		window.addEventListener('resize', this.onScrollOrResize, true);
 	}
@@ -91,11 +135,18 @@ export class ElementPicker {
 		document.removeEventListener('mousemove', this.onMove, true);
 		document.removeEventListener('click', this.onClick, true);
 		document.removeEventListener('keydown', this.onKey, true);
+		document.removeEventListener('keyup', this.onKeyUp, true);
 		window.removeEventListener('scroll', this.onScrollOrResize, true);
 		window.removeEventListener('resize', this.onScrollOrResize, true);
 		this.overlay?.remove();
 		this.tooltip?.remove();
 		this.guides.forEach((g) => g.remove());
+		// Pins are chrome too: an esc or a panel-side cancel clears the whole selection,
+		// exactly as it clears the climb state above.
+		this.pins.forEach((pin) => pin.box.remove());
+		this.pins = [];
+		this.finishing = false;
+		this.capturing = false;
 		this.overlay = this.tooltip = null;
 		this.guides = [];
 	}
@@ -161,9 +212,27 @@ export class ElementPicker {
 		this.tooltip = tooltip;
 	}
 
+	/**
+	 * The one finish rule for multi-select: any tracked event that arrives with pins
+	 * collected and shift no longer held ends the selection. Reading the modifier bit off
+	 * the event, rather than tracking our own key state, is what makes this self-healing
+	 * when shift is released while focus sits in the side panel.
+	 *
+	 * @param e - the event whose shiftKey bit is read
+	 * @returns true when the selection was finished, so the caller stops handling the event
+	 */
+	private finishIfReleased(e: MouseEvent | KeyboardEvent): boolean {
+		if (this.pins.length === 0 || e.shiftKey) return false;
+		void this.finishBatch();
+		return true;
+	}
+
 	/** Track the element under the cursor via hit-testing, not event.target. */
 	private readonly onMove = (e: MouseEvent): void => {
-		if (this.scrolling) return;
+		if (this.finishIfReleased(e)) return;
+		// While a capture is in flight the chrome is deliberately hidden, so tracking would
+		// paint the highlight straight back into the screenshot.
+		if (this.scrolling || this.capturing) return;
 		// elementFromPoint is more reliable than e.target for nested/overlapped
 		// layouts, and our chrome is pointer-events:none so it is never returned.
 		const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -237,10 +306,12 @@ export class ElementPicker {
 	private readonly onKey = (e: KeyboardEvent): void => {
 		if (e.key === 'Escape') {
 			e.preventDefault();
+			// Esc cancels everything, pins included. deactivate clears them.
 			this.deactivate();
 			this.options.onCancel();
 			return;
 		}
+		if (this.finishIfReleased(e)) return;
 		// Arrowup: climb to the parent so the user can grab a wrapping container
 		// rather than the leaf under the cursor. The climb is sticky, see onMove,
 		// and the tooltip is re-rendered so the user sees which element they are
@@ -267,12 +338,21 @@ export class ElementPicker {
 		}
 	};
 
+	/** Releasing shift with the cursor at rest finishes the selection without a mousemove. */
+	private readonly onKeyUp = (e: KeyboardEvent): void => {
+		this.finishIfReleased(e);
+	};
+
 	/** While scrolling, fade the chrome out. Positions are stale until it settles. */
 	private readonly onScrollOrResize = (): void => {
 		this.scrolling = true;
 		if (this.overlay) this.overlay.style.opacity = '0';
 		if (this.tooltip) this.tooltip.style.opacity = '0';
 		this.guides.forEach((g) => (g.style.opacity = '0'));
+		// Pinned boxes are position:fixed, so a scroll leaves them behind their element.
+		// Fade them with the rest, then re-measure on settle rather than leaving them hidden,
+		// since the user still needs to see what is already pinned.
+		this.pins.forEach((pin) => (pin.box.style.opacity = '0'));
 		// Positions are stale after a scroll. Drop the selection and any climb so the
 		// next hover starts clean.
 		this.current = null;
@@ -282,27 +362,169 @@ export class ElementPicker {
 		this.scrollTimer = window.setTimeout(() => {
 			this.scrolling = false;
 			this.scrollTimer = null;
+			this.repositionPins();
 		}, 150);
 	};
 
 	private readonly onClick = (e: MouseEvent): void => {
+		if (this.finishIfReleased(e)) {
+			// The click that ends the selection is still swallowed, so the page never sees it.
+			e.preventDefault();
+			e.stopPropagation();
+			e.stopImmediatePropagation();
+			return;
+		}
 		if (!this.current) return;
 		// Swallow the click entirely so the host page never sees it.
 		e.preventDefault();
 		e.stopPropagation();
 		e.stopImmediatePropagation();
 		const chosen = this.current;
+		// Shift held in multi mode: collect the element instead of snipping it, and keep the
+		// overlay live so the user can go pick the next one.
+		if (this.options.multi && e.shiftKey) {
+			this.togglePin(chosen);
+			return;
+		}
 		void this.complete(chosen);
 	};
+
+	/** Pin an unpinned element, or unpin it if it is already in the selection. */
+	private togglePin(element: Element): void {
+		const existing = this.pins.findIndex((pin) => pin.element === element);
+		if (existing >= 0) {
+			this.pins[existing]!.box.remove();
+			this.pins.splice(existing, 1);
+			this.renumberPins();
+			return;
+		}
+		const { box, badge } = this.buildPinBox();
+		const pin: Pinned = { element, screenshot: '', box, badge };
+		this.pins.push(pin);
+		this.renumberPins();
+		this.positionPin(pin);
+		this.queueCapture(pin);
+	}
+
+	/** A persistent outline plus its corner badge, in the overlay's own colors. */
+	private buildPinBox(): { box: HTMLDivElement; badge: HTMLDivElement } {
+		const box = document.createElement('div');
+		Object.assign(box.style, {
+			position: 'fixed',
+			zIndex: String(Z_GUIDES),
+			pointerEvents: 'none',
+			border: '1.5px solid #4f6ef6',
+			background: 'rgba(79, 110, 246, 0.06)',
+			borderRadius: '2px',
+			transition: 'opacity 0.2s ease-out',
+			top: '0',
+			left: '0',
+			width: '0',
+			height: '0',
+		} satisfies Partial<CSSStyleDeclaration>);
+		const badge = document.createElement('div');
+		Object.assign(badge.style, {
+			position: 'absolute',
+			top: '0',
+			left: '0',
+			minWidth: '16px',
+			height: '16px',
+			padding: '0 4px',
+			boxSizing: 'border-box',
+			background: '#4f6ef6',
+			color: '#fff',
+			font: '11px ui-monospace, monospace',
+			lineHeight: '16px',
+			textAlign: 'center',
+			borderRadius: '0 0 3px 0',
+		} satisfies Partial<CSSStyleDeclaration>);
+		box.appendChild(badge);
+		document.body.appendChild(box);
+		return { box, badge };
+	}
+
+	/** Re-flow the badge numbers after a pin or an unpin, so they always read 1..n. */
+	private renumberPins(): void {
+		this.pins.forEach((pin, i) => (pin.badge.textContent = String(i + 1)));
+	}
+
+	/** Place one pin's outline flush around its element's current border rect. */
+	private positionPin(pin: Pinned): void {
+		const r = pin.element.getBoundingClientRect();
+		Object.assign(pin.box.style, {
+			transform: `translate(${r.left}px, ${r.top}px)`,
+			width: `${r.width}px`,
+			height: `${r.height}px`,
+			opacity: '1',
+		});
+	}
+
+	/** Re-measure every pin after a scroll or resize, since the boxes are position:fixed. */
+	private repositionPins(): void {
+		this.pins.forEach((pin) => this.positionPin(pin));
+	}
+
+	/**
+	 * Take this pin's screenshot now rather than when the batch finishes, because the user
+	 * may scroll it out of the viewport while collecting the rest, and captureVisibleTab can
+	 * only see what is on screen. Queued behind any capture already running.
+	 *
+	 * @param pin - the pin to fill the screenshot in on
+	 */
+	private queueCapture(pin: Pinned): void {
+		this.captures = this.captures.then(async () => {
+			if (!this.active) return;
+			this.capturing = true;
+			this.hideChrome();
+			await nextFrame();
+			try {
+				pin.screenshot = await captureElementScreenshot(pin.element);
+			} catch {
+				// A missing screenshot never blocks the snip. The code phases do not need it.
+				pin.screenshot = '';
+			}
+			this.showChrome();
+			this.capturing = false;
+		});
+	}
+
+	/** Hide every piece of picker chrome, pins included, so none of it lands in a capture. */
+	private hideChrome(): void {
+		if (this.overlay) this.overlay.style.display = 'none';
+		if (this.tooltip) this.tooltip.style.display = 'none';
+		this.guides.forEach((g) => (g.style.display = 'none'));
+		this.pins.forEach((pin) => (pin.box.style.display = 'none'));
+	}
+
+	/** Restore what hideChrome hid. The live highlight only comes back if there is a target. */
+	private showChrome(): void {
+		if (this.overlay && this.current) this.overlay.style.display = 'block';
+		if (this.tooltip && this.current) this.tooltip.style.display = 'block';
+		if (this.current) this.guides.forEach((g) => (g.style.display = 'block'));
+		this.pins.forEach((pin) => (pin.box.style.display = 'block'));
+	}
+
+	/**
+	 * End a multi-select: wait for any in-flight screenshot, tear the overlay down, and hand
+	 * every pin to onSelectMany in pin order. Guarded so two events arriving in the same
+	 * release cannot ship the batch twice.
+	 */
+	private async finishBatch(): Promise<void> {
+		if (this.finishing) return;
+		this.finishing = true;
+		await this.captures;
+		const picks: Pick[] = this.pins.map((pin) => ({ element: pin.element, screenshot: pin.screenshot }));
+		this.deactivate();
+		this.options.onSelectMany?.(picks);
+	}
 
 	/** Hide the chrome, grab a cropped screenshot, then fire onSelect. */
 	private async complete(element: Element): Promise<void> {
 		// Hide our own chrome before the capture so it is not in the screenshot.
-		if (this.overlay) this.overlay.style.display = 'none';
-		if (this.tooltip) this.tooltip.style.display = 'none';
-		this.guides.forEach((g) => (g.style.display = 'none'));
+		this.capturing = true;
+		this.hideChrome();
 		// Let the browser paint one frame without the overlay before capturing.
-		await new Promise((r) => requestAnimationFrame(() => r(null)));
+		await nextFrame();
 
 		let screenshot = '';
 		try {
@@ -314,6 +536,11 @@ export class ElementPicker {
 		this.deactivate();
 		this.options.onSelect(element, screenshot);
 	}
+}
+
+/** Resolve after the browser has painted one frame, so a style change is on screen. */
+function nextFrame(): Promise<void> {
+	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 /**
