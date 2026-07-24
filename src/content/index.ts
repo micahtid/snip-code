@@ -17,8 +17,8 @@
  * capture produces a Captured object, which the reconcile through convert phases
  * turn into clean code before it is emitted.
  */
-import type { Captured } from './types';
-import { ElementPicker } from './capture/picker';
+import type { Captured, SnipPayload } from './types';
+import { ElementPicker, type Pick } from './capture/picker';
 import { buildElementMetadata, cloneElement } from './capture/dom';
 import { settle } from './capture/settle';
 import { discoverStylesheets } from './capture/sheets';
@@ -72,7 +72,7 @@ import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 import type { Provider } from './types';
-import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, PICKER_SELECTED, SNIP_RESULT } from './types';
+import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, TOGGLE_MULTI, PICKER_SELECTED, PICKER_CANCELLED, SNIP_PROGRESS, SNIP_RESULT } from './types';
 import type { InspectResult, ScanKind } from './inspect/types';
 import { extractPageFonts } from './inspect/fonts';
 import { extractPageAssets } from './inspect/assets';
@@ -273,21 +273,67 @@ async function capture(root: Element, screenshot: string): Promise<Captured> {
 }
 
 /**
- * Runs the pipeline for a selected element and ships a result to the sidebar.
+ * Runs the pipeline for a selected element and ships its result to the sidebar. The single
+ * path, one element straight to the panel.
  *
  * @param root - the picked element
  * @param screenshot - cropped png data url
  * @param mode - snip for code, or assistive for json
  */
 async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<void> {
+	shipResult(await runPipelineOne(root, screenshot, mode));
+}
+
+/**
+ * Runs the pipeline over each pinned element in turn and ships one aggregate result whose
+ * `components` array holds them in pin order.
+ *
+ * Strictly sequential, never parallel: the capture phase attaches the cdp debugger and
+ * measureInteractiveStates forces state on the live page, so two concurrent captures would
+ * fight over the debugger and over the page itself. One element failing, whether it throws
+ * or hits the builder gate, does not abort the batch: it contributes no files and its reason
+ * lands in the batch warnings, mirroring the soft-fail philosophy of runFeatures.
+ *
+ * @param picks - the pinned elements with their pin-time screenshots, in pin order
+ * @param mode - snip for code, or assistive for json
+ */
+async function runBatch(picks: Pick[], mode: 'snip' | 'assistive'): Promise<void> {
+	const components: SnipPayload[] = [];
+	const warnings: string[] = [];
+	for (const [i, pick] of picks.entries()) {
+		const label = `component ${i + 1}`;
+		// Tell the panel which element is starting, so its label counts rather than sitting on
+		// "Snipping..." for the whole batch. A closed panel is fine, hence the swallowed catch.
+		chrome.runtime.sendMessage({ type: SNIP_PROGRESS, payload: { done: i, total: picks.length } }).catch(() => {});
+		try {
+			const result = await runPipelineOne(pick.element, pick.screenshot, mode);
+			if (result.unsupported) warnings.push(`${label} skipped: ${String(result.message ?? `built with ${String(result.builder)}`)}`);
+			else components.push(result);
+		} catch (err) {
+			warnings.push(`${label} failed: ${(err as Error).message}`);
+		}
+	}
+	shipResult({ mode, components, warnings });
+	console.info(`snipcode: batch snip complete (${components.length}/${picks.length})`);
+}
+
+/**
+ * Runs the pipeline for one element and returns the result payload rather than shipping it,
+ * so the single path and the batch path share one core and can never drift.
+ *
+ * @param root - the picked element
+ * @param screenshot - cropped png data url
+ * @param mode - snip for code, or assistive for json
+ * @returns the SNIP_RESULT payload for this element
+ */
+async function runPipelineOne(root: Element, screenshot: string, mode: 'snip' | 'assistive'): Promise<SnipPayload> {
 	// Builder gate: refuse framer/wix/etc before doing any capture
 	// work. This is a cheap structural check. On a hit we emit a static unsupported message
 	// and stop, with no degraded fallback output.
 	const gate = detectBuilder(root);
 	if (gate.blocked) {
-		shipResult({ mode, unsupported: true, builder: gate.builder, message: gate.message });
 		console.info('snipcode: snip refused (builder gate)', gate.builder);
-		return;
+		return { mode, unsupported: true, builder: gate.builder, ...(gate.message ? { message: gate.message } : {}) };
 	}
 
 	const captured = await capture(root, screenshot);
@@ -300,8 +346,7 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		const doc = buildAssistiveJson(captured);
 		const prefs = await getPrefs();
 		const deliveryWarnings = await deliver(doc, prefs);
-		shipResult({ mode, json: JSON.stringify(doc, null, 2), warnings: [...captured.warnings, ...deliveryWarnings] });
-		return;
+		return { mode, json: JSON.stringify(doc, null, 2), warnings: [...captured.warnings, ...deliveryWarnings] };
 	}
 
 	// Turn the captured snip into a self-contained clone through reconcile, resolve, and
@@ -363,12 +408,13 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 	// and data-uri images into their own referenced files so the panel can show them as
 	// switchable tabs. `output`, the inlined document, is kept for preview and storage.
 	const files = isHtmlShaped(format) ? splitAssets(output, captured.warnings) : undefined;
-	shipResult({ mode, format, html: finalHtml, css: cleanedCss, output, files, warnings: captured.warnings, usage });
 
-	// Persist the snippet, fifo and capped at 50. Best-effort, so a storage failure
-	// never fails the snip.
+	// Persist the snippet, fifo and capped at 50 unsaved. The id is minted here, before the
+	// result ships, so the panel's save toggle knows which record to flag. The write itself
+	// stays best-effort, so a storage failure never fails the snip.
+	const snippetId = crypto.randomUUID();
 	void storeSnippet({
-		id: crypto.randomUUID(),
+		id: snippetId,
 		capturedAt: captured.capturedAt,
 		page: captured.page,
 		element: captured.element,
@@ -376,6 +422,19 @@ async function runPipeline(root: Element, screenshot: string, mode: 'snip' | 'as
 		screenshot: captured.screenshot,
 	}).catch(() => {});
 	console.info('snipcode: snip complete');
+	// files and usage are only present on the paths that produce them, so they are spread in
+	// rather than set to undefined, which the strict optional-property rules reject.
+	return {
+		mode,
+		format,
+		html: finalHtml,
+		css: cleanedCss,
+		output,
+		...(files ? { files } : {}),
+		...(usage ? { usage } : {}),
+		warnings: captured.warnings,
+		snippetId,
+	};
 }
 
 /**
@@ -416,7 +475,7 @@ function emitFormat(captured: Captured, format: OutputFormat): HtmlOutput {
  * sidebar may be closed, so a delivery failure is swallowed and the snip still
  * succeeded.
  */
-function shipResult(payload: Record<string, unknown>): void {
+function shipResult(payload: SnipPayload): void {
 	chrome.runtime
 		.sendMessage({ type: SNIP_RESULT, requestId: crypto.randomUUID(), payload })
 		.catch(() => {});
@@ -504,22 +563,45 @@ function shipInspect(payload: InspectResult, usage?: TokenUsage): void {
 		.catch(() => {});
 }
 
-/** Start the picker overlay. On select, run the pipeline for the chosen mode. */
+/**
+ * Start the picker overlay. On select, run the pipeline for the chosen mode. Shift
+ * multi-select is offered in snip mode only: assistive delivers over the clipboard and
+ * webhook channels, where n deliveries would each overwrite the last, so a batch has no
+ * sensible meaning there.
+ *
+ * @param mode - snip for code, or assistive for json
+ */
 function startPicker(mode: 'snip' | 'assistive'): void {
 	activePicker?.deactivate();
 	activePicker = new ElementPicker({
+		multi: mode === 'snip',
 		onSelect: (element, screenshot) => {
 			activePicker = null;
-			// Selection is done and the pipeline is starting, so tell the panel to drop the
-			// cancellable "Selecting" label. A closed panel is fine, hence the swallowed catch.
-			chrome.runtime.sendMessage({ type: PICKER_SELECTED }).catch(() => {});
+			pickerSelected();
 			void runPipeline(element, screenshot, mode);
+		},
+		onSelectMany: (picks) => {
+			activePicker = null;
+			pickerSelected();
+			void runBatch(picks, mode);
 		},
 		onCancel: () => {
 			activePicker = null;
+			// Esc pressed with the page focused, which happens once a pin has moved focus off
+			// the panel. The panel cannot hear that keystroke, so tell it to leave the
+			// "Selecting" state. A closed panel is fine, hence the swallowed catch.
+			chrome.runtime.sendMessage({ type: PICKER_CANCELLED }).catch(() => {});
 		},
 	});
 	activePicker.activate();
+}
+
+/**
+ * Tell the panel selection is done and the pipeline is starting, so it drops the cancellable
+ * "Selecting" label. A closed panel is fine, hence the swallowed catch.
+ */
+function pickerSelected(): void {
+	chrome.runtime.sendMessage({ type: PICKER_SELECTED }).catch(() => {});
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) => {
@@ -535,6 +617,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 		// picking state, so no onCancel callback is needed here.
 		activePicker?.deactivate();
 		activePicker = null;
+	} else if (type === TOGGLE_MULTI) {
+		// Panel-side shift: the page cannot hear the key while the panel holds focus, so the
+		// panel forwards it here. Ignored when no picker is live.
+		activePicker?.toggleMulti();
 	}
 	// No async response from the picker path, so keep the channel synchronous.
 	return false;

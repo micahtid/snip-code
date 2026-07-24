@@ -13,6 +13,8 @@
  * is the panel-side terminus of the content-script signals:
  * - It listens for SNIP_RESULT, renders the emitted code in ResultPanel, and adds
  *   that snip's polish token usage to a running per-session total.
+ * - It listens for SNIP_PROGRESS, which only a multi-select batch sends, and holds the
+ *   count so the picker label reads "Snipping 2 of 3" instead of sitting on "Snipping".
  * - It listens for INSPECT_RESULT, a page scan, and renders it in InspectPanel; a
  *   snip and a scan are mutually exclusive, so each clears the other, and both add
  *   any byok token usage to the same per-session total.
@@ -35,9 +37,11 @@ import { InspectPanel } from './components/inspect/InspectPanel';
 import { SnippetList } from './components/SnippetList';
 import { SettingsView } from './components/SettingsView';
 import { CloudBackdrop } from './components/CloudBackdrop';
+import { ShiftBanner } from './components/ShiftBanner';
 import { ViewLayout } from './components/ViewLayout';
-import { INSPECT_RESULT, CANCEL_PICKER, PICKER_SELECTED, SNIP_RESULT } from './content/types';
-import type { TokenUsage } from './content/types';
+import { claimShiftBannerOpen, dismissShiftBanner } from './utils/storage';
+import { INSPECT_RESULT, CANCEL_PICKER, TOGGLE_MULTI, PICKER_SELECTED, PICKER_CANCELLED, SNIP_PROGRESS, SNIP_RESULT } from './content/types';
+import type { BatchProgress, TokenUsage } from './content/types';
 import type { InspectResult } from './content/inspect/types';
 import { injectGlobalCss } from './global-css';
 import { COLORS, FONT_UI, SURFACE } from './theme';
@@ -63,7 +67,10 @@ const styles = {
 		backdropFilter: 'blur(20px)',
 		WebkitBackdropFilter: 'blur(20px)',
 	},
-	nav: { display: 'flex', gap: '6px', padding: '10px', borderBottom: `1px solid ${SURFACE.border}` },
+	// Horizontal inset matches the 14px the scroll body uses, so the nav icons line up with the
+	// banner and code block below them. Vertical padding is kept tight so the icons do not sit
+	// far above the content, which would read as a lopsided gap over the first row below.
+	nav: { display: 'flex', gap: '6px', padding: '6px 14px', borderBottom: `1px solid ${SURFACE.border}` },
 	main: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
 	tokens: { marginTop: '8px', fontSize: '11px', fontWeight: 500, color: COLORS.slate500 },
 } satisfies Record<string, unknown>;
@@ -75,15 +82,20 @@ const NAV: ReadonlyArray<{ id: View; label: string; Icon: React.ComponentType<{ 
 	{ id: 'settings', label: 'Settings', Icon: Settings },
 ];
 
-/** Sends the cancel-picker signal to the active tab's content script. */
-async function cancelPicker(): Promise<void> {
+/** Sends a picker control signal to the active tab's content script. */
+async function signalPicker(type: typeof CANCEL_PICKER | typeof TOGGLE_MULTI): Promise<void> {
 	const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 	if (!tab?.id) return;
 	try {
-		await chrome.tabs.sendMessage(tab.id, { type: CANCEL_PICKER });
+		await chrome.tabs.sendMessage(tab.id, { type });
 	} catch {
 		// The overlay may already be gone: the page navigated or the tab closed. Harmless.
 	}
+}
+
+/** Persist the shift hint's retirement. Best-effort: a failed write only re-shows the hint. */
+function persistShiftBannerDismissal(): void {
+	void dismissShiftBanner().catch((err) => console.warn('snipcode: could not retire the shift hint', err));
 }
 
 /**
@@ -103,13 +115,31 @@ function App() {
 	// cancelling no longer applies, so the picker label drops its "Esc to Cancel" hint.
 	const [processing, setProcessing] = useState(false);
 	const [scanning, setScanning] = useState(false);
+	// How far a multi-select batch has got, or null for a single snip, which has no count.
+	const [progress, setProgress] = useState<BatchProgress | null>(null);
 	const [result, setResult] = useState<SnipResult | null>(null);
 	const [inspect, setInspect] = useState<InspectResult | null>(null);
 	// Running token total for this panel session; resets when the side panel reloads.
 	const [sessionTokens, setSessionTokens] = useState(0);
+	// Whether the shift multi-select hint should show. It gets the first ten panel opens, or
+	// fewer if the user closes it. It starts false rather than true so a retired hint never
+	// flashes in for the frame before the read resolves; arriving a frame late is fine,
+	// appearing and vanishing is not.
+	const [showShiftBanner, setShowShiftBanner] = useState(false);
 
 	// Inject the global stylesheet once: fonts, cloud geometry, control states.
 	useEffect(() => injectGlobalCss(), []);
+
+	// Spend one of the hint's opens on mount, and show it if any were left.
+	useEffect(() => {
+		void claimShiftBannerOpen().then(setShowShiftBanner);
+	}, []);
+
+	/** Retire the hint for good, both in this session and in storage. */
+	const retireShiftBanner = (): void => {
+		setShowShiftBanner(false);
+		persistShiftBannerDismissal();
+	};
 
 	// Listen for the content script's output. A snip and a scan are mutually exclusive
 	// in the capture view, so each arriving result clears the other. Both forward any
@@ -122,6 +152,14 @@ function App() {
 					: null;
 			if (type === PICKER_SELECTED) {
 				setProcessing(true); // Element picked, pipeline running: past the point of cancelling.
+			} else if (type === PICKER_CANCELLED) {
+				// Esc on the page tore the overlay down there; leave the "Selecting" label to match.
+				setPicking(false);
+				setProcessing(false);
+				setProgress(null);
+			} else if (type === SNIP_PROGRESS) {
+				// A multi-select batch reports after each element, so the label can count.
+				setProgress((message as { payload?: BatchProgress }).payload ?? null);
 			} else if (type === SNIP_RESULT) {
 				const payload = (message as { payload?: SnipResult }).payload ?? null;
 				setResult(payload);
@@ -130,6 +168,7 @@ function App() {
 				setView('capture');
 				setPicking(false);
 				setProcessing(false);
+				setProgress(null);
 			} else if (type === INSPECT_RESULT) {
 				const payload = (message as { payload?: InspectPayload }).payload ?? null;
 				setInspect(payload);
@@ -147,14 +186,18 @@ function App() {
 		return () => chrome.runtime.onMessage.removeListener(onMessage);
 	}, []);
 
-	// While selecting, before an element is picked, esc in the panel cancels the overlay through a
-	// focus-independent path. Once the pipeline is running there is nothing to cancel, so it unbinds.
+	// While selecting, before an element is picked, keys pressed with the panel focused are
+	// forwarded to the overlay, which cannot hear them itself until a pin moves focus onto the
+	// page. Esc cancels; shift toggles multi-select, the one way to turn it on before the first
+	// click. Once the pipeline is running there is nothing to steer, so this unbinds.
 	useEffect(() => {
 		if (!picking || processing) return;
 		const onKey = (e: KeyboardEvent): void => {
 			if (e.key === 'Escape') {
-				void cancelPicker();
+				void signalPicker(CANCEL_PICKER);
 				setPicking(false);
+			} else if (e.key === 'Shift' && !e.repeat) {
+				void signalPicker(TOGGLE_MULTI);
 			}
 		};
 		window.addEventListener('keydown', onKey);
@@ -166,6 +209,7 @@ function App() {
 		setPicking(next);
 		if (next) {
 			setProcessing(false);
+			setProgress(null);
 			setResult(null);
 			setInspect(null);
 		}
@@ -213,6 +257,7 @@ function App() {
 										onModeChange={setMode}
 										picking={picking}
 										processing={processing}
+										progress={progress}
 										onPickingChange={onPickingChange}
 										scanning={scanning}
 										onScanningChange={onScanningChange}
@@ -221,6 +266,7 @@ function App() {
 								</>
 							}
 						>
+							{showShiftBanner && <ShiftBanner onDismiss={retireShiftBanner} />}
 							{inspect ? <InspectPanel result={inspect} /> : <ResultPanel result={result} />}
 						</ViewLayout>
 					)}

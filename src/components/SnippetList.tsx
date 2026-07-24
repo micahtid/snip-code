@@ -1,5 +1,5 @@
 /**
- * components/SnippetList.tsx: the history view that lists saved snippets
+ * components/SnippetList.tsx: the history view that lists stored snippets
  *
  * Pipeline position: n/a. Reads stored SnippetRecord[].
  * Reads from Captured: n/a
@@ -7,20 +7,23 @@
  *
  * Principles applied: none. Ui only.
  *
- * Why this exists: snipcode keeps the last 50 snippets in chrome.storage.local
- * in fifo order. This view lists them by thumbnail, page, and format. Clicking a
- * card downloads that one snippet's component, its code file plus a stylesheet when
- * the format keeps css apart. "Export all" zips every snippet into a folder each,
- * built in the sidebar with jszip and saved via an object-url anchor.
+ * Why this exists: snipcode keeps the last 50 unsaved snippets in chrome.storage.local
+ * in fifo order, plus every snippet the user saved, which is exempt from that cap. This
+ * view renders both from the one stored list, split into a Saved section above a History
+ * section, each with a live count. Every card carries a bookmark toggle, so a snippet can
+ * be saved or unsaved from here as well as from the result panel, and unsaving drops it
+ * back into History where it ages out normally. Clicking a card downloads that one
+ * snippet's component, its code file plus a stylesheet when the format keeps css apart.
+ * "Export all" zips every snippet, saved and unsaved, into a folder each, built in the
+ * sidebar with jszip. "Clear History" drops the unsaved snippets only.
  */
 import { useEffect, useState } from 'react';
-import { LibraryBig } from 'lucide-react';
-import JSZip from 'jszip';
+import { Bookmark, LibraryBig } from 'lucide-react';
 import type { OutputFormat, SnippetRecord } from '../content/types';
 import { EmptyState } from './EmptyState';
 import { ViewLayout } from './ViewLayout';
-import { clearSnippets, listSnippets } from '../utils/storage';
-import { triggerDownload } from '../utils/download';
+import { clearSnippets, listSnippets, setSnippetSaved } from '../utils/storage';
+import { dataUrlToBase64, downloadBlob, downloadZip, type ZipEntry } from '../utils/download';
 import { COLORS, FONT_UI, RADIUS, SURFACE } from '../theme';
 
 const EXT: Record<OutputFormat, string> = {
@@ -33,13 +36,18 @@ export function SnippetList() {
 	const [busy, setBusy] = useState(false);
 
 	useEffect(() => {
-		void listSnippets().then((s) => setSnippets(s.slice().reverse())); // Newest first
+		void refresh().then(setSnippets);
 	}, []);
 
 	if (!snippets) return <ViewLayout><div style={muted}>Loading…</div></ViewLayout>;
 	if (snippets.length === 0) {
 		return <ViewLayout><EmptyState Icon={LibraryBig} /></ViewLayout>;
 	}
+
+	// Both sections read from the same stored list, so a save is one flag flip rather than a
+	// move between two stores. Newest-first ordering is already applied by refresh.
+	const saved = snippets.filter((snip) => snip.saved);
+	const history = snippets.filter((snip) => !snip.saved);
 
 	const onExport = async (): Promise<void> => {
 		setBusy(true);
@@ -50,9 +58,22 @@ export function SnippetList() {
 		}
 	};
 
+	// Clear is scoped to history, so the saved snippets stay. Re-read rather than assume,
+	// since storage owns which records survive.
 	const onClear = async (): Promise<void> => {
 		await clearSnippets();
-		setSnippets([]);
+		setSnippets(await refresh());
+	};
+
+	// Toggling save can evict the record it just unsaved, once history is at the cap, so the
+	// list is re-read from storage instead of patched locally.
+	const onToggleSaved = async (snip: SnippetRecord): Promise<void> => {
+		try {
+			await setSnippetSaved(snip.id, !snip.saved);
+			setSnippets(await refresh());
+		} catch (err) {
+			console.warn('snipcode: could not update saved state', err);
+		}
 	};
 
 	const footer = (
@@ -61,37 +82,68 @@ export function SnippetList() {
 				{busy ? 'Zipping…' : `Export All (${snippets.length})`}
 			</button>
 			<button className="sc-btn sc-btn-secondary" style={{ width: '100%', fontFamily: FONT_UI }} onClick={() => void onClear()}>
-				Clear
+				Clear History
+			</button>
+		</div>
+	);
+
+	const card = (snip: SnippetRecord): React.ReactNode => (
+		<div key={snip.id} className="sc-history-card">
+			<button
+				className="sc-history-hit"
+				title={`Download ${snip.page.title || 'snippet'}`}
+				onClick={() => downloadSnippet(snip)}
+			>
+				{snip.screenshot ? (
+					<img src={snip.screenshot} alt="" style={thumb} />
+				) : (
+					<div style={{ ...thumb, background: COLORS.slate100 }} />
+				)}
+				<div style={{ overflow: 'hidden' }}>
+					<div style={{ fontWeight: 600, color: COLORS.slate800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+						{snip.page.title || snip.page.url}
+					</div>
+					<div style={{ color: COLORS.slate500, fontSize: '11px' }}>
+						{snip.output.format.toUpperCase()} · {new Date(snip.capturedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+					</div>
+				</div>
+			</button>
+			<button
+				className={`sc-icon-btn${snip.saved ? ' sc-icon-btn-saved' : ''}`}
+				title={snip.saved ? 'Saved. Click to Unsave' : 'Save snippet'}
+				aria-pressed={snip.saved === true}
+				aria-label={snip.saved ? 'Unsave snippet' : 'Save snippet'}
+				onClick={() => void onToggleSaved(snip)}
+			>
+				<Bookmark size={15} fill={snip.saved ? 'currentColor' : 'none'} />
 			</button>
 		</div>
 	);
 
 	return (
 		<ViewLayout footer={footer}>
-			{snippets.map((snip) => (
-				<button
-					key={snip.id}
-					className="sc-history-card"
-					title={`Download ${snip.page.title || 'snippet'}`}
-					onClick={() => downloadSnippet(snip)}
-				>
-					{snip.screenshot ? (
-						<img src={snip.screenshot} alt="" style={thumb} />
-					) : (
-						<div style={{ ...thumb, background: COLORS.slate100 }} />
-					)}
-					<div style={{ overflow: 'hidden' }}>
-						<div style={{ fontWeight: 600, color: COLORS.slate800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-							{snip.page.title || snip.page.url}
-						</div>
-						<div style={{ color: COLORS.slate500, fontSize: '11px' }}>
-							{snip.output.format.toUpperCase()} · {new Date(snip.capturedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-						</div>
-					</div>
-				</button>
-			))}
+			{/* An empty Saved section renders nothing at all; the empty state above already
+			    covers the case where both sections are empty. */}
+			{saved.length > 0 && (
+				<>
+					<div className="sc-section-title">Saved ({saved.length})</div>
+					{saved.map(card)}
+				</>
+			)}
+			{history.length > 0 && (
+				<>
+					<div className="sc-section-title">History ({history.length})</div>
+					{history.map(card)}
+				</>
+			)}
 		</ViewLayout>
 	);
+}
+
+/** Read the stored snippets newest first, the order both sections render in. */
+async function refresh(): Promise<SnippetRecord[]> {
+	const stored = await listSnippets();
+	return stored.slice().reverse();
 }
 
 /**
@@ -109,33 +161,23 @@ function downloadText(name: string, text: string): void {
 	downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), name);
 }
 
-/** Save a blob to disk via a transient object url, revoked once the browser has read it. */
-function downloadBlob(blob: Blob, name: string): void {
-	const url = URL.createObjectURL(blob);
-	triggerDownload(url, name);
-	setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 /** Build a zip with one folder per snippet, holding code, screenshot, and meta, and download it. */
 async function exportZip(snippets: SnippetRecord[]): Promise<void> {
-	const zip = new JSZip();
-	snippets.forEach((snip, i) => {
-		const folder = zip.folder(`${String(i + 1).padStart(2, '0')}-${slug(snip.page.title || 'snippet')}`);
-		if (!folder) return;
-		folder.file(`code.${EXT[snip.output.format]}`, snip.output.html);
-		if (snip.output.css) folder.file('styles.css', snip.output.css);
-		folder.file('meta.json', JSON.stringify({ page: snip.page, element: snip.element, format: snip.output.format, capturedAt: snip.capturedAt }, null, 2));
-		const png = dataUrlToBase64(snip.screenshot);
-		if (png) folder.file('screenshot.png', png, { base64: true });
-	});
-	const blob = await zip.generateAsync({ type: 'blob' });
-	downloadBlob(blob, 'snipcode-snippets.zip');
+	await downloadZip('snipcode-snippets.zip', snippets.flatMap((snip, i) => exportEntries(snip, i)));
 }
 
-/** Extract the base64 payload from a data url, or '' if not a data url. */
-function dataUrlToBase64(dataUrl: string): string {
-	const comma = dataUrl.indexOf(',');
-	return dataUrl.startsWith('data:') && comma >= 0 ? dataUrl.slice(comma + 1) : '';
+/** The zip files for one exported snippet, all under that snippet's own folder. */
+function exportEntries(snip: SnippetRecord, index: number): ZipEntry[] {
+	const folder = `${String(index + 1).padStart(2, '0')}-${slug(snip.page.title || 'snippet')}`;
+	const meta = { page: snip.page, element: snip.element, format: snip.output.format, capturedAt: snip.capturedAt };
+	const entries: ZipEntry[] = [
+		{ path: `${folder}/code.${EXT[snip.output.format]}`, text: snip.output.html },
+		{ path: `${folder}/meta.json`, text: JSON.stringify(meta, null, 2) },
+	];
+	if (snip.output.css) entries.push({ path: `${folder}/styles.css`, text: snip.output.css });
+	const png = dataUrlToBase64(snip.screenshot);
+	if (png) entries.push({ path: `${folder}/screenshot.png`, base64: png });
+	return entries;
 }
 
 /** Filesystem-safe slug for a folder or file name. */

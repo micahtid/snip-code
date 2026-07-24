@@ -26,3 +26,4 @@ tests/minimize-scores.jsonl
 # planning docs and task notes: working notes, never committed
 *-PLAN*.md
 Tasks/
+.gstack/

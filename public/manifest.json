@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "SnipCode",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"description": "Snip any element into clean framework code or a structured JSON document. Local-only, bring your own LLM key.",
 	"author": "micahtid",
 	"homepage_url": "https://snipcode.micahtid.com",
@@ -37,7 +37,7 @@
 	"host_permissions": ["<all_urls>"],
 	"web_accessible_resources": [
 		{
-			"resources": ["preview.html", "preview.js"],
+			"resources": ["preview.html", "preview.js", "fonts/*"],
 			"matches": ["<all_urls>"]
 		}
 	],

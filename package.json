@@ -1,6 +1,6 @@
 {
   "name": "snipcode",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Snip any element on any page into clean, framework-formatted code or a structured assistive JSON document. Local-only, BYOK.",
   "private": true,
   "type": "module",
@@ -13,6 +13,11 @@
     "build:sidebar": "vite build",
     "build:content": "vite build --config vite.content.config.ts",
     "typecheck": "tsc -b",
+    "test": "npm run test:unit && npm run test:picker && npm run test:panel && npm run test:batch",
+    "test:unit": "node --test \"tests/*.test.mjs\"",
+    "test:picker": "node --test --test-timeout=180000 tests/picker-e2e.mjs",
+    "test:panel": "node --test --test-timeout=180000 tests/panel-e2e.mjs",
+    "test:batch": "node --test --test-timeout=180000 tests/batch-e2e.mjs",
     "grade": "node tests/loop.mjs"
   },
   "dependencies": {

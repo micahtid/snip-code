@@ -186,10 +186,22 @@ export const INSPECT_RESULT = 'INSPECT_RESULT';
 export const START_PICKER = 'SNIPCODE_START_PICKER';
 /** The panel asks the content script to tear the picker overlay down on panel-side esc. */
 export const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
+/** The panel asks the content script to toggle multi-select, for shift pressed with panel focus. */
+export const TOGGLE_MULTI = 'SNIPCODE_TOGGLE_MULTI';
 /** The content script tells the panel an element was picked, so the pipeline is now running. */
 export const PICKER_SELECTED = 'SNIPCODE_PICKER_SELECTED';
+/** The content script tells the panel the picker was cancelled page-side, so it can reset. */
+export const PICKER_CANCELLED = 'SNIPCODE_PICKER_CANCELLED';
 /** Carries a finished snip result from the content script back to the panel. */
 export const SNIP_RESULT = 'SNIP_RESULT';
+/** Reports batch progress during a multi-select snip, so the panel label can count elements. */
+export const SNIP_PROGRESS = 'SNIPCODE_SNIP_PROGRESS';
+
+/** The SNIP_PROGRESS payload: how many elements of a multi-select batch are already finished. */
+export interface BatchProgress {
+	done: number;
+	total: number;
+}
 
 /** The request envelope shared by all messages. requestId correlates responses. */
 export interface Envelope<TPayload, TResult = unknown> {
@@ -229,16 +241,48 @@ export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google';
 export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' | 'jsx-css' | 'vue' | 'html';
 
 /**
- * One file in a split snip result: the index.html document plus the inline svgs,
- * data-uri images, and @font-face fonts lifted out into their own referenced files
- * (convert/assets.ts). Text files (html/svg/json) carry `text`. Binary files (images and
- * fonts) carry the original `dataUrl` so the panel can render or download them.
+ * One file in a split snip result: the index.html document plus its stylesheet, the inline
+ * svgs, the data-uri images, and the @font-face fonts lifted out into their own referenced
+ * files (convert/assets.ts). A format that never goes through that split, jsx or vue, is one
+ * file named for the format. Text files carry `text`. Binary files (images and fonts) carry
+ * the original `dataUrl` so the panel can render or download them.
  */
 export interface AssetFile {
-	name: string; // 'index.html', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
-	language: 'html' | 'svg' | 'image' | 'json' | 'font';
+	name: string; // 'index.html', 'styles.css', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
+	language: 'html' | 'css' | 'svg' | 'image' | 'json' | 'font' | 'jsx' | 'vue';
 	text?: string; // Source for text files
 	dataUrl?: string; // Original data: url for binary files (images, fonts)
+}
+
+/**
+ * The SNIP_RESULT payload the content script ships to the panel, where ResultPanel renders
+ * it. One shape covers all four cases: a code snip, an assistive json emit, a builder-gated
+ * refusal, and a multi-select batch. A batch fills `components` and leaves the single-snip
+ * fields empty; every other case fills the single-snip fields and leaves `components` absent,
+ * so a component entry is always a plain result and never nests components itself.
+ */
+export interface SnipPayload {
+	mode: 'snip' | 'assistive';
+	format?: OutputFormat;
+	html?: string;
+	css?: string;
+	/** Self-contained html document for snip mode, kept for preview and storage. */
+	output?: string;
+	/** Output split into referenced files: index.html plus svgs and images. Html-shaped snips only. */
+	files?: AssetFile[];
+	/** Emitted assistive json for assistive mode. */
+	json?: string;
+	/** Provider-reported token usage for the polish call, when one ran. */
+	usage?: TokenUsage;
+	warnings?: string[];
+	/** Set when the page is a blocked site builder such as framer or wix. */
+	unsupported?: boolean;
+	builder?: string;
+	message?: string;
+	/** Id of the record this snip was persisted under, so the panel can toggle its saved flag. */
+	snippetId?: string;
+	/** Present for a multi-select snip: one entry per pinned element, in pin order. */
+	components?: SnipPayload[];
 }
 
 /**
@@ -251,7 +295,10 @@ export interface TokenUsage {
 	output: number;
 }
 
-/** One stored snippet. Only the last 50 are kept, fifo. */
+/**
+ * One stored snippet. Only the last 50 unsaved ones are kept, fifo. A record the
+ * user saved is exempt from that cap and survives Clear History.
+ */
 export interface SnippetRecord {
 	id: string; // Uuid v4
 	capturedAt: string;
@@ -259,6 +306,8 @@ export interface SnippetRecord {
 	element: Captured['element'];
 	output: { format: OutputFormat; html: string; css?: string; jsx?: string };
 	screenshot: string; // Data url thumbnail (<=200x200)
+	/** True once the user saved it. Absent means unsaved, so older records need no migration. */
+	saved?: boolean;
 }
 
 /** User preferences. Byok keys live separately under `byok.<provider>`, never here. */
