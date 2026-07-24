@@ -319,8 +319,8 @@ body {
 	transition: color 0.15s ${EASE_UI};
 }
 .sc-tab:hover { color: ${COLORS.slate700}; }
-/* Active tab is marked by a darker text color only, no underline. */
-.sc-tab-active { color: ${COLORS.slate900}; }
+/* Active tab: the darkest text plus a heavier weight, no underline, so it clearly reads active. */
+.sc-tab-active { color: ${COLORS.slate900}; font-weight: 700; }
 
 
 /* ---- Icon buttons for copy, save, more, overflow. ---- */

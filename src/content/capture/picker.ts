@@ -6,8 +6,9 @@
  * Writes to Captured: n/a (hands the chosen Element + screenshot to the orchestrator)
  *
  * Why this exists: every snip starts with the user choosing an element. This
- * overlay gives live visual feedback, a bright spotlight cut into a dimmed page
- * and a tag/size tooltip, that tracks whatever is under the pointer, then resolves to
+ * overlay gives live visual feedback, a bright spotlight cut into a dimmed page,
+ * faint crosshair guide lines, and a tag/size tooltip, that tracks whatever is
+ * under the pointer, then resolves to
  * the chosen element on click. Ported, rewritten not copied, from v1
  * element-selector.ts. The meaningful v2 change is the sticky arrow-climb, which
  * v1 lacked, letting the user grab a wrapping container instead of the leaf they
@@ -84,6 +85,18 @@ const BADGE_RADIUS = 6;
 const BADGE_INSET = 9;
 /** The page-dimming veil's color, painted over everything except the cut-out holes. */
 const SCRIM_BG = 'rgba(7, 9, 15, 0.55)';
+/** The faint white crosshair guide lines drawn along the hovered element's edges. */
+const GUIDE_COLOR = 'rgba(255, 255, 255, 0.22)';
+/**
+ * The easing the hover chrome glides with as it moves between elements. A gentle ease on both
+ * ends, rather than a fast-out curve, is what makes the transition read as smooth rather than
+ * as a quick snap that eases only at the end.
+ */
+const HOVER_EASE = '0.17s cubic-bezier(0.4, 0, 0.2, 1)';
+/** The guides' composited transition, glide on transform and fade on opacity. */
+const GUIDE_TRANSITION = `transform ${HOVER_EASE}, opacity 0.2s ease-out`;
+/** The spotlight's own ease: brief, since it repaints the full-screen scrim while it runs. */
+const SCRIM_EASE = '0.1s ease-out';
 /** The indigo the number badges are filled with. */
 const BADGE_BG = '#4f6ef6';
 /** The dark slate surface behind the multi-select toggle and the cursor tooltip. */
@@ -111,6 +124,15 @@ export class ElementPicker {
 	private lastY = 0;
 	private scrolling = false;
 	private scrollTimer: number | null = null;
+	/** Coalesces pointer moves to one update per animation frame. */
+	private moveRaf: number | null = null;
+	/** The scrim's hole count at the last redraw, so a changed count can snap instead of flash. */
+	private lastHoleCount = -1;
+	/** Cached layout viewport size, so the hover path never forces a layout read per frame. */
+	private viewportW = 0;
+	private viewportH = 0;
+	/** The element the tooltip text was last built for, so it is not rebuilt within one element. */
+	private labeledEl: Element | null = null;
 
 	private overlay: HTMLDivElement | null = null;
 	private tooltip: HTMLDivElement | null = null;
@@ -118,6 +140,8 @@ export class ElementPicker {
 	private banner: HTMLDivElement | null = null;
 	/** The page-dimming veil, cut with a hole for the hover and one for every pin. */
 	private scrim: HTMLDivElement | null = null;
+	/** The four faint white crosshair lines along the hovered element's edges. */
+	private guides: HTMLDivElement[] = [];
 
 	/**
 	 * True once the user has entered multi-select. The mode latches rather than tracking the
@@ -152,12 +176,16 @@ export class ElementPicker {
 		if (this.active) return;
 		this.active = true;
 		loadChromeFont();
+		this.measureViewport();
 		this.buildChrome();
-		document.addEventListener('mousemove', this.onMove, true);
+		// mousemove and scroll never call preventDefault, so mark them passive: the browser can
+		// then dispatch them without waiting to see if we cancel, which keeps scrolling and
+		// pointer tracking off the critical path. Click and keydown stay cancelable.
+		document.addEventListener('mousemove', this.onMove, { capture: true, passive: true });
 		document.addEventListener('click', this.onClick, true);
 		document.addEventListener('keydown', this.onKey, true);
-		window.addEventListener('scroll', this.onScrollOrResize, true);
-		window.addEventListener('resize', this.onScrollOrResize, true);
+		window.addEventListener('scroll', this.onScrollOrResize, { capture: true, passive: true });
+		window.addEventListener('resize', this.onScrollOrResize, { capture: true, passive: true });
 	}
 
 	/** Remove the overlay and detach every listener. Idempotent. */
@@ -167,9 +195,14 @@ export class ElementPicker {
 		this.current = null;
 		this.leaf = null;
 		this.climbed = false;
+		this.labeledEl = null;
 		if (this.scrollTimer !== null) {
 			window.clearTimeout(this.scrollTimer);
 			this.scrollTimer = null;
+		}
+		if (this.moveRaf !== null) {
+			cancelAnimationFrame(this.moveRaf);
+			this.moveRaf = null;
 		}
 		if (this.rejectTimer !== null) {
 			window.clearTimeout(this.rejectTimer);
@@ -186,6 +219,7 @@ export class ElementPicker {
 		this.banner?.remove();
 		this.scrim?.remove();
 		this.latched = false;
+		this.guides.forEach((g) => g.remove());
 		// Pins are chrome too: an esc or a panel-side cancel clears the whole selection,
 		// exactly as it clears the climb state above.
 		this.pins.forEach((pin) => pin.box.remove());
@@ -193,6 +227,7 @@ export class ElementPicker {
 		this.finishing = false;
 		this.capturing = false;
 		this.overlay = this.tooltip = this.banner = this.scrim = null;
+		this.guides = [];
 	}
 
 	/** Build the dimming scrim, the highlight box, and the tooltip. */
@@ -210,7 +245,12 @@ export class ElementPicker {
 			zIndex: String(Z_SCRIM),
 			pointerEvents: 'none',
 			background: SCRIM_BG,
-			transition: 'clip-path 0.17s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out',
+			// A short, subtle clip-path transition so the spotlight eases between elements rather
+			// than snapping. Kept brief because animating a full-screen clip repaints the scrim
+			// each frame; the rAF throttle and same-element guard keep it firing only on real
+			// element changes, so a quick ease stays cheap. The crosshair glides via a composited
+			// transform, which carries most of the smooth feel at no paint cost.
+			transition: `clip-path ${SCRIM_EASE}, opacity 0.2s ease-out`,
 			display: 'none',
 		} satisfies Partial<CSSStyleDeclaration>);
 		document.body.appendChild(scrim);
@@ -237,6 +277,29 @@ export class ElementPicker {
 		document.body.appendChild(overlay);
 		this.overlay = overlay;
 
+		// Four faint white lines along the hovered element's edges. Each is a full-viewport-long
+		// line fixed at the origin and moved only by a transform, so it glides with a cheap,
+		// gpu-composited transition rather than by animating top/left, which would repaint.
+		for (let i = 0; i < 4; i++) {
+			const horizontal = i < 2;
+			const line = document.createElement('div');
+			Object.assign(line.style, {
+				position: 'fixed',
+				top: '0',
+				left: '0',
+				width: horizontal ? '100vw' : '1px',
+				height: horizontal ? '1px' : '100vh',
+				zIndex: String(Z_PINS),
+				pointerEvents: 'none',
+				background: GUIDE_COLOR,
+				willChange: 'transform',
+				transition: GUIDE_TRANSITION,
+				display: 'none',
+			} satisfies Partial<CSSStyleDeclaration>);
+			document.body.appendChild(line);
+			this.guides.push(line);
+		}
+
 		const tooltip = document.createElement('div');
 		tooltip.id = TOOLTIP_ID;
 		Object.assign(tooltip.style, {
@@ -258,25 +321,46 @@ export class ElementPicker {
 		this.tooltip = tooltip;
 	}
 
-	/** Track the element under the cursor via hit-testing, not event.target. */
+	/**
+	 * Record the pointer and process it at most once per frame. Mouse moves fire far faster than
+	 * the display refreshes, and each processed move hit-tests and can re-clip the full-screen
+	 * scrim, so coalescing to one rAF per frame is the single biggest win for weak machines.
+	 */
 	private readonly onMove = (e: MouseEvent): void => {
-		// While a capture is in flight the chrome is deliberately hidden, so tracking would
-		// paint the highlight straight back into the screenshot.
-		if (this.scrolling || this.capturing) return;
-		// elementFromPoint is more reliable than e.target for nested/overlapped
-		// layouts, and our chrome is pointer-events:none so it is never returned.
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (!el || el === this.overlay || el === this.tooltip) {
-			return;
-		}
 		this.lastX = e.clientX;
 		this.lastY = e.clientY;
+		if (this.moveRaf !== null) return;
+		this.moveRaf = requestAnimationFrame(() => {
+			this.moveRaf = null;
+			this.trackPointer();
+		});
+	};
+
+	/** Resolve the element under the last pointer position and update the chrome for it. */
+	private trackPointer(): void {
+		// While a capture is in flight the chrome is deliberately hidden, so tracking would
+		// paint the highlight straight back into the screenshot.
+		if (!this.active || this.scrolling || this.capturing) return;
+		// elementFromPoint is more reliable than e.target for nested/overlapped
+		// layouts, and our chrome is pointer-events:none so it is never returned.
+		const el = document.elementFromPoint(this.lastX, this.lastY);
+		if (!el || el === this.overlay || el === this.tooltip || this.guides.includes(el as HTMLDivElement)) {
+			return;
+		}
+		// The page root fills the viewport, so cutting a hole for it would erase the dim entirely.
+		// Crossing a gap between elements hits it constantly, which blinked the dim off and on, so
+		// hold the current highlight instead of re-targeting the whole page.
+		if (isPageRoot(el)) return;
 		// Sticky climb: while a climbed selection still contains the cursor, keep it.
 		// Only track the leaf underneath so arrowdown has a floor to descend toward.
-		// This is the fix for the regression where any mousemove snapped the highlight
-		// back to the leaf, leaving wrapping containers unreachable.
 		if (this.climbed && this.current && this.current !== el && this.current.contains(el)) {
 			this.leaf = el;
+			return;
+		}
+		// Same element, no climb: only the tooltip needs to follow the cursor. The box, guides,
+		// and scrim are unchanged, so skip re-framing and, above all, re-clipping the scrim.
+		if (el === this.current && !this.climbed) {
+			this.label(el, this.lastX, this.lastY);
 			return;
 		}
 		// Fresh target under the cursor: re-baseline and drop any climb.
@@ -284,13 +368,23 @@ export class ElementPicker {
 		this.current = el;
 		this.climbed = false;
 		this.frame(el);
-		this.label(el, e.clientX, e.clientY);
-	};
+		this.label(el, this.lastX, this.lastY);
+	}
 
-	/** Position the highlight box flush around `el`'s border rect. */
-	private frame(el: Element): void {
+	/**
+	 * Position the highlight box and the crosshair guides around `el`'s border rect. All layout
+	 * reads, the element's rect and the pins' rects for the scrim, are done first, then every
+	 * style write, so a read never follows a write within the frame and forces a reflow.
+	 *
+	 * @param el - the element to frame
+	 * @param snap - true to place everything with no transition, for the first frame after a
+	 *   scroll, where the page jumped and gliding across that jump would read as a sweep
+	 */
+	private frame(el: Element, snap = false): void {
 		if (!this.overlay) return;
-		const r = el.getBoundingClientRect();
+		const r = el.getBoundingClientRect(); // read
+		const clip = this.buildScrimClip(el, r); // read (pins), no writes
+		if (snap) this.lastHoleCount = -1; // Force the scrim to snap rather than glide across the scroll.
 		Object.assign(this.overlay.style, {
 			display: 'block',
 			opacity: '1',
@@ -298,44 +392,92 @@ export class ElementPicker {
 			width: `${r.width}px`,
 			height: `${r.height}px`,
 		});
-		this.updateScrim();
+		// Move each line by transform only, top/bottom edges vertically and left/right edges
+		// horizontally, so the composited transition can glide them without a repaint.
+		const transforms = [`translateY(${r.top}px)`, `translateY(${r.bottom}px)`, `translateX(${r.left}px)`, `translateX(${r.right}px)`];
+		this.guides.forEach((line, i) => {
+			if (snap) line.style.transition = 'none';
+			line.style.display = 'block';
+			line.style.opacity = '1';
+			line.style.transform = transforms[i]!;
+		});
+		if (snap) {
+			void this.guides[0]?.offsetWidth; // Commit the snapped transforms before re-enabling the glide.
+			this.guides.forEach((line) => (line.style.transition = GUIDE_TRANSITION));
+		}
+		this.applyScrimClip(clip);
+	}
+
+	/** Recompute and apply the dimming veil from the current hover and pins. */
+	private updateScrim(): void {
+		const el = this.current;
+		this.applyScrimClip(this.buildScrimClip(el, el ? el.getBoundingClientRect() : null));
 	}
 
 	/**
-	 * Redraw the dimming veil so it has a bright hole for the hovered element and one for every
-	 * pin. The veil is a solid dark div clipped to everything-but-the-holes with an even-odd
-	 * clip path. The path lists the hover hole first, then the pins in a stable order, so while
-	 * the pin set is unchanged the path keeps the same shape and the transitioned clip-path
-	 * glides the hover hole from one element to the next. With nothing to highlight the scrim
-	 * hides entirely, so the page is never left dark.
+	 * Build the veil's clip path: a bright hole for the hovered element and one for every pin.
+	 * Pure reads and string work, no style writes, so the caller can batch it before its writes.
+	 *
+	 * The even-odd rule cancels one hole nested inside another, painting the inner region dark,
+	 * so holes must never nest. Two rules keep that from happening: the hover hole is dropped
+	 * when a pin already lights it (the pointer sits on or inside a pinned element), and a pin's
+	 * hole is dropped when the hover hole already encloses it (the pointer sits on an ancestor of
+	 * a pinned element). Either way the outer hole lights the whole region and the inner one is
+	 * redundant. Any remaining overlap, two rects that merely intersect, is rebuilt into
+	 * non-overlapping rectangles, since no fill rule can subtract overlapping rectangles cleanly.
+	 *
+	 * @param hover - the hovered element to cut a hole for, or null when a pin already lights it
+	 * @param hoverRect - the hovered element's rect, already read by the caller
+	 * @returns the clip path and its hole count, or null when nothing should be lit
 	 */
-	private updateScrim(): void {
-		if (!this.scrim) return;
-		const rects: DOMRect[] = [];
-		// Skip the hover hole when a pin already lights that element, so the two holes cannot
-		// overlap and cancel under the even-odd rule, which would darken the element instead.
-		if (this.current && !this.coveredByPin(this.current)) rects.push(this.current.getBoundingClientRect());
-		for (const pin of this.pins) rects.push(pin.element.getBoundingClientRect());
-		if (rects.length === 0) {
-			this.scrim.style.display = 'none';
-			return;
+	private buildScrimClip(hover: Element | null, hoverRect: DOMRect | null): { path: string; count: number } | null {
+		const useHover = hover && !this.coveredByPin(hover) ? hover : null;
+		let rects: Rect[] = [];
+		if (useHover && hoverRect) rects.push(hoverRect);
+		for (const pin of this.pins) {
+			if (useHover && useHover !== pin.element && useHover.contains(pin.element)) continue; // Enclosed by the hover hole.
+			rects.push(pin.element.getBoundingClientRect());
 		}
-		// The layout viewport excludes any scrollbar, which is the coordinate space both the
-		// fixed inset:0 scrim and getBoundingClientRect live in, so the holes line up with it.
-		const w = document.documentElement.clientWidth;
-		const h = document.documentElement.clientHeight;
-		let d = `M0 0 H${w} V${h} H0 Z`;
+		if (rects.length === 0) return null;
+		const w = this.viewportW;
+		const h = this.viewportH;
+		if (anyOverlap(rects)) rects = unionRects(rects, w, h);
+		let path = `M0 0 H${w} V${h} H0 Z`;
+		let count = 0;
 		for (const r of rects) {
 			const x = Math.round(r.left);
 			const y = Math.round(r.top);
 			const x2 = Math.round(r.right);
 			const y2 = Math.round(r.bottom);
 			if (x2 <= 0 || y2 <= 0 || x >= w || y >= h || x2 <= x || y2 <= y) continue;
-			d += ` M${x} ${y} H${x2} V${y2} H${x} Z`;
+			path += ` M${x} ${y} H${x2} V${y2} H${x} Z`;
+			count++;
 		}
-		this.scrim.style.clipPath = `path(evenodd, "${d}")`;
+		return count === 0 ? null : { path, count };
+	}
+
+	/** Write a prebuilt clip to the scrim, snapping when the hole count changed. */
+	private applyScrimClip(clip: { path: string; count: number } | null): void {
+		if (!this.scrim) return;
+		if (!clip) {
+			this.scrim.style.display = 'none';
+			this.lastHoleCount = 0;
+			return;
+		}
+		// Only ease when the hole count is unchanged; a changed count is not interpolable and
+		// flashes, so snap it by dropping the clip-path from the transition for this update.
+		const snap = clip.count !== this.lastHoleCount;
+		this.lastHoleCount = clip.count;
+		this.scrim.style.transition = snap ? 'opacity 0.2s ease-out' : `clip-path ${SCRIM_EASE}, opacity 0.2s ease-out`;
+		this.scrim.style.clipPath = `path(evenodd, "${clip.path}")`;
 		this.scrim.style.opacity = '1';
 		this.scrim.style.display = 'block';
+	}
+
+	/** Cache the layout viewport size, refreshed on activate and on scroll/resize settle. */
+	private measureViewport(): void {
+		this.viewportW = document.documentElement.clientWidth;
+		this.viewportH = document.documentElement.clientHeight;
 	}
 
 	/** True when a pin already lights `el`, either it or an ancestor being pinned. */
@@ -346,15 +488,20 @@ export class ElementPicker {
 	/** Render `<tag#id.class> WxH` near the cursor, flipping at viewport edges. */
 	private label(el: Element, x: number, y: number): void {
 		if (!this.tooltip || this.rejecting) return;
-		const r = el.getBoundingClientRect();
-		const id = el.id ? `#${el.id}` : '';
-		const cls = Array.from(el.classList)
-			.filter((c) => !c.startsWith('snipcode'))
-			.slice(0, 3)
-			.map((c) => `.${c}`)
-			.join('');
-		this.tooltip.textContent = `<${el.tagName.toLowerCase()}${id}${cls}> ${Math.round(r.width)}×${Math.round(r.height)}`;
-		this.tooltip.style.display = 'block';
+		// The text only changes when the element does. Within one element the cursor still moves,
+		// so the tooltip is repositioned every call, but its string is not rebuilt or remeasured.
+		if (el !== this.labeledEl) {
+			const r = el.getBoundingClientRect();
+			const id = el.id ? `#${el.id}` : '';
+			const cls = Array.from(el.classList)
+				.filter((c) => !c.startsWith('snipcode'))
+				.slice(0, 3)
+				.map((c) => `.${c}`)
+				.join('');
+			this.tooltip.textContent = `<${el.tagName.toLowerCase()}${id}${cls}> ${Math.round(r.width)}×${Math.round(r.height)}`;
+			this.tooltip.style.display = 'block';
+			this.labeledEl = el;
+		}
 		const tr = this.tooltip.getBoundingClientRect();
 		let lx = x + 14;
 		let ly = y + 14;
@@ -435,6 +582,7 @@ export class ElementPicker {
 		if (this.overlay) this.overlay.style.opacity = '0';
 		if (this.tooltip) this.tooltip.style.opacity = '0';
 		if (this.scrim) this.scrim.style.opacity = '0';
+		this.guides.forEach((g) => (g.style.opacity = '0'));
 		// Pinned boxes are position:fixed, so a scroll leaves them behind their element.
 		// Fade them with the rest, then re-measure on settle rather than leaving them hidden,
 		// since the user still needs to see what is already pinned.
@@ -453,6 +601,7 @@ export class ElementPicker {
 		this.scrollTimer = window.setTimeout(() => {
 			this.scrolling = false;
 			this.scrollTimer = null;
+			this.measureViewport(); // A resize may have changed it; refresh once things settle.
 			this.repositionPins();
 			this.reacquire();
 		}, SCROLL_SETTLE);
@@ -465,15 +614,26 @@ export class ElementPicker {
 	private reacquire(): void {
 		if (!this.active || this.scrolling || this.capturing) return;
 		const el = document.elementFromPoint(this.lastX, this.lastY);
-		if (!el || el === this.overlay || el === this.tooltip || el === this.banner) return;
+		if (!el || el === this.overlay || el === this.tooltip || el === this.banner || this.guides.includes(el as HTMLDivElement)) return;
+		if (isPageRoot(el)) return; // Never re-target the whole page; see trackPointer.
 		this.leaf = el;
 		this.current = el;
 		this.climbed = false;
-		this.frame(el);
+		this.frame(el, true); // Snap into place: the page just jumped under the pointer.
 		this.label(el, this.lastX, this.lastY);
 	}
 
 	private readonly onClick = (e: MouseEvent): void => {
+		// Pointer moves are processed a frame late (see onMove), so a fast move-then-click could
+		// arrive before this.current caught up. Flush the pending resolution against the click
+		// point first, so the click always acts on the element actually under the cursor.
+		if (this.moveRaf !== null) {
+			cancelAnimationFrame(this.moveRaf);
+			this.moveRaf = null;
+		}
+		this.lastX = e.clientX;
+		this.lastY = e.clientY;
+		this.trackPointer();
 		if (!this.current) return;
 		// Swallow the click entirely so the host page never sees it.
 		e.preventDefault();
@@ -501,7 +661,11 @@ export class ElementPicker {
 			this.pins[existing]!.box.remove();
 			this.pins.splice(existing, 1);
 			this.renumberPins();
-			this.updateScrim(); // One fewer hole in the veil.
+			// Snap the scrim: a pin change reorders the holes (the toggled element crosses the
+			// pin/hover boundary), and animating that reordering shuffles every hole around even
+			// though nothing moved. The count-based snap misses it because the count often holds.
+			this.lastHoleCount = -1;
+			this.updateScrim();
 			return;
 		}
 		const conflict = this.conflictingPin(element);
@@ -514,7 +678,8 @@ export class ElementPicker {
 		this.pins.push(pin);
 		this.renumberPins();
 		this.positionPin(pin);
-		this.updateScrim(); // Cut a lasting hole for the new pin.
+		this.lastHoleCount = -1; // Snap, same reason as the unpin path above.
+		this.updateScrim();
 		this.queueCapture(pin);
 	}
 
@@ -552,6 +717,7 @@ export class ElementPicker {
 		this.rejecting = true;
 		this.tooltip.textContent = inside ? `Already inside selection ${number}` : `Contains selection ${number}`;
 		this.tooltip.style.display = 'block';
+		this.labeledEl = null; // The tooltip now holds the rejection text, so force a rebuild on restore.
 		if (this.rejectTimer !== null) window.clearTimeout(this.rejectTimer);
 		this.rejectTimer = window.setTimeout(() => {
 			this.rejectTimer = null;
@@ -719,6 +885,7 @@ export class ElementPicker {
 		if (this.tooltip) this.tooltip.style.display = 'none';
 		if (this.banner) this.banner.style.display = 'none';
 		if (this.scrim) this.scrim.style.display = 'none';
+		this.guides.forEach((g) => (g.style.display = 'none'));
 		this.pins.forEach((pin) => (pin.box.style.display = 'none'));
 	}
 
@@ -727,6 +894,7 @@ export class ElementPicker {
 		if (this.overlay && this.current) this.overlay.style.display = 'block';
 		if (this.tooltip && this.current) this.tooltip.style.display = 'block';
 		if (this.banner) this.banner.style.display = 'flex';
+		if (this.current) this.guides.forEach((g) => (g.style.display = 'block'));
 		this.pins.forEach((pin) => (pin.box.style.display = 'block'));
 		this.updateScrim(); // Redraw the veil and its holes, or hide it if nothing is lit.
 	}
@@ -844,6 +1012,75 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 		reader.onerror = () => reject(reader.error ?? new Error('read failed'));
 		reader.readAsDataURL(blob);
 	});
+}
+
+/** True for the document root or body, which fill the viewport and are never a snip target. */
+function isPageRoot(el: Element): boolean {
+	return el === document.body || el === document.documentElement;
+}
+
+/** The rectangle fields the scrim reads, satisfied by a DOMRect or a plain hole rect. */
+interface Rect {
+	left: number;
+	top: number;
+	right: number;
+	bottom: number;
+}
+
+/** True when two rectangles share any area. Touching edges do not count as overlap. */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+	return a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+}
+
+/** True when any pair among the rectangles overlaps. */
+export function anyOverlap(rects: Rect[]): boolean {
+	for (let i = 0; i < rects.length; i++) {
+		for (let j = i + 1; j < rects.length; j++) {
+			if (rectsOverlap(rects[i]!, rects[j]!)) return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Rebuild a set of possibly-overlapping rectangles into an equivalent set of non-overlapping
+ * ones covering the exact same area. Overlapping holes cannot be expressed as clip-path
+ * sub-paths without darkening their overlap, so the union is decomposed instead: the distinct
+ * edge coordinates split the plane into a grid, every cell that falls inside any input rect is
+ * kept, and each row's kept cells are merged into horizontal runs to keep the piece count low.
+ * The result tiles the union with disjoint rectangles, which clip cleanly.
+ *
+ * @param rects - the overlapping hole rectangles
+ * @param w - viewport width, the clamp bound for the grid
+ * @param h - viewport height, the clamp bound for the grid
+ * @returns disjoint rectangles whose union equals the input's, clamped to the viewport
+ */
+export function unionRects(rects: Rect[], w: number, h: number): Rect[] {
+	const clamp = (v: number, max: number): number => Math.min(max, Math.max(0, v));
+	const xs = [...new Set(rects.flatMap((r) => [clamp(r.left, w), clamp(r.right, w)]))].sort((a, b) => a - b);
+	const ys = [...new Set(rects.flatMap((r) => [clamp(r.top, h), clamp(r.bottom, h)]))].sort((a, b) => a - b);
+	const out: Rect[] = [];
+	for (let j = 0; j < ys.length - 1; j++) {
+		const top = ys[j]!;
+		const bottom = ys[j + 1]!;
+		if (bottom <= top) continue;
+		let runStart: number | null = null;
+		for (let i = 0; i < xs.length - 1; i++) {
+			const left = xs[i]!;
+			const right = xs[i + 1]!;
+			if (right <= left) continue;
+			const cx = (left + right) / 2;
+			const cy = (top + bottom) / 2;
+			const covered = rects.some((r) => cx > r.left && cx < r.right && cy > r.top && cy < r.bottom);
+			if (covered && runStart === null) runStart = left;
+			if (!covered && runStart !== null) {
+				out.push({ left: runStart, top, right: left, bottom });
+				runStart = null;
+			}
+		}
+		if (runStart !== null) out.push({ left: runStart, top, right: xs[xs.length - 1]!, bottom });
+	}
+	return out;
 }
 
 /** A uuid v4 for message correlation. crypto.randomUUID is available in mv3. */

@@ -194,13 +194,31 @@ test('the dimming veil keeps a hole for the hover and every pin', async () => {
 		});
 	assert.equal(await holesFor(), 1);
 
-	// Pin b and c, then move onto empty space: the veil keeps a hole per pin even with no hover.
+	// Pin b and c, then hover a, a sibling that contains neither: three distinct holes, so the
+	// pins stay lit while the pointer is on another element.
 	await shiftClick(page, AT.b);
 	await plainClick(page, AT.c);
-	await page.mouse.move(AT.empty.x, AT.empty.y);
-	await page.waitForFunction(() => window.__picker.current === null || window.__picker.pins.length === 2);
-	// The two pins stay lit whether or not an element is currently hovered.
-	assert.ok((await holesFor()) >= 2, 'pinned elements lost their holes in the veil');
+	await page.mouse.move(AT.a.x, AT.a.y);
+	await page.waitForFunction(() => window.__picker.current !== null);
+	assert.equal(await holesFor(), 3, 'pinned elements lost their holes in the veil');
+	await page.close();
+});
+
+test('hovering an ancestor of a pin merges its hole instead of blacking it out', async () => {
+	const page = await openPicker();
+	// Pin the nested button, then hover its containing card.
+	await shiftClick(page, AT.inner);
+	await page.mouse.move(AT.a.x, AT.a.y);
+	await page.waitForFunction(() => window.__picker.current !== null);
+
+	// The card's hole encloses the pinned button, so the two do not become separate holes that
+	// would cancel under the even-odd rule and darken the button. One hole lights the whole card.
+	const holes = await page.evaluate(() => {
+		const clip = document.getElementById('snipcode-scrim').style.clipPath;
+		return Math.max(0, (clip.match(/M/g) || []).length - 1);
+	});
+	assert.equal(holes, 1, 'the ancestor hover and the pin should merge into one hole');
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 1);
 	await page.close();
 });
 
