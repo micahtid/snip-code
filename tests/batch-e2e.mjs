@@ -81,9 +81,9 @@ const AT = { one: { x: 140, y: 100 }, two: { x: 400, y: 100 }, three: { x: 660, 
 
 /**
  * Run one multi-select snip: open the fixture, start the picker the way the panel does, pin
- * each point in order, release shift, and wait for the batch result.
+ * each point in order, press enter, and wait for the batch result.
  *
- * @param points - the fixture points to shift-pin, in pin order
+ * @param points - the fixture points to pin, in pin order
  * @returns every panel-bound message the worker saw, newest run last
  */
 async function runBatch(points) {
@@ -100,13 +100,19 @@ async function runBatch(points) {
 	// node rather than for visibility.
 	await page.waitForSelector('#snipcode-overlay', { state: 'attached' });
 
+	// The first click is shift-held to latch multi-select on. Every one after it is plain,
+	// which is the whole point of latching: shift never has to stay down.
 	await page.keyboard.down('Shift');
-	for (const at of points) {
+	await page.mouse.move(points[0].x, points[0].y);
+	await page.mouse.click(points[0].x, points[0].y);
+	await page.keyboard.up('Shift');
+	await page.waitForTimeout(300); // Let the pin's screenshot capture finish
+	for (const at of points.slice(1)) {
 		await page.mouse.move(at.x, at.y);
 		await page.mouse.click(at.x, at.y);
-		await page.waitForTimeout(300); // Let the pin's screenshot capture finish
+		await page.waitForTimeout(300);
 	}
-	await page.keyboard.up('Shift');
+	await page.keyboard.press('Enter');
 
 	// The overlay tears down as soon as the selection finishes, before the pipeline runs.
 	await page.waitForFunction(() => document.getElementById('snipcode-overlay') === null);

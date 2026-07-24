@@ -16,6 +16,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
 	plugins: [react()],
+	// Stamp a per-build id so storage can reset the shift hint on every fresh build.
+	define: { __BUILD_ID__: JSON.stringify(String(Date.now())) },
 	// public/ is the default static dir; manifest.json + background.js + icons
 	// + preview.* Live there and are copied to dist/ untouched.
 	publicDir: 'public',

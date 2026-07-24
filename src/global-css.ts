@@ -220,7 +220,7 @@ body {
 	align-items: center;
 	gap: 10px;
 	width: 100%;
-	margin-bottom: 8px;
+	margin-bottom: 4px;
 	padding: 8px;
 	border: 1px solid ${SURFACE.border};
 	border-radius: ${RADIUS.lg}px;
@@ -250,9 +250,13 @@ body {
 	transition: transform 0.15s ${EASE_UI};
 }
 .sc-history-hit:active { transform: scale(0.98); }
-/* The section heading above each history group, with its live count. */
+/* The section heading above each history group, with its live count. The top margin is
+   what separates Saved from History: cards carry a 4px bottom margin, and adjacent margins
+   collapse, so the larger of the two wins and the break is this value. It has to stay well
+   clear of the card gap or the sections stop reading as sections. The first heading zeroes
+   it so the list does not start pushed down. */
 .sc-section-title {
-	margin: 4px 0 6px;
+	margin: 18px 0 6px;
 	font-family: ${FONT_UI};
 	font-size: 11px;
 	font-weight: 600;
@@ -260,6 +264,7 @@ body {
 	text-transform: uppercase;
 	color: ${COLORS.slate500};
 }
+.sc-section-title:first-child { margin-top: 0; }
 /* Fixed-size preview box on the card's left: font sample, color swatch, or thumbnail. */
 .sc-inspect-preview {
 	display: inline-flex;
@@ -311,11 +316,12 @@ body {
 	color: ${COLORS.slate500};
 	cursor: pointer;
 	white-space: nowrap;
-	border-bottom: 2px solid transparent;
-	transition: color 0.15s ${EASE_UI}, border-color 0.15s ${EASE_UI};
+	transition: color 0.15s ${EASE_UI};
 }
 .sc-tab:hover { color: ${COLORS.slate700}; }
-.sc-tab-active { color: ${COLORS.slate900}; border-bottom-color: ${COLORS.slate900}; }
+/* Active tab is marked by a darker text color only, no underline. */
+.sc-tab-active { color: ${COLORS.slate900}; }
+
 
 /* ---- Icon buttons for copy, save, more, overflow. ---- */
 .sc-icon-btn {

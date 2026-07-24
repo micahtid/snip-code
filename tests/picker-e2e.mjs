@@ -125,6 +125,14 @@ async function shiftClick(page, at) {
 	await page.keyboard.down('Shift');
 	await page.mouse.move(at.x, at.y);
 	await page.mouse.click(at.x, at.y);
+	await page.keyboard.up('Shift');
+	await page.waitForFunction(() => window.__picker.pins.every((pin) => pin.screenshot !== ''));
+}
+
+/** Click a fixture point with no modifier, which pins once multi-select has latched. */
+async function plainClick(page, at) {
+	await page.mouse.move(at.x, at.y);
+	await page.mouse.click(at.x, at.y);
 	await page.waitForFunction(() => window.__picker.pins.every((pin) => pin.screenshot !== ''));
 }
 
@@ -148,16 +156,20 @@ test('a plain click still snips one element', async () => {
 	await page.close();
 });
 
-test('shift-click pins instead of snipping, and releasing shift ships the batch in pin order', async () => {
+test('shift-click latches multi-select, and enter ships the batch in pin order', async () => {
 	const page = await openPicker();
 	await shiftClick(page, AT.b);
-	await shiftClick(page, AT.c);
+	// Shift is released between the two, so the second click pins purely because the mode is
+	// latched. This is what lets the user scroll, which shift plus wheel would otherwise steal.
+	await plainClick(page, AT.c);
 
 	// Still selecting: nothing has been snipped and both pins are outlined and numbered.
 	assert.deepEqual(await page.evaluate(() => window.__events.selected), []);
 	assert.deepEqual(await badges(page), ['1', '2']);
+	// The indicator names the mode, since no held key signals it any more.
+	assert.match(await page.textContent('#snipcode-multiselect'), /Multi-Select On · 2 Selected/);
 
-	await page.keyboard.up('Shift');
+	await page.keyboard.press('Enter');
 	await page.waitForFunction(() => window.__events.many !== null);
 	const many = await page.evaluate(() => window.__events.many);
 	assert.deepEqual(many.map((p) => p.id), ['b', 'c']);
@@ -169,66 +181,207 @@ test('shift-click pins instead of snipping, and releasing shift ships the batch 
 	await page.close();
 });
 
+test('the dimming veil keeps a hole for the hover and every pin', async () => {
+	const page = await openPicker();
+	// One hovered element, no pins yet: the veil has a single hole.
+	await page.mouse.move(AT.a.x, AT.a.y);
+	await page.waitForFunction(() => document.getElementById('snipcode-scrim')?.style.display === 'block');
+	const holesFor = () =>
+		page.evaluate(() => {
+			// The clip path is one outer rect plus one sub-path per hole; count the extra moves.
+			const clip = document.getElementById('snipcode-scrim').style.clipPath;
+			return Math.max(0, (clip.match(/M/g) || []).length - 1);
+		});
+	assert.equal(await holesFor(), 1);
+
+	// Pin b and c, then move onto empty space: the veil keeps a hole per pin even with no hover.
+	await shiftClick(page, AT.b);
+	await plainClick(page, AT.c);
+	await page.mouse.move(AT.empty.x, AT.empty.y);
+	await page.waitForFunction(() => window.__picker.current === null || window.__picker.pins.length === 2);
+	// The two pins stay lit whether or not an element is currently hovered.
+	assert.ok((await holesFor()) >= 2, 'pinned elements lost their holes in the veil');
+	await page.close();
+});
+
 test('every pin is captured with the picker chrome hidden', async () => {
 	const page = await openPicker();
 	await shiftClick(page, AT.b);
 	await shiftClick(page, AT.c);
 	const visible = await page.evaluate(() => window.__chromeVisibleAtCapture);
 	assert.equal(visible.length, 2);
-	assert.deepEqual(visible, [0, 0]); // No overlay, guide, tooltip, or pin box on screen
+	assert.deepEqual(visible, [0, 0]); // No overlay, scrim, tooltip, or pin box on screen
 	await page.close();
 });
 
-test('shift-clicking a pinned element unpins it and the badges re-flow', async () => {
+test('clicking a pinned element unpins it and the badges re-flow', async () => {
 	const page = await openPicker();
 	await shiftClick(page, AT.b);
-	await shiftClick(page, AT.c);
-	await shiftClick(page, AT.b); // Toggle the first pin back off
+	await plainClick(page, AT.c);
+	await plainClick(page, AT.b); // Toggle the first pin back off
 	assert.deepEqual(await badges(page), ['1']);
 	assert.deepEqual(await page.evaluate(() => window.__picker.pins.map((p) => p.element.id)), ['c']);
 
-	await page.keyboard.up('Shift');
+	await page.keyboard.press('Enter');
 	await page.waitForFunction(() => window.__events.many !== null);
 	assert.deepEqual(await page.evaluate(() => window.__events.many.map((p) => p.id)), ['c']);
 	await page.close();
 });
 
-test('releasing shift with no pins leaves single-click mode running', async () => {
+test('unpinning the last element keeps the mode on, and shift then exits it', async () => {
 	const page = await openPicker();
-	await page.keyboard.down('Shift');
+	await shiftClick(page, AT.b);
+	await plainClick(page, AT.b); // Toggle the only pin back off
+
+	// The mode was entered on purpose, so emptying it is not the same as leaving it.
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 0);
+	assert.ok(await page.evaluate(() => document.getElementById('snipcode-multiselect') !== null));
+
+	await page.keyboard.press('Shift');
+	await page.waitForFunction(() => document.getElementById('snipcode-multiselect') === null);
+	await page.mouse.click(AT.c.x, AT.c.y);
+	await page.waitForFunction(() => window.__events.selected.length === 1);
+	assert.equal(await page.evaluate(() => window.__events.selected[0].id), 'c');
+	await page.close();
+});
+
+test('pressing shift again while nothing is selected leaves multi-select', async () => {
+	const page = await openPicker();
 	await page.mouse.move(AT.b.x, AT.b.y);
-	await page.keyboard.up('Shift');
-	await page.mouse.move(AT.b.x + 2, AT.b.y);
+	await page.keyboard.press('Shift');
+	await page.waitForSelector('#snipcode-multiselect');
+	await page.keyboard.press('Shift');
+	await page.waitForFunction(() => document.getElementById('snipcode-multiselect') === null);
 
-	assert.equal(await page.evaluate(() => window.__events.many), null);
-	assert.ok(await page.evaluate(() => document.getElementById('snipcode-overlay') !== null));
-
-	// The picker is still live, so a plain click snips as usual.
+	// Back in single-click mode, so a plain click snips as usual.
 	await page.mouse.click(AT.b.x, AT.b.y);
 	await page.waitForFunction(() => window.__events.selected.length === 1);
 	assert.equal(await page.evaluate(() => window.__events.selected[0].id), 'b');
 	await page.close();
 });
 
-test('nested pins are allowed, a parent and its child both ship', async () => {
+test('shift keeps the mode on once something is selected', async () => {
+	const page = await openPicker();
+	await shiftClick(page, AT.b);
+	await page.keyboard.press('Shift'); // Would exit, but a collection is under way.
+
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 1);
+	assert.ok(await page.evaluate(() => document.getElementById('snipcode-multiselect') !== null));
+	// Still collecting, so the next plain click pins rather than snipping.
+	await plainClick(page, AT.c);
+	assert.deepEqual(await badges(page), ['1', '2']);
+	assert.deepEqual(await page.evaluate(() => window.__events.selected), []);
+	await page.close();
+});
+
+test('shift turns multi-select on before any click', async () => {
+	const page = await openPicker();
+	await page.mouse.move(AT.b.x, AT.b.y);
+	await page.keyboard.press('Shift');
+	// The mode is on from the key alone, so a plain click after it pins rather than snipping.
+	await page.waitForSelector('#snipcode-multiselect');
+	// The count shows from the key press, at zero, so the mode is visibly on before any pick.
+	assert.match(await page.textContent('#snipcode-multiselect'), /Multi-Select On · 0 Selected/);
+
+	await plainClick(page, AT.b);
+	assert.match(await page.textContent('#snipcode-multiselect'), /Multi-Select On · 1 Selected · Enter to Snip/);
+	assert.deepEqual(await badges(page), ['1']);
+	assert.deepEqual(await page.evaluate(() => window.__events.selected), []);
+	await page.close();
+});
+
+test('toggleMulti drives the mode the same as a page-side shift', async () => {
+	// This is the public method the panel-forwarded TOGGLE_MULTI message invokes, for a shift
+	// pressed while the side panel still holds focus, before any pin has moved it to the page.
+	const page = await openPicker();
+	await page.mouse.move(AT.b.x, AT.b.y);
+	await page.evaluate(() => window.__picker.toggleMulti());
+	await page.waitForSelector('#snipcode-multiselect');
+
+	// On now: a plain click pins rather than snips.
+	await plainClick(page, AT.b);
+	assert.deepEqual(await badges(page), ['1']);
+
+	// A pin is down, so toggleMulti must not throw the collection away.
+	await page.evaluate(() => window.__picker.toggleMulti());
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 1);
+	assert.ok(await page.evaluate(() => document.getElementById('snipcode-multiselect') !== null));
+	await page.close();
+});
+
+test('the badge stays glued to the corner and clips off with it, never sliding to fit', async () => {
+	const page = await openPicker();
+	await page.evaluate(() => (document.body.style.height = '2000px'));
+	await shiftClick(page, AT.b);
+	const before = await page.evaluate(() => window.__picker.pins[0].box.style.transform);
+	// Scroll the card's top edge above the viewport. Its top left corner is now off screen.
+	await page.evaluate(() => window.scrollTo(0, 120));
+	// Wait for the settle to re-measure the box, not just for opacity, which is still 1 from the
+	// initial pin until the scroll fade fires a tick later.
+	await page.waitForFunction(
+		(prev) => window.__picker.pins[0].box.style.transform !== prev && window.__picker.pins[0].box.style.opacity === '1',
+		before,
+		{ timeout: 3000 },
+	);
+
+	const pos = await page.evaluate(() => {
+		const badge = window.__picker.pins[0].badge.getBoundingClientRect();
+		const el = window.__picker.pins[0].element.getBoundingClientRect();
+		return { badgeTop: badge.top, badgeLeft: badge.left, elTop: el.top, elLeft: el.left };
+	});
+	// The badge sits just above-left of the corner, so it tracks it off screen rather than
+	// clamping to y=0 to stay visible. Its top is near the element's top, which is negative.
+	assert.ok(pos.elTop < 0, `precondition: element top ${pos.elTop} should be above the viewport`);
+	assert.ok(pos.badgeTop < 0, `badge clamped to stay on screen (top ${pos.badgeTop}) instead of tracking the corner`);
+	assert.ok(Math.abs(pos.badgeTop - pos.elTop) < 20, 'badge drifted away from the corner it marks');
+	await page.close();
+});
+
+test('the highlight re-targets itself after a scroll, with no mouse move', async () => {
+	const page = await openPicker();
+	await page.evaluate(() => (document.body.style.height = '2000px'));
+	// Park the cursor over card b, then scroll card c under it without moving the mouse.
+	await page.mouse.move(AT.b.x, AT.b.y);
+	await page.waitForFunction(() => window.__picker.current?.id === 'b');
+	await page.evaluate(() => window.scrollTo(0, 100));
+
+	// The picker settles, then re-hit-tests under the stationary cursor 750ms after the scroll.
+	await page.waitForFunction(() => window.__picker.current !== null && window.__picker.overlay.style.opacity === '1', null, { timeout: 5000 });
+	await page.close();
+});
+
+test('a pin that wraps an existing pin is refused', async () => {
 	const page = await openPicker();
 	await shiftClick(page, AT.inner); // The nested button
-	await page.keyboard.down('Shift');
 	await page.mouse.move(AT.a.x, AT.a.y);
-	// The cursor sits over the card itself here, not the nested button, so this pins the card.
+	// The cursor sits over the card itself here, so this would pin a wrapper of pin 1.
 	await page.mouse.click(AT.a.x, AT.a.y);
-	await page.waitForFunction(() => window.__picker.pins.length === 2 && window.__picker.pins.every((p) => p.screenshot !== ''));
 
-	await page.keyboard.up('Shift');
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 1);
+	assert.equal(await page.evaluate(() => document.getElementById('snipcode-tooltip').textContent), 'Contains selection 1');
+
+	// The rejection never ends the batch: the one good pin still ships on enter.
+	await page.keyboard.press('Enter');
 	await page.waitForFunction(() => window.__events.many !== null);
-	assert.deepEqual(await page.evaluate(() => window.__events.many.map((p) => p.id)), ['inner', 'a']);
+	assert.deepEqual(await page.evaluate(() => window.__events.many.map((p) => p.id)), ['inner']);
+	await page.close();
+});
+
+test('a pin nested inside an existing pin is refused', async () => {
+	const page = await openPicker();
+	await shiftClick(page, AT.a); // The card
+	await page.mouse.move(AT.inner.x, AT.inner.y);
+	await page.mouse.click(AT.inner.x, AT.inner.y);
+
+	assert.equal(await page.evaluate(() => window.__picker.pins.length), 1);
+	assert.equal(await page.evaluate(() => document.getElementById('snipcode-tooltip').textContent), 'Already inside selection 1');
 	await page.close();
 });
 
 test('esc cancels the whole selection, pins included', async () => {
 	const page = await openPicker();
 	await shiftClick(page, AT.b);
-	await shiftClick(page, AT.c);
+	await plainClick(page, AT.c);
 	await page.keyboard.press('Escape');
 
 	assert.equal(await page.evaluate(() => window.__events.cancelled), 1);

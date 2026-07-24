@@ -72,7 +72,7 @@ import { buildAssistiveJson, deliver } from './assistive/emit';
 import { getPrefs, storeSnippet } from '../utils/storage';
 import { DEFAULT_MODELS } from '../utils/byok';
 import type { Provider } from './types';
-import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, PICKER_SELECTED, SNIP_PROGRESS, SNIP_RESULT } from './types';
+import { START_SCAN, INSPECT_RESULT, START_PICKER, CANCEL_PICKER, TOGGLE_MULTI, PICKER_SELECTED, PICKER_CANCELLED, SNIP_PROGRESS, SNIP_RESULT } from './types';
 import type { InspectResult, ScanKind } from './inspect/types';
 import { extractPageFonts } from './inspect/fonts';
 import { extractPageAssets } from './inspect/assets';
@@ -587,6 +587,10 @@ function startPicker(mode: 'snip' | 'assistive'): void {
 		},
 		onCancel: () => {
 			activePicker = null;
+			// Esc pressed with the page focused, which happens once a pin has moved focus off
+			// the panel. The panel cannot hear that keystroke, so tell it to leave the
+			// "Selecting" state. A closed panel is fine, hence the swallowed catch.
+			chrome.runtime.sendMessage({ type: PICKER_CANCELLED }).catch(() => {});
 		},
 	});
 	activePicker.activate();
@@ -613,6 +617,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, _sendResponse) 
 		// picking state, so no onCancel callback is needed here.
 		activePicker?.deactivate();
 		activePicker = null;
+	} else if (type === TOGGLE_MULTI) {
+		// Panel-side shift: the page cannot hear the key while the panel holds focus, so the
+		// panel forwards it here. Ignored when no picker is live.
+		activePicker?.toggleMulti();
 	}
 	// No async response from the picker path, so keep the channel synchronous.
 	return false;

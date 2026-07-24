@@ -186,8 +186,12 @@ export const INSPECT_RESULT = 'INSPECT_RESULT';
 export const START_PICKER = 'SNIPCODE_START_PICKER';
 /** The panel asks the content script to tear the picker overlay down on panel-side esc. */
 export const CANCEL_PICKER = 'SNIPCODE_CANCEL_PICKER';
+/** The panel asks the content script to toggle multi-select, for shift pressed with panel focus. */
+export const TOGGLE_MULTI = 'SNIPCODE_TOGGLE_MULTI';
 /** The content script tells the panel an element was picked, so the pipeline is now running. */
 export const PICKER_SELECTED = 'SNIPCODE_PICKER_SELECTED';
+/** The content script tells the panel the picker was cancelled page-side, so it can reset. */
+export const PICKER_CANCELLED = 'SNIPCODE_PICKER_CANCELLED';
 /** Carries a finished snip result from the content script back to the panel. */
 export const SNIP_RESULT = 'SNIP_RESULT';
 /** Reports batch progress during a multi-select snip, so the panel label can count elements. */
@@ -237,14 +241,15 @@ export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google';
 export type OutputFormat = 'tailwind' | 'bem-css' | 'bem-scss' | 'jsx-tailwind' | 'jsx-css' | 'vue' | 'html';
 
 /**
- * One file in a split snip result: the index.html document plus the inline svgs,
- * data-uri images, and @font-face fonts lifted out into their own referenced files
- * (convert/assets.ts). Text files (html/svg/json) carry `text`. Binary files (images and
- * fonts) carry the original `dataUrl` so the panel can render or download them.
+ * One file in a split snip result: the index.html document plus its stylesheet, the inline
+ * svgs, the data-uri images, and the @font-face fonts lifted out into their own referenced
+ * files (convert/assets.ts). A format that never goes through that split, jsx or vue, is one
+ * file named for the format. Text files carry `text`. Binary files (images and fonts) carry
+ * the original `dataUrl` so the panel can render or download them.
  */
 export interface AssetFile {
-	name: string; // 'index.html', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
-	language: 'html' | 'svg' | 'image' | 'json' | 'font';
+	name: string; // 'index.html', 'styles.css', 'icon-1.svg', 'image-1.png', 'font-1.woff2'
+	language: 'html' | 'css' | 'svg' | 'image' | 'json' | 'font' | 'jsx' | 'vue';
 	text?: string; // Source for text files
 	dataUrl?: string; // Original data: url for binary files (images, fonts)
 }

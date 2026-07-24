@@ -29,6 +29,9 @@ export async function load(relPath) {
 		target: 'es2022',
 		write: false,
 		logLevel: 'silent',
+		// The bundles reference __BUILD_ID__, a vite-injected constant absent under the test
+		// bundler; a stable literal stands in so the reset-on-new-build path is inert in tests.
+		define: { __BUILD_ID__: JSON.stringify('test') },
 	});
 	const code = built.outputFiles[0].text;
 	return await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);

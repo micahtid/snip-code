@@ -21,8 +21,8 @@
  * picks and extraction for scans. This component owns only the mode and menu state.
  *
  * The main button's label doubles as the pick's status line: it names the active mode when
- * idle, hints at shift-click multi-select and esc while an element is being chosen, and
- * counts a multi-select batch element by element from the progress App passes down.
+ * idle, hints at esc while an element is being chosen, and counts a multi-select batch
+ * element by element from the progress App passes down.
  */
 import { Fragment, useState } from 'react';
 import { Check, ChevronUp } from 'lucide-react';
@@ -126,14 +126,14 @@ export function Picker({ mode, onModeChange, picking, processing, progress, onPi
 	// While a pick is in flight the label shows its phase: the cancellable "Selecting" hint until
 	// an element is picked, then "Snipping" once the pipeline is running and cancelling no longer
 	// applies. A multi-select batch counts its elements there instead, so a long run of several
-	// snips reads as progress rather than as a hang. The selecting hint names shift-click, since
-	// multi-select is otherwise undiscoverable.
+	// snips reads as progress rather than as a hang. Multi-select is taught by the panel's shift
+	// banner instead, so the label carries only the cancel hint.
 	const mainLabel = picking
 		? processing
 			? progress
 				? `Snipping ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
 				: 'Snipping…'
-			: 'Selecting… (Shift-Click for Multi, Esc to Cancel)'
+			: 'Selecting… (Esc to Cancel)'
 		: scanning
 			? 'Scanning…'
 			: active.action;

@@ -100,6 +100,25 @@ test('a single snip renders its code and an unsaved bookmark', async () => {
 	await page.close();
 });
 
+test('a single snip shows one file row and no component pills', async () => {
+	const page = await openPanel();
+	await shipResult(page, {
+		...single('id-1'),
+		files: [
+			{ name: 'index.html', language: 'html', text: '<p>one</p>' },
+			{ name: 'styles.css', language: 'css', text: 'p{color:red}' },
+			{ name: 'icon-1.svg', language: 'svg', text: '<svg/>' },
+		],
+	});
+
+	// Every file is a tab of the same kind: a stylesheet is not more of a file than an icon.
+	assert.deepEqual(await page.locator('[role="tab"]').allTextContents(), ['index.html', 'styles.css', 'icon-1.svg']);
+	assert.equal(await page.locator('[aria-label="Components"]').count(), 0);
+	await page.click('text=styles.css');
+	await page.waitForFunction(() => document.querySelector('pre code').textContent.includes('color:red'));
+	await page.close();
+});
+
 test('the bookmark toggles the stored saved flag both ways', async () => {
 	const page = await openPanel([record('id-1', 'Example')]);
 	await shipResult(page, single('id-1'));
@@ -116,7 +135,7 @@ test('the bookmark toggles the stored saved flag both ways', async () => {
 	await page.close();
 });
 
-test('a batch renders folder-style tabs over every component', async () => {
+test('a batch renders component pills over each component file row', async () => {
 	const page = await openPanel();
 	await shipResult(page, {
 		mode: 'snip',
@@ -133,10 +152,15 @@ test('a batch renders folder-style tabs over every component', async () => {
 		],
 	});
 
+	// Two tiers: the component tabs, then the active component's own files.
 	const labels = await page.locator('[role="tab"]').allTextContents();
-	assert.deepEqual(labels, ['component-1/index.html', 'component-1/icon-1.svg', 'component-2/index.html', 'component-2/icon-1.svg']);
-	// Same-named files across components stay distinct, which flat file-name keys would break.
+	assert.deepEqual(labels, ['component-1', 'component-2', 'index.html', 'icon-1.svg']);
 	assert.match(await page.textContent('pre code'), /<p>a<\/p>/);
+
+	// Switching component lands on its html file, not on whichever index was active before.
+	await page.click('text=component-2');
+	await page.waitForFunction(() => document.querySelector('pre code').textContent.includes('<p>b</p>'));
+	// Same-named files across components stay distinct, which one flat file list would break.
 	await page.locator('[role="tab"]').nth(3).click();
 	await page.waitForFunction(() => document.querySelector('pre code').textContent.includes('svg id="b"'));
 	// The batch warning about the skipped element is surfaced, no new error ui.

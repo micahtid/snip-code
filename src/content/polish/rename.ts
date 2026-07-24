@@ -104,7 +104,8 @@ export function applyTags(html: string, tagMap: Record<string, string>): string 
 export function applyComments(css: string, comments: Record<string, string>): string {
 	let out = css;
 	for (const [selector, text] of Object.entries(comments)) {
-		const clean = String(text).replace(/\*\//g, '').replace(/[\r\n]+/g, ' ').trim();
+		const sanitized = String(text).replace(/\*\//g, '').replace(/[\r\n]+/g, ' ').trim();
+		const clean = normalizeComment(sanitized);
 		if (!clean || !selector.trim()) continue;
 		const re = new RegExp(`(^|\\n)(${escapeRegExp(selector.trim())}\\s*\\{)`, '');
 		// Insert via a replacer so a `$` sequence in the model's comment is written literally
@@ -112,6 +113,25 @@ export function applyComments(css: string, comments: Record<string, string>): st
 		out = out.replace(re, (_m, before, rule) => `${before}/* ${clean} */\n${rule}`);
 	}
 	return out;
+}
+
+/**
+ * Normalizes one grouping comment to the house format: a capitalized noun phrase with no
+ * leading article and no trailing punctuation. The prompt asks for this shape, but the model
+ * drifts, so the format is enforced here rather than trusted. The article is dropped before
+ * the first character is cased, so "the product card" becomes "Product card" rather than
+ * "The product card". Only the first character is touched, so acronyms and proper nouns
+ * survive intact.
+ *
+ * @param text - the raw comment text from the model
+ * @returns the normalized comment, or an empty string if nothing is left
+ */
+export function normalizeComment(text: string): string {
+	let out = String(text).replace(/\s+/g, ' ').trim();
+	out = out.replace(/[.!:]+$/, '').trim();
+	out = out.replace(/^(?:the|an|a)\s+/i, '').trim();
+	if (!out) return '';
+	return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
 /** Only rename plain class tokens; reject anything that could break a selector. */

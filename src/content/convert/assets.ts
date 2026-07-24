@@ -50,9 +50,13 @@ const DATA_IMG_URL = /url\(\s*(["']?)(data:image\/[^"')]+)\1\s*\)/gi;
  * failure the document is returned whole as the only file, so the panel always has
  * something to show.
  *
+ * The document's inline stylesheet is lifted out last, into styles.css referenced by a
+ * <link>, so the css a user reads is a file of its own rather than a block buried in the
+ * markup. It runs last because the earlier passes rewrite url() references inside it.
+ *
  * @param documentHtml - the self-contained html-shaped output
  * @param warnings - appended to if the split is skipped
- * @returns index.html first, then the extracted svg/image files in encounter order
+ * @returns index.html, then styles.css, then the extracted svg/image files in encounter order
  */
 export function splitAssets(documentHtml: string, warnings: string[]): AssetFile[] {
 	try {
@@ -93,11 +97,44 @@ export function splitAssets(documentHtml: string, warnings: string[]): AssetFile
 			register(assets, fileByContent, dataUrl, () => `font-${++fontCount}.${ext}`, 'font', { dataUrl }),
 		);
 
-		return [{ name: 'index.html', language: 'html', text: html }, ...assets];
+		const { html: linked, css } = splitStylesheet(html, warnings);
+		const index: AssetFile = { name: 'index.html', language: 'html', text: linked };
+		const sheet: AssetFile[] = css === null ? [] : [{ name: STYLESHEET_NAME, language: 'css', text: css }];
+		return [index, ...sheet, ...assets];
 	} catch (err) {
 		warnings.push(`asset split skipped: ${(err as Error).message}`);
 		return [{ name: 'index.html', language: 'html', text: documentHtml }];
 	}
+}
+
+/** The lifted stylesheet's file name, referenced relatively so it resolves beside index.html. */
+const STYLESHEET_NAME = 'styles.css';
+
+/** The document's single inline stylesheet, captured with its contents. */
+const STYLE_BLOCK = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
+
+/**
+ * Lifts the document's one inline <style> block into a separate stylesheet, leaving a <link>
+ * in its place. The pipeline composes exactly one style block, so anything else means the
+ * document is not the shape this understands and is left whole rather than half-rewritten,
+ * matching how the asset split degrades. The self-contained document the caller keeps for
+ * preview and grading is untouched: only the delivered file set is rewritten here.
+ *
+ * @param html - the document, already asset-split
+ * @param warnings - appended to when the lift is skipped
+ * @returns the linked document, and the lifted css, or null when nothing was lifted
+ */
+function splitStylesheet(html: string, warnings: string[]): { html: string; css: string | null } {
+	const blocks = [...html.matchAll(STYLE_BLOCK)];
+	if (blocks.length !== 1) {
+		if (blocks.length > 1) warnings.push('stylesheet split skipped: the document has more than one style block');
+		return { html, css: null };
+	}
+	const block = blocks[0]!;
+	const css = (block[1] ?? '').trim();
+	if (!css) return { html, css: null };
+	const linked = html.slice(0, block.index) + `<link rel="stylesheet" href="${STYLESHEET_NAME}">` + html.slice(block.index + block[0].length);
+	return { html: linked, css: `${css}\n` };
 }
 
 /** Records an asset, deduped by content, and returns the filename to reference it by. */

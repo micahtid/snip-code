@@ -36,4 +36,10 @@ export function ViewLayout({ children, footer, fill = false }: ViewLayoutProps) 
 	);
 }
 
-const scrollFill: React.CSSProperties = { ...LAYOUT.scroll, display: 'flex', flexDirection: 'column' };
+/**
+ * The filling variant, used by the capture view. The top padding is small so the first row
+ * below the nav, the shift banner or the code block, sits close under it; the banner adds its
+ * own bottom margin to balance the gap the nav padding leaves above it. The bottom keeps the
+ * full 14px: the footer's own 12px sits below its top border, not between the border and the card.
+ */
+const scrollFill: React.CSSProperties = { ...LAYOUT.scroll, display: 'flex', flexDirection: 'column', paddingTop: '4px' };

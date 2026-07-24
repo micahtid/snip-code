@@ -14,6 +14,11 @@ import type { Provider, SnippetRecord, UserPreferences } from '../content/types'
 const PREFS_KEY = 'preferences';
 const SNIPPETS_KEY = 'snippets';
 const SNIPPET_CAP = 50; // Last 50 unsaved, fifo. Saved records are exempt.
+const SHIFT_BANNER_KEY = 'shiftBannerDismissed';
+const SHIFT_BANNER_OPENS_KEY = 'shiftBannerOpens';
+const SHIFT_BANNER_BUILD_KEY = 'shiftBannerBuild';
+/** How many panel opens the shift hint gets before it retires itself. */
+const SHIFT_BANNER_OPENS = 10;
 const byokKey = (provider: Provider): string => `byok.${provider}`;
 
 /** The default preferences, applied when nothing is stored yet. */
@@ -47,6 +52,42 @@ export async function getKey(provider: Provider): Promise<string> {
 /** Store a provider's byok key under chrome.storage.local, never sync. */
 export async function setKey(provider: Provider, key: string): Promise<void> {
 	await chrome.storage.local.set({ [byokKey(provider)]: key });
+}
+
+/**
+ * Count this panel open and report whether the shift multi-select hint still shows.
+ *
+ * The hint gets the first ten opens and then retires itself, which is long enough for the
+ * gesture to stick without nagging anyone who already has it. Closing it is the other way
+ * out and is permanent. A fresh build resets both the count and any dismissal, keyed off the
+ * per-build __BUILD_ID__ constant, so development sees the hint again after each rebuild
+ * without clearing storage by hand; in a shipped build the id is stable, so this never fires.
+ * Counting here keeps every read and write of the budget in this module, and the counter
+ * stops incrementing once the hint is done so the stored number cannot grow without bound.
+ *
+ * @returns whether to render the hint for this open
+ */
+export async function claimShiftBannerOpen(): Promise<boolean> {
+	const build = await chrome.storage.local.get(SHIFT_BANNER_BUILD_KEY);
+	if ((build[SHIFT_BANNER_BUILD_KEY] as string | undefined) !== __BUILD_ID__) {
+		await chrome.storage.local.set({ [SHIFT_BANNER_BUILD_KEY]: __BUILD_ID__, [SHIFT_BANNER_KEY]: false, [SHIFT_BANNER_OPENS_KEY]: 0 });
+	}
+	const dismissed = await chrome.storage.local.get(SHIFT_BANNER_KEY);
+	if ((dismissed[SHIFT_BANNER_KEY] as boolean | undefined) === true) return false;
+	const stored = await chrome.storage.local.get(SHIFT_BANNER_OPENS_KEY);
+	const opens = ((stored[SHIFT_BANNER_OPENS_KEY] as number | undefined) ?? 0) + 1;
+	if (opens > SHIFT_BANNER_OPENS) {
+		// Budget spent. Write the dismissal instead, so later opens short-circuit on one read.
+		await chrome.storage.local.set({ [SHIFT_BANNER_KEY]: true });
+		return false;
+	}
+	await chrome.storage.local.set({ [SHIFT_BANNER_OPENS_KEY]: opens });
+	return true;
+}
+
+/** Retire the shift multi-select hint permanently. */
+export async function dismissShiftBanner(): Promise<void> {
+	await chrome.storage.local.set({ [SHIFT_BANNER_KEY]: true });
 }
 
 /** Read the saved snippets, oldest first. */

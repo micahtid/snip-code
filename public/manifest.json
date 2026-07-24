@@ -37,7 +37,7 @@
 	"host_permissions": ["<all_urls>"],
 	"web_accessible_resources": [
 		{
-			"resources": ["preview.html", "preview.js"],
+			"resources": ["preview.html", "preview.js", "fonts/*"],
 			"matches": ["<all_urls>"]
 		}
 	],

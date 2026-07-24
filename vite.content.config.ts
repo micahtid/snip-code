@@ -15,6 +15,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	// Do not re-copy public/ here; the sidebar build already populates dist/.
 	publicDir: false,
+	// storage.ts is bundled here too, so the constant must be defined for this build as well.
+	// This build's id is unused (only the panel reads the hint), but it must resolve.
+	define: { __BUILD_ID__: JSON.stringify(String(Date.now())) },
 	build: {
 		outDir: 'dist',
 		// Never wipe the sidebar build output that ran first.

@@ -112,3 +112,22 @@ test('listSnippets returns an empty list when nothing is stored', async () => {
 	const { mod } = await fresh();
 	assert.deepEqual(await mod.listSnippets(), []);
 });
+
+test('the shift hint gets exactly ten panel opens', async () => {
+	const store = stubChromeStorage({});
+	const mod = await load('utils/storage.ts');
+	const shown = [];
+	for (let i = 0; i < 12; i++) shown.push(await mod.claimShiftBannerOpen());
+	assert.deepEqual(shown, [...Array(10).fill(true), false, false]);
+	// The budget writes itself off as dismissed, so later opens settle on one read.
+	assert.equal(store.shiftBannerDismissed, true);
+});
+
+test('closing the shift hint retires it before the budget runs out', async () => {
+	const store = stubChromeStorage({});
+	const mod = await load('utils/storage.ts');
+	assert.equal(await mod.claimShiftBannerOpen(), true);
+	await mod.dismissShiftBanner();
+	assert.equal(await mod.claimShiftBannerOpen(), false);
+	assert.equal(store.shiftBannerOpens, 1); // No further opens are counted
+});

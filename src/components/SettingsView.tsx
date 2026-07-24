@@ -160,7 +160,7 @@ export function SettingsView() {
 							className="sc-input"
 							type={showKey ? 'text' : 'password'}
 							value={key}
-							placeholder="Paste key"
+							placeholder="Paste Key"
 							onChange={(e) => setKeyState(e.target.value)}
 							onFocus={() => setKeyFocused(true)}
 							onBlur={() => {
